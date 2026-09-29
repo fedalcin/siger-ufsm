@@ -84,13 +84,13 @@ if st.sidebar.button("🌐 Transparência", use_container_width=True):
 # PÁGINA: INÍCIO
 # ---------------------------------------------------------
 if st.session_state.pagina_atual == "Início":
-    st.title("🛡️ SIGER - Sistema de Gestão de Riscos nas IFES")
+    st.title("🛡️️ SIGER - Sistema de Gestão de Riscos nas IFES")
     st.markdown("""
     Bem-vindo ao **SIGER**, a solução integrada para mapeamento, avaliação e monitoramento de riscos 
     institucionais no âmbito das Instituições Federais de Ensino Superior (IFES).
     
-    * **Fundamentação:** COSO ERM (8 Componentes) & Teoria Institucional[cite: 1]
-    * **Desenvolvimento:** Pesquisa Aplicada do Programa de Pós-Graduação em Gestão de Organizações Públicas (PPGOP/UFSM)[cite: 1]
+    * **Fundamentação:** COSO ERM (8 Componentes) & Teoria Institucional
+    * **Desenvolvimento:** Pesquisa Aplicada do Programa de Pós-Graduação em Gestão de Organizações Públicas (PPGOP/UFSM)
     """)
     st.info("👈 Utilize o menu lateral para navegar entre os módulos do sistema.")
 
@@ -137,14 +137,14 @@ elif st.session_state.pagina_atual == "Cadastros":
                 else:
                     st.info("Nenhuma unidade cadastrada. Cadastre a primeira unidade na aba 'Nova Unidade'.")
             except Exception as e:
-                st.error(f"Erro ao carregar unidades: {e}")
+                st.error("A tabela 'unidades' ainda não foi criada no Supabase ou ocorreu um erro de conexão. Crie a tabela 'unidades' no painel do Supabase.")
                 
         # TAB 2: FORMULÁRIO DE NOVA UNIDADE
         with tab_novo_unid:
-            # Busca o próximo código disponível
+            # Busca unidades existentes para calcular o próximo código
             try:
-                res_count = supabase.table("unidades").select("id", count="exact").execute()
-                proximo_num = (res_count.count or 0) + 1
+                res_count = supabase.table("unidades").select("id").execute()
+                proximo_num = len(res_count.data) + 1 if res_count.data else 1
             except:
                 proximo_num = 1
                 
@@ -173,7 +173,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.success(f"✅ Unidade '{sigla}' registrada com o código {codigo_gerado}!")
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Erro ao salvar unidade no banco de dados: {e}")
+                            st.error(f"Erro ao salvar unidade no banco de dados. Verifique se a tabela 'unidades' foi criada no Supabase com os campos 'codigo', 'sigla' e 'nome_extenso'. Detalhes do erro: {e}")
 
     # ---------------------------------------------------------
     # SUB-MÓDULO: RISCOS
@@ -214,17 +214,15 @@ elif st.session_state.pagina_atual == "Cadastros":
                 
         # TAB 2: FORMULÁRIO DE CADASTRO DE RISCO
         with tab2:
-            # Carrega a lista de unidades cadastradas no banco de dados
             try:
                 res_unid_list = supabase.table("unidades").select("codigo, sigla, nome_extenso").order("codigo").execute()
-                unidades_db = res_unid_list.data
+                unidades_db = res_unid_list.data if res_unid_list.data else []
             except Exception as e:
                 unidades_db = []
 
             if not unidades_db:
-                st.warning("⚠️ Nenhuma unidade encontrada. Cadastre primeiro uma Unidade no menu de cadastros para poder vincular os riscos.")
+                st.warning("⚠️ Nenhuma unidade encontrada. Cadastre primeiro uma Unidade na aba 'Unidades' para poder vincular os riscos.")
             else:
-                # Monta as opções para exibição na caixa de seleção
                 opcoes_unidades = [f"{u['codigo']} - {u['sigla']} ({u['nome_extenso']})" for u in unidades_db]
                 
                 with st.form("form_cadastrar_risco", clear_on_submit=True):
