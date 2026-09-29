@@ -39,15 +39,12 @@ st.sidebar.markdown("**Sistema de Gestão de Riscos nas IFES**")
 st.sidebar.caption("PPGOP / UFSM")
 st.sidebar.divider()
 
-# Estado da sessão para controlar qual tela está ativa
 if "pagina_atual" not in st.session_state:
     st.session_state.pagina_atual = "Início"
 
-# Função auxiliar para trocar de página
 def navegar_para(pagina):
     st.session_state.pagina_atual = pagina
 
-# Lista de Botões do Menu Lateral
 st.sidebar.subheader("Menu Principal")
 
 if st.sidebar.button("🏠 Início", use_container_width=True):
@@ -84,7 +81,7 @@ if st.sidebar.button("🌐 Transparência", use_container_width=True):
 # PÁGINA: INÍCIO
 # ---------------------------------------------------------
 if st.session_state.pagina_atual == "Início":
-    st.title("🛡️️ SIGER - Sistema de Gestão de Riscos nas IFES")
+    st.title("🛡️ SIGER - Sistema de Gestão de Riscos nas IFES")
     st.markdown("""
     Bem-vindo ao **SIGER**, a solução integrada para mapeamento, avaliação e monitoramento de riscos 
     institucionais no âmbito das Instituições Federais de Ensino Superior (IFES).
@@ -119,31 +116,25 @@ elif st.session_state.pagina_atual == "Cadastros":
         # TAB 1: LISTAGEM DE UNIDADES
         with tab_list_unid:
             try:
-                resposta_unid = supabase.table("unidades").select("*").order("codigo").execute()
+                resposta_unid = supabase.from_("unidades").select("*").execute()
                 dados_unid = resposta_unid.data
                 
                 if dados_unid:
                     df_unid = pd.DataFrame(dados_unid)
                     st.write(f"Total de unidades cadastradas: **{len(df_unid)}**")
                     st.dataframe(
-                        df_unid[["codigo", "sigla", "nome_extenso"]],
-                        use_container_width=True,
-                        column_config={
-                            "codigo": "Código",
-                            "sigla": "Sigla da Unidade",
-                            "nome_extenso": "Nome por Extenso"
-                        }
+                        df_unid,
+                        use_container_width=True
                     )
                 else:
                     st.info("Nenhuma unidade cadastrada. Cadastre a primeira unidade na aba 'Nova Unidade'.")
             except Exception as e:
-                st.error("A tabela 'unidades' ainda não foi criada no Supabase ou ocorreu um erro de conexão. Crie a tabela 'unidades' no painel do Supabase.")
+                st.error(f"Detalhes da conexão com a tabela 'unidades': {e}")
                 
         # TAB 2: FORMULÁRIO DE NOVA UNIDADE
         with tab_novo_unid:
-            # Busca unidades existentes para calcular o próximo código
             try:
-                res_count = supabase.table("unidades").select("id").execute()
+                res_count = supabase.from_("unidades").select("id").execute()
                 proximo_num = len(res_count.data) + 1 if res_count.data else 1
             except:
                 proximo_num = 1
@@ -169,11 +160,11 @@ elif st.session_state.pagina_atual == "Cadastros":
                             "nome_extenso": nome_extenso
                         }
                         try:
-                            supabase.table("unidades").insert(dados_nova_unidade).execute()
+                            supabase.from_("unidades").insert(dados_nova_unidade).execute()
                             st.success(f"✅ Unidade '{sigla}' registrada com o código {codigo_gerado}!")
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Erro ao salvar unidade no banco de dados. Verifique se a tabela 'unidades' foi criada no Supabase com os campos 'codigo', 'sigla' e 'nome_extenso'. Detalhes do erro: {e}")
+                            st.error(f"Erro completo retornado pelo banco: {e}")
 
     # ---------------------------------------------------------
     # SUB-MÓDULO: RISCOS
@@ -186,27 +177,13 @@ elif st.session_state.pagina_atual == "Cadastros":
         # TAB 1: VISUALIZAÇÃO DOS RISCOS
         with tab1:
             try:
-                resposta = supabase.table("riscos").select("*").order("id", desc=True).execute()
+                resposta = supabase.from_("riscos").select("*").execute()
                 dados = resposta.data
                 
                 if dados:
                     df = pd.DataFrame(dados)
                     st.write(f"Total de riscos registrados: **{len(df)}**")
-                    
-                    st.dataframe(
-                        df[["id", "unidade", "componente_coso", "descricao_risco", "probabilidade", "impacto", "nivel_risco", "plano_resposta"]],
-                        use_container_width=True,
-                        column_config={
-                            "id": "ID",
-                            "unidade": "Unidade Selecionada",
-                            "componente_coso": "Componente COSO",
-                            "descricao_risco": "Descrição do Risco",
-                            "probabilidade": "Prob. (1-5)",
-                            "impacto": "Imp. (1-5)",
-                            "nivel_risco": "Nível de Risco",
-                            "plano_resposta": "Plano de Resposta/Mitigação"
-                        }
-                    )
+                    st.dataframe(df, use_container_width=True)
                 else:
                     st.info("Nenhum risco cadastrado até o momento. Utilize a aba 'Novo Risco' para realizar o primeiro registro.")
             except Exception as e:
@@ -215,7 +192,7 @@ elif st.session_state.pagina_atual == "Cadastros":
         # TAB 2: FORMULÁRIO DE CADASTRO DE RISCO
         with tab2:
             try:
-                res_unid_list = supabase.table("unidades").select("codigo, sigla, nome_extenso").order("codigo").execute()
+                res_unid_list = supabase.from_("unidades").select("codigo, sigla, nome_extenso").execute()
                 unidades_db = res_unid_list.data if res_unid_list.data else []
             except Exception as e:
                 unidades_db = []
@@ -272,7 +249,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             }
                             
                             try:
-                                supabase.table("riscos").insert(dados_novo_risco).execute()
+                                supabase.from_("riscos").insert(dados_novo_risco).execute()
                                 st.success("✅ Risco cadastrado com sucesso com a unidade vinculada!")
                                 st.rerun()
                             except Exception as e:
@@ -282,7 +259,7 @@ elif st.session_state.pagina_atual == "Cadastros":
         st.info("Este tipo de cadastro será desenvolvido nas próximas etapas.")
 
 # ---------------------------------------------------------
-# DEMAIS PÁGINAS (ESTRUTURA EM CONSTRUÇÃO)
+# DEMAIS PÁGINAS
 # ---------------------------------------------------------
 else:
     st.title(f"🛠️ {st.session_state.pagina_atual}")
