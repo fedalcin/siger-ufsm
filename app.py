@@ -22,11 +22,14 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Conexão segura com Supabase
+# Conexão segura com Supabase (com higienização da URL)
 @st.cache_resource
 def init_supabase():
-    url = st.secrets["SUPABASE_URL"]
-    key = st.secrets["SUPABASE_KEY"]
+    url = st.secrets["SUPABASE_URL"].strip().rstrip('/')
+    # Remove qualquer /rest/v1 caso tenha sido colado por engano
+    if url.endswith("/rest/v1"):
+        url = url[:-8]
+    key = st.secrets["SUPABASE_KEY"].strip()
     return create_client(url, key)
 
 supabase = init_supabase()
@@ -116,25 +119,30 @@ elif st.session_state.pagina_atual == "Cadastros":
         # TAB 1: LISTAGEM DE UNIDADES
         with tab_list_unid:
             try:
-                resposta_unid = supabase.from_("unidades").select("*").execute()
+                resposta_unid = supabase.table("unidades").select("*").execute()
                 dados_unid = resposta_unid.data
                 
                 if dados_unid:
                     df_unid = pd.DataFrame(dados_unid)
                     st.write(f"Total de unidades cadastradas: **{len(df_unid)}**")
                     st.dataframe(
-                        df_unid,
-                        use_container_width=True
+                        df_unid[["codigo", "sigla", "nome_extenso"]],
+                        use_container_width=True,
+                        column_config={
+                            "codigo": "Código",
+                            "sigla": "Sigla da Unidade",
+                            "nome_extenso": "Nome por Extenso"
+                        }
                     )
                 else:
                     st.info("Nenhuma unidade cadastrada. Cadastre a primeira unidade na aba 'Nova Unidade'.")
             except Exception as e:
-                st.error(f"Detalhes da conexão com a tabela 'unidades': {e}")
+                st.error(f"Erro ao conectar com a tabela 'unidades': {e}")
                 
         # TAB 2: FORMULÁRIO DE NOVA UNIDADE
         with tab_novo_unid:
             try:
-                res_count = supabase.from_("unidades").select("id").execute()
+                res_count = supabase.table("unidades").select("id").execute()
                 proximo_num = len(res_count.data) + 1 if res_count.data else 1
             except:
                 proximo_num = 1
@@ -160,11 +168,11 @@ elif st.session_state.pagina_atual == "Cadastros":
                             "nome_extenso": nome_extenso
                         }
                         try:
-                            supabase.from_("unidades").insert(dados_nova_unidade).execute()
+                            supabase.table("unidades").insert(dados_nova_unidade).execute()
                             st.success(f"✅ Unidade '{sigla}' registrada com o código {codigo_gerado}!")
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Erro completo retornado pelo banco: {e}")
+                            st.error(f"Erro retornado ao tentar salvar: {e}")
 
     # ---------------------------------------------------------
     # SUB-MÓDULO: RISCOS
@@ -177,7 +185,7 @@ elif st.session_state.pagina_atual == "Cadastros":
         # TAB 1: VISUALIZAÇÃO DOS RISCOS
         with tab1:
             try:
-                resposta = supabase.from_("riscos").select("*").execute()
+                resposta = supabase.table("riscos").select("*").execute()
                 dados = resposta.data
                 
                 if dados:
@@ -185,14 +193,14 @@ elif st.session_state.pagina_atual == "Cadastros":
                     st.write(f"Total de riscos registrados: **{len(df)}**")
                     st.dataframe(df, use_container_width=True)
                 else:
-                    st.info("Nenhum risco cadastrado até o momento. Utilize a aba 'Novo Risco' para realizar o primeiro registro.")
+                    st.info("Nenum risco cadastrado até o momento. Utilize a aba 'Novo Risco' para realizar o primeiro registro.")
             except Exception as e:
                 st.error(f"Erro ao carregar dados do banco: {e}")
                 
         # TAB 2: FORMULÁRIO DE CADASTRO DE RISCO
         with tab2:
             try:
-                res_unid_list = supabase.from_("unidades").select("codigo, sigla, nome_extenso").execute()
+                res_unid_list = supabase.table("unidades").select("codigo, sigla, nome_extenso").execute()
                 unidades_db = res_unid_list.data if res_unid_list.data else []
             except Exception as e:
                 unidades_db = []
@@ -249,7 +257,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             }
                             
                             try:
-                                supabase.from_("riscos").insert(dados_novo_risco).execute()
+                                supabase.table("riscos").insert(dados_novo_risco).execute()
                                 st.success("✅ Risco cadastrado com sucesso com a unidade vinculada!")
                                 st.rerun()
                             except Exception as e:
