@@ -45,32 +45,82 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilização CSS para ajustar espaço na sidebar e texto justificado na página inicial
+# Estilização CSS personalizada com botões em Azul Escuro para os Expanders da Sidebar
 st.markdown("""
     <style>
-    /* Reduz o espaçamento em branco no topo e nas laterais da barra lateral */
+    /* Reduz o espaçamento no topo e laterais da barra lateral */
     section[data-testid="stSidebar"] > div:first-child {
         padding-top: 1rem !important;
         padding-left: 0.8rem !important;
         padding-right: 0.8rem !important;
     }
     
-    /* Alinha os botões do menu lateral à esquerda com preenchimento limpo */
-    section[data-testid="stSidebar"] div.stButton > button {
+    /* Botões Principais e Títulos de Grupos (Expander Headers) em Azul Escuro */
+    section[data-testid="stSidebar"] div[data-testid="stExpander"] details summary {
+        background-color: #002147 !important;
+        color: #ffffff !important;
+        border-radius: 6px !important;
+        padding: 10px 14px !important;
+        font-weight: bold !important;
+        margin-bottom: 6px !important;
+        border: 1px solid #001733 !important;
+        transition: background-color 0.3s ease;
+    }
+    
+    /* Efeito de destaque ao passar o mouse nos títulos dos grupos */
+    section[data-testid="stSidebar"] div[data-testid="stExpander"] details summary:hover {
+        background-color: #003366 !important;
+        color: #ffffff !important;
+        cursor: pointer;
+    }
+
+    /* Ajusta a cor das setas e do texto dentro dos expanders */
+    section[data-testid="stSidebar"] div[data-testid="stExpander"] details summary p,
+    section[data-testid="stSidebar"] div[data-testid="stExpander"] details summary svg {
+        color: #ffffff !important;
+        fill: #ffffff !important;
+    }
+
+    /* Botão de Início sem Expander em estilo Azul Escuro destacado */
+    .btn-inicio-sidebar button {
+        background-color: #002147 !important;
+        color: #ffffff !important;
+        font-weight: bold !important;
+        border-radius: 6px !important;
+        padding: 10px 14px !important;
+        margin-bottom: 8px !important;
+        width: 100% !important;
+        text-align: left !important;
+        border: 1px solid #001733 !important;
+    }
+    .btn-inicio-sidebar button:hover {
+        background-color: #003366 !important;
+        color: #ffffff !important;
+    }
+    
+    /* Botões de Sub-itens dentro das abas expandidas */
+    section[data-testid="stSidebar"] div[data-testid="stExpander"] div.stButton > button {
         text-align: left !important;
         justify-content: flex-start !important;
         width: 100% !important;
         border: none !important;
-        background-color: transparent !important;
-        padding-left: 8px !important;
+        background-color: #f8f9fa !important;
+        color: #333333 !important;
+        padding-left: 12px !important;
+        margin-top: 2px !important;
+        margin-bottom: 2px !important;
+        border-radius: 4px !important;
     }
-    section[data-testid="stSidebar"] div.stButton > button:hover {
-        background-color: #f0f2f6 !important;
-        color: #000000 !important;
+    section[data-testid="stSidebar"] div[data-testid="stExpander"] div.stButton > button:hover {
+        background-color: #e2e8f0 !important;
+        color: #002147 !important;
+        font-weight: 500 !important;
     }
-    div[data-testid="stSidebarUserContent"] details {
+    
+    /* Remoção de bordas das caixas de expander */
+    section[data-testid="stSidebar"] div[data-testid="stExpander"] {
         border: none !important;
-        margin-bottom: 3px !important;
+        box-shadow: none !important;
     }
     
     /* Classe para alinhar textos no modo JUSTIFICADO na página inicial */
@@ -111,15 +161,20 @@ def navegar_para(pagina, sub_pagina=None):
 
 st.sidebar.subheader("Menu Principal")
 
-if st.sidebar.button("🏠 Início", use_container_width=True):
+# Botão Início customizado
+st.sidebar.markdown('<div class="btn-inicio-sidebar">', unsafe_allow_html=True)
+if st.sidebar.button("🏠 Início", use_container_width=True, key="btn_inicio_top"):
     navegar_para("Início")
+st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
+# 1. GRUPO: ADMINISTRAÇÃO
 with st.sidebar.expander("⚙️ Administração", expanded=False):
     if st.button("👥 Usuários e Permissões", key="btn_adm_usr", use_container_width=True):
         navegar_para("Administração do Sistema", "Usuários")
     if st.button("🔧 Configurações Gerais", key="btn_adm_cfg", use_container_width=True):
         navegar_para("Administração do Sistema", "Configurações")
 
+# 2. GRUPO: CADASTROS
 with st.sidebar.expander("📝 Cadastros", expanded=False):
     if st.button("🏢 Unidades", key="btn_cad_unid", use_container_width=True):
         navegar_para("Cadastros", "Unidades")
@@ -133,37 +188,44 @@ with st.sidebar.expander("📝 Cadastros", expanded=False):
         navegar_para("Cadastros", "Identidade Visual")
     if st.button("📚 Documentos da Biblioteca", key="btn_cad_doc_bib", use_container_width=True):
         navegar_para("Cadastros", "Documentos da Biblioteca")
-    if st.button("✍️️ Texto da Tela Inicial", key="btn_cad_txt", use_container_width=True):
+    if st.button("✍️ Texto da Tela Inicial", key="btn_cad_txt", use_container_width=True):
         navegar_para("Cadastros", "Texto da Tela Inicial")
 
+# 3. GRUPO: MONITORAMENTO
 with st.sidebar.expander("🔄 Monitoramento", expanded=False):
     if st.button("📌 Acompanhamento de Riscos", key="btn_mon_acomp", use_container_width=True):
         navegar_para("Monitoramento", "Acompanhamento")
     if st.button("📅 Matriz de Revisões", key="btn_mon_rev", use_container_width=True):
         navegar_para("Monitoramento", "Revisões")
 
+# 4. GRUPO: INTELIGÊNCIA GERENCIAL
 with st.sidebar.expander("🧠 Inteligência Gerencial", expanded=False):
     if st.button("💡 Análise de Tendências", key="btn_ig_tend", use_container_width=True):
         navegar_para("Inteligência Gerencial", "Tendências")
 
+# 5. GRUPO: DASHBOARDS
 with st.sidebar.expander("📊 Dashboards", expanded=False):
     if st.button("📈 Painel Geral", key="btn_dash_geral", use_container_width=True):
         navegar_para("Dashboards", "Painel Geral")
     if st.button("🎯 Matriz de Risco (5x5)", key="btn_dash_matriz", use_container_width=True):
         navegar_para("Dashboards", "Matriz 5x5")
 
+# 6. GRUPO: PLANOS DE TRATAMENTO
 with st.sidebar.expander("🛡️ Planos de Tratamento", expanded=False):
     if st.button("📋 Ações de Mitigação", key="btn_pt_acoes", use_container_width=True):
         navegar_para("Planos de Tratamento", "Ações")
 
+# 7. GRUPO: BIBLIOTECA
 with st.sidebar.expander("📚 Biblioteca", expanded=False):
     if st.button("📄 Documentos e Normativas", key="btn_bib_doc", use_container_width=True):
         navegar_para("Biblioteca", "Documentos")
 
+# 8. GRUPO: RELATÓRIOS
 with st.sidebar.expander("📑 Relatórios", expanded=False):
     if st.button("🖨️ Relatório de Riscos (PDF/Excel)", key="btn_rel_riscos", use_container_width=True):
         navegar_para("Relatórios", "Relatório Riscos")
 
+# 9. GRUPO: TRANSPARÊNCIA
 with st.sidebar.expander("🌐 Transparência", expanded=False):
     if st.button("🔓 Painel Público", key="btn_transp_pub", use_container_width=True):
         navegar_para("Transparência", "Painel Público")
@@ -346,7 +408,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                             st.rerun()
                                             
                             with col_oe_del:
-                                pop_del_oe = st.popover("🗑️ Excluir")
+                                pop_del_oe = st.popover("🗑️️ Excluir")
                                 with pop_del_oe:
                                     st.warning("Confirmar exclusão?")
                                     if st.button("Excluir Objetivo", key=f"btn_del_oe_{oe_item['id']}"):
