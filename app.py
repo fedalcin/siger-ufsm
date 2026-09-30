@@ -52,15 +52,40 @@ TIPOS_UNIDADE_OPCOES = [
 ]
 
 # ---------------------------------------------------------
+# CARREGAMENTO DINÂMICO DA IDENTIDADE VISUAL
+# ---------------------------------------------------------
+url_logo_siger = None
+url_logo_instituicao = None
+
+try:
+    res_siger = supabase.table("configuracoes").select("valor").eq("chave", "url_logo_siger").execute()
+    if res_siger.data and len(res_siger.data) > 0:
+        url_logo_siger = res_siger.data[0]["valor"]
+        
+    res_inst = supabase.table("configuracoes").select("valor").eq("chave", "url_logo_instituicao").execute()
+    if res_inst.data and len(res_inst.data) > 0:
+        url_logo_instituicao = res_inst.data[0]["valor"]
+except:
+    pass
+
+# ---------------------------------------------------------
 # BARRA LATERAL (LOGOTIPO E MENU EXPANSÍVEL)
 # ---------------------------------------------------------
-if os.path.exists("logo.png"):
+if url_logo_siger:
+    st.sidebar.image(url_logo_siger, use_column_width=True)
+elif os.path.exists("logo.png"):
     st.sidebar.image("logo.png", use_column_width=True)
 else:
     st.sidebar.title("🛡️ SÍGER")
     st.sidebar.markdown("**Sistema de Gestão de Riscos**")
 
-st.sidebar.caption("PPGOP / UFSM")
+# Exibe o logo da instituição na barra lateral, caso tenha sido enviado
+if url_logo_instituicao:
+    st.sidebar.caption("Instituição:")
+    st.sidebar.image(url_logo_instituicao, use_column_width=True)
+else:
+    st.sidebar.caption("PPGOP / UFSM")
+
 st.sidebar.divider()
 
 if "pagina_atual" not in st.session_state:
@@ -92,6 +117,8 @@ with st.sidebar.expander("📝 Cadastros", expanded=False):
         navegar_para("Cadastros", "Categorias de Risco")
     if st.button("📋 Riscos", key="btn_cad_risco", use_container_width=True):
         navegar_para("Cadastros", "Riscos")
+    if st.button("🖼️ Identidade Visual", key="btn_cad_id_vis", use_container_width=True):
+        navegar_para("Cadastros", "Identidade Visual")
     if st.button("📚 Documentos da Biblioteca", key="btn_cad_doc_bib", use_container_width=True):
         navegar_para("Cadastros", "Documentos da Biblioteca")
     if st.button("✍️ Texto da Tela Inicial", key="btn_cad_txt", use_container_width=True):
@@ -404,7 +431,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                         nivel = r_item.get('nivel_risco', 1)
                         cor_nivel = "🔴 (Crítico)" if nivel >= 15 else "🟡 (Médio)" if nivel >= 8 else "🟢 (Baixo)"
                         
-                        with st.expander(f"🛡️ Risco #{r_item['id']} | {r_item['unidade']} | Nível {nivel} {cor_nivel}"):
+                        with st.expander(f"🛡️️ Risco #{r_item['id']} | {r_item['unidade']} | Nível {nivel} {cor_nivel}"):
                             st.markdown(f"**Evento de Risco:** {r_item['evento_risco']}")
                             st.markdown(f"**Processo:** {r_item['processo']} | **Categoria:** {r_item['categoria']}")
                             st.markdown(f"**Causa:** {r_item['causa']} | **Consequência:** {r_item['consequencia']}")
@@ -564,7 +591,83 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar o risco no banco de dados: {e}")
 
     # ---------------------------------------------------------
-    # SUB-MÓDULO: DOCUMENTOS DA BIBLIOTECA (UPLOAD DE PDF E EXCLUSÃO)
+    # SUB-MÓDULO: IDENTIDADE VISUAL (SÍGER E INSTITUIÇÃO)
+    # ---------------------------------------------------------
+    elif sub == "Identidade Visual":
+        st.subheader("🖼️ Gestão da Identidade Visual do Sistema")
+        st.write("Personalize os logotipos exibidos no aplicativo SÍGER e nos futuros relatórios da sua Instituição.")
+        st.divider()
+        
+        col_img1, col_img2 = st.columns(2)
+        
+        # 1. LOGO DO SISTEMA SÍGER
+        with col_img1:
+            st.markdown("### 1. Logotipo do Sistema SÍGER")
+            st.caption("Substitui a marca padrão na barra lateral e topo das páginas.")
+            
+            if url_logo_siger:
+                st.image(url_logo_siger, width=200, caption="Logotipo Atual do SÍGER")
+            else:
+                st.info("Nenhum logotipo personalizado do SÍGER enviado ainda.")
+                
+            with st.form("form_logo_siger", clear_on_submit=True):
+                arq_siger = st.file_uploader("Enviar novo Logotipo do SÍGER (PNG/JPG)", type=["png", "jpg", "jpeg"], key="upl_siger")
+                sub_siger = st.form_submit_button("💾 Salvar Logotipo do SÍGER")
+                
+                if sub_siger:
+                    if arq_siger:
+                        try:
+                            nome_siger = f"logo_siger_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                            supabase.storage.from_("identidade_visual").upload(
+                                path=nome_siger,
+                                file=arq_siger.getvalue(),
+                                file_options={"content-type": arq_siger.type}
+                            )
+                            url_pub_siger = supabase.storage.from_("identidade_visual").get_public_url(nome_siger)
+                            
+                            supabase.table("configuracoes").upsert({"chave": "url_logo_siger", "valor": url_pub_siger}).execute()
+                            st.success("✅ Logotipo do SÍGER atualizado com sucesso!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao enviar imagem. Verifique se o bucket 'identidade_visual' foi criado no Storage. Detalhes: {e}")
+                    else:
+                        st.warning("Selecione um arquivo de imagem.")
+
+        # 2. LOGO DA INSTITUIÇÃO
+        with col_img2:
+            st.markdown("### 2. Logotipo da Instituição (IFES)")
+            st.caption("Utilizado no rodapé da barra lateral e em cabeçalhos de relatórios emitidos.")
+            
+            if url_logo_instituicao:
+                st.image(url_logo_instituicao, width=200, caption="Logotipo da Instituição Atual")
+            else:
+                st.info("Nenhum logotipo da instituição enviado ainda.")
+                
+            with st.form("form_logo_inst", clear_on_submit=True):
+                arq_inst = st.file_uploader("Enviar Logotipo da Instituição (PNG/JPG)", type=["png", "jpg", "jpeg"], key="upl_inst")
+                sub_inst = st.form_submit_button("💾 Salvar Logotipo da Instituição")
+                
+                if sub_inst:
+                    if arq_inst:
+                        try:
+                            nome_inst = f"logo_instituicao_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                            supabase.storage.from_("identidade_visual").upload(
+                                path=nome_inst,
+                                file=arq_inst.getvalue(),
+                                file_options={"content-type": arq_inst.type}
+                            )
+                            url_pub_inst = supabase.storage.from_("identidade_visual").get_public_url(nome_inst)
+                            
+                            supabase.table("configuracoes").upsert({"chave": "url_logo_instituicao", "valor": url_pub_inst}).execute()
+                            st.success("✅ Logotipo da Instituição atualizado com sucesso!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao enviar imagem: {e}")
+                    else:
+                        st.warning("Selecione um arquivo de imagem.")
+
+    # ---------------------------------------------------------
+    # SUB-MÓDULO: DOCUMENTOS DA BIBLIOTECA
     # ---------------------------------------------------------
     elif sub == "Documentos da Biblioteca":
         st.subheader("📚 Gerenciamento de Materiais e Documentos (PDF)")
@@ -588,18 +691,16 @@ elif st.session_state.pagina_atual == "Cadastros":
                                     st.warning("Deseja realmente remover este arquivo da biblioteca?")
                                     if st.button("Confirmar Exclusão", key=f"btn_del_doc_{doc['id']}"):
                                         try:
-                                            # Exclui o arquivo físico no Storage
                                             supabase.storage.from_("biblioteca_documentos").remove([doc['nome_arquivo']])
-                                            # Exclui o registro na tabela
                                             supabase.table("biblioteca").delete().eq("id", doc['id']).execute()
                                             st.success("Documento removido da biblioteca!")
                                             st.rerun()
                                         except Exception as e:
                                             st.error(f"Erro ao excluir arquivo: {e}")
                 else:
-                    st.info("Nenhum documento cadastrado na biblioteca.")
+                    st.info("Nenum documento cadastrado na biblioteca.")
             except Exception as e:
-                st.error(f"Erro ao carregar documentos. Verifique se a tabela 'biblioteca' foi criada no Supabase. Detalhes: {e}")
+                st.error(f"Erro ao carregar documentos: {e}")
 
         with tab_novo_doc:
             with st.form("form_upload_pdf", clear_on_submit=True):
@@ -614,11 +715,9 @@ elif st.session_state.pagina_atual == "Cadastros":
                         st.warning("Por favor, informe o título e selecione um arquivo PDF.")
                     else:
                         try:
-                            # Nome único para o arquivo no Storage
                             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
                             nome_limpo_arq = f"{timestamp}_{arquivo_pdf.name.replace(' ', '_')}"
                             
-                            # Upload do arquivo para o bucket
                             bytes_data = arquivo_pdf.getvalue()
                             supabase.storage.from_("biblioteca_documentos").upload(
                                 path=nome_limpo_arq,
@@ -626,10 +725,8 @@ elif st.session_state.pagina_atual == "Cadastros":
                                 file_options={"content-type": "application/pdf"}
                             )
                             
-                            # Obtém a URL pública
                             url_publica = supabase.storage.from_("biblioteca_documentos").get_public_url(nome_limpo_arq)
                             
-                            # Registra no banco de dados
                             supabase.table("biblioteca").insert({
                                 "titulo": titulo_doc,
                                 "descricao": desc_doc,
@@ -641,7 +738,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.success("✅ Documento PDF enviado com sucesso e disponível na Biblioteca!")
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Erro ao salvar arquivo. Verifique se o bucket 'biblioteca_documentos' foi criado como 'Public' no Storage do Supabase. Detalhes: {e}")
+                            st.error(f"Erro ao salvar arquivo: {e}")
 
     # ---------------------------------------------------------
     # SUB-MÓDULO: CADASTRO DO TEXTO DA TELA INICIAL
@@ -680,7 +777,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                     st.error(f"Erro ao salvar texto no banco de dados: {e}")
 
 # ---------------------------------------------------------
-# PÁGINA: BIBLIOTECA (EXIBIÇÃO PÚBLICA PARA DOWNLOAD)
+# PÁGINA: BIBLIOTECA
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Biblioteca":
     st.title("📚 Biblioteca de Documentos e Normativas")
