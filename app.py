@@ -2,12 +2,13 @@ import streamlit as st
 from supabase import create_client, Client
 import pandas as pd
 from datetime import datetime
+import os
 
 # ---------------------------------------------------------
 # CONFIGURAÇÃO DE PÁGINA E ESTILOS
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="SIGER - Gestão de Riscos IFES", 
+    page_title="SÍGER - Sistema de Gestão de Riscos", 
     page_icon="🛡️",
     layout="wide"
 )
@@ -35,10 +36,15 @@ def init_supabase():
 supabase = init_supabase()
 
 # ---------------------------------------------------------
-# BARRA LATERAL (MENU POR BOTÕES ALINHADOS À ESQUERDA)
+# BARRA LATERAL (LOGOTIPO E MENU POR BOTÕES)
 # ---------------------------------------------------------
-st.sidebar.title("🛡️ SIGER")
-st.sidebar.markdown("**Sistema de Gestão de Riscos nas IFES**")
+# Exibe a imagem do logotipo se ela existir no repositório
+if os.path.exists("logo.png"):
+    st.sidebar.image("logo.png", use_column_width=True)
+else:
+    st.sidebar.title("🛡️️ SÍGER")
+    st.sidebar.markdown("**Sistema de Gestão de Riscos**")
+
 st.sidebar.caption("PPGOP / UFSM")
 st.sidebar.divider()
 
@@ -53,7 +59,7 @@ st.sidebar.subheader("Menu Principal")
 if st.sidebar.button("🏠 Início", use_container_width=True):
     navegar_para("Início")
 
-if st.sidebar.button("⚙️ Administração do Sistema", use_container_width=True):
+if st.sidebar.button("⚙️️ Administração do Sistema", use_container_width=True):
     navegar_para("Administração do Sistema")
 
 if st.sidebar.button("📝 Cadastros", use_container_width=True):
@@ -84,7 +90,7 @@ if st.sidebar.button("🌐 Transparência", use_container_width=True):
 # PÁGINA: INÍCIO (LÊ O TEXTO DINÂMICO CADASTRADO)
 # ---------------------------------------------------------
 if st.session_state.pagina_atual == "Início":
-    st.title("🛡️ SIGER - Sistema de Gestão de Riscos nas IFES")
+    st.title("SÍGER - Sistema de Gestão de Riscos")
     
     # Busca o texto personalizado salvo no banco de dados
     texto_inicio_personalizado = ""
@@ -99,7 +105,7 @@ if st.session_state.pagina_atual == "Início":
         st.markdown(texto_inicio_personalizado)
     else:
         st.markdown("""
-        Bem-vindo ao **SIGER**, a solução integrada para mapeamento, avaliação e monitoramento de riscos 
+        Bem-vindo ao **SÍGER**, a solução integrada para mapeamento, avaliação e monitoramento de riscos 
         institucionais no âmbito das Instituições Federais de Ensino Superior (IFES).
         
         * **Fundamentação:** COSO ERM & Teoria Institucional
@@ -400,7 +406,6 @@ elif st.session_state.pagina_atual == "Cadastros":
         st.subheader("✍️ Cadastrar / Editar Texto da Tela Inicial")
         st.write("O texto digitado abaixo será exibido dinamicamente na página inicial do aplicativo.")
         
-        # Busca texto atual salvo
         texto_atual = ""
         try:
             res_txt = supabase.table("configuracoes").select("valor").eq("chave", "texto_pagina_inicial").execute()
@@ -414,14 +419,13 @@ elif st.session_state.pagina_atual == "Cadastros":
                 "Conteúdo da Tela Inicial (Aceita formatação Markdown)", 
                 value=texto_atual, 
                 height=250,
-                placeholder="Escreva aqui a apresentação do SIGER, a fundamentação teórica ou avisos gerais..."
+                placeholder="Escreva aqui a apresentação do SÍGER, a fundamentação teórica ou avisos gerais..."
             )
             
             submitted_texto = st.form_submit_button("💾 Salvar Texto da Tela Inicial")
             
             if submitted_texto:
                 try:
-                    # Upsert (Insere ou Atualiza) a chave 'texto_pagina_inicial'
                     supabase.table("configuracoes").upsert({
                         "chave": "texto_pagina_inicial",
                         "valor": novo_texto
@@ -438,5 +442,5 @@ elif st.session_state.pagina_atual == "Cadastros":
 # DEMAIS PÁGINAS
 # ---------------------------------------------------------
 else:
-    st.title(f"🛠️️ {st.session_state.pagina_atual}")
+    st.title(f"🛠️ {st.session_state.pagina_atual}")
     st.info("Módulo em fase de estruturação. Em breve implementaremos as funcionalidades desta área.")
