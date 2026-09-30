@@ -34,11 +34,10 @@ try:
 except:
     pass
 
-# Define o ícone da aba do navegador (Chrome Favicon)
 favicon_app = url_logo_siger if url_logo_siger else ("logo.png" if os.path.exists("logo.png") else "🛡️")
 
 # ---------------------------------------------------------
-# CONFIGURAÇÃO DE PÁGINA E ESTILOS
+# CONFIGURAÇÃO DE PÁGINA E ESTILOS CSS
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="SIGER - Sistema de Gestão de Riscos", 
@@ -46,16 +45,24 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilização CSS personalizada
+# Estilização CSS para ajustar espaço na sidebar e texto justificado na página inicial
 st.markdown("""
     <style>
+    /* Reduz o espaçamento em branco no topo e nas laterais da barra lateral */
+    section[data-testid="stSidebar"] > div:first-child {
+        padding-top: 1rem !important;
+        padding-left: 0.8rem !important;
+        padding-right: 0.8rem !important;
+    }
+    
+    /* Alinha os botões do menu lateral à esquerda com preenchimento limpo */
     section[data-testid="stSidebar"] div.stButton > button {
         text-align: left !important;
         justify-content: flex-start !important;
         width: 100% !important;
         border: none !important;
         background-color: transparent !important;
-        padding-left: 10px !important;
+        padding-left: 8px !important;
     }
     section[data-testid="stSidebar"] div.stButton > button:hover {
         background-color: #f0f2f6 !important;
@@ -63,7 +70,14 @@ st.markdown("""
     }
     div[data-testid="stSidebarUserContent"] details {
         border: none !important;
-        margin-bottom: 5px !important;
+        margin-bottom: 3px !important;
+    }
+    
+    /* Classe para alinhar textos no modo JUSTIFICADO na página inicial */
+    .texto-justificado {
+        text-align: justify !important;
+        text-justify: inter-word !important;
+        line-height: 1.6;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -84,7 +98,6 @@ else:
     st.sidebar.title("SIGER")
     st.sidebar.markdown("**Sistema de Gestão de Riscos**")
 
-st.sidebar.caption("PPGOP / UFSM")
 st.sidebar.divider()
 
 if "pagina_atual" not in st.session_state:
@@ -120,7 +133,7 @@ with st.sidebar.expander("📝 Cadastros", expanded=False):
         navegar_para("Cadastros", "Identidade Visual")
     if st.button("📚 Documentos da Biblioteca", key="btn_cad_doc_bib", use_container_width=True):
         navegar_para("Cadastros", "Documentos da Biblioteca")
-    if st.button("✍️ Texto da Tela Inicial", key="btn_cad_txt", use_container_width=True):
+    if st.button("✍️️ Texto da Tela Inicial", key="btn_cad_txt", use_container_width=True):
         navegar_para("Cadastros", "Texto da Tela Inicial")
 
 with st.sidebar.expander("🔄 Monitoramento", expanded=False):
@@ -156,10 +169,9 @@ with st.sidebar.expander("🌐 Transparência", expanded=False):
         navegar_para("Transparência", "Painel Público")
 
 # ---------------------------------------------------------
-# PÁGINA: INÍCIO
+# PÁGINA: INÍCIO (COM TEXTO JUSTIFICADO E LOGO DA INSTITUIÇÃO)
 # ---------------------------------------------------------
 if st.session_state.pagina_atual == "Início":
-    # Cabeçalho da página principal com exibição do logo da instituição se cadastrado
     if url_logo_instituicao:
         col_t1, col_t2 = st.columns([3, 1])
         with col_t1:
@@ -178,16 +190,21 @@ if st.session_state.pagina_atual == "Início":
         texto_inicio_personalizado = ""
 
     if texto_inicio_personalizado:
-        st.markdown(texto_inicio_personalizado)
+        st.markdown(f'<div class="texto-justificado">{texto_inicio_personalizado}</div>', unsafe_allow_html=True)
     else:
         st.markdown("""
-        Bem-vindo ao **SIGER**, a solução integrada para mapeamento, avaliação e monitoramento de riscos 
+        <div class="texto-justificado">
+        Bem-vindo ao <b>SIGER</b>, a solução integrada para mapeamento, avaliação e monitoramento de riscos 
         institucionais no âmbito das Instituições Federais de Ensino Superior (IFES).
+        <br><br>
+        <ul>
+            <li><b>Fundamentação:</b> COSO ERM & Teoria Institucional</li>
+            <li><b>Desenvolvimento:</b> Pesquisa Aplicada do Programa de Pós-Graduação em Gestão de Organizações Públicas</li>
+        </ul>
+        </div>
+        """, unsafe_allow_html=True)
         
-        * **Fundamentação:** COSO ERM & Teoria Institucional
-        * **Desenvolvimento:** Pesquisa Aplicada do Programa de Pós-Graduação em Gestão de Organizações Públicas (PPGOP/UFSM)
-        """)
-        
+    st.divider()
     st.info("👈 Utilize o menu lateral para navegar entre os módulos do sistema.")
 
 # ---------------------------------------------------------
@@ -378,7 +395,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                         with st.expander(f"🏷️ {cat_item['nome']}"):
                             c1, c2 = st.columns(2)
                             with c1:
-                                pop_edit_cat = st.popover("✏️️ Editar")
+                                pop_edit_cat = st.popover("✏️ Editar")
                                 with pop_edit_cat:
                                     with st.form(f"form_edit_cat_{cat_item['id']}"):
                                         nome_edit = st.text_input("Nome da Categoria", value=cat_item['nome'])
@@ -598,7 +615,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar o risco no banco de dados: {e}")
 
     # ---------------------------------------------------------
-    # SUB-MÓDULO: IDENTIDADE VISUAL (SIGER E INSTITUIÇÃO)
+    # SUB-MÓDULO: IDENTIDADE VISUAL
     # ---------------------------------------------------------
     elif sub == "Identidade Visual":
         st.subheader("🖼️ Gestão da Identidade Visual do Sistema")
