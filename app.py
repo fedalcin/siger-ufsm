@@ -74,7 +74,7 @@ TIPOS_UNIDADE_OPCOES = [
 ]
 
 # ---------------------------------------------------------
-# BARRA LATERAL (LOGOTIPO E MENU EXPANSÍVEL)
+# BARRA LATERAL (LOGOTIPO SIGER E MENU EXPANSÍVEL)
 # ---------------------------------------------------------
 if url_logo_siger:
     st.sidebar.image(url_logo_siger, use_container_width=True)
@@ -84,13 +84,7 @@ else:
     st.sidebar.title("SIGER")
     st.sidebar.markdown("**Sistema de Gestão de Riscos**")
 
-# Exibe o logo da instituição na barra lateral, caso tenha sido enviado
-if url_logo_instituicao:
-    st.sidebar.caption("Instituição:")
-    st.sidebar.image(url_logo_instituicao, use_container_width=True)
-else:
-    st.sidebar.caption("PPGOP / UFSM")
-
+st.sidebar.caption("PPGOP / UFSM")
 st.sidebar.divider()
 
 if "pagina_atual" not in st.session_state:
@@ -165,7 +159,15 @@ with st.sidebar.expander("🌐 Transparência", expanded=False):
 # PÁGINA: INÍCIO
 # ---------------------------------------------------------
 if st.session_state.pagina_atual == "Início":
-    st.title("SIGER - Sistema de Gestão de Riscos")
+    # Cabeçalho da página principal com exibição do logo da instituição se cadastrado
+    if url_logo_instituicao:
+        col_t1, col_t2 = st.columns([3, 1])
+        with col_t1:
+            st.title("SIGER - Sistema de Gestão de Riscos")
+        with col_t2:
+            st.image(url_logo_instituicao, width=180)
+    else:
+        st.title("SIGER - Sistema de Gestão de Riscos")
     
     texto_inicio_personalizado = ""
     try:
@@ -376,7 +378,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                         with st.expander(f"🏷️ {cat_item['nome']}"):
                             c1, c2 = st.columns(2)
                             with c1:
-                                pop_edit_cat = st.popover("✏️ Editar")
+                                pop_edit_cat = st.popover("✏️️ Editar")
                                 with pop_edit_cat:
                                     with st.form(f"form_edit_cat_{cat_item['id']}"):
                                         nome_edit = st.text_input("Nome da Categoria", value=cat_item['nome'])
@@ -641,7 +643,7 @@ elif st.session_state.pagina_atual == "Cadastros":
         # 2. LOGO DA INSTITUIÇÃO
         with col_img2:
             st.markdown("### 2. Logotipo da Instituição (IFES)")
-            st.caption("Utilizado no rodapé da barra lateral e em cabeçalhos de relatórios emitidos.")
+            st.caption("Exibido no cabeçalho da página inicial e futuramente nos relatórios emitidos.")
             
             if url_logo_instituicao:
                 st.image(url_logo_instituicao, width=200, caption="Logotipo da Instituição Atual")
