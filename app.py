@@ -46,7 +46,6 @@ def init_supabase():
 
 supabase = init_supabase()
 
-# Duas opções solicitadas para o tipo da unidade
 TIPOS_UNIDADE_OPCOES = [
     "Acadêmica",
     "Administrativa"
@@ -93,6 +92,8 @@ with st.sidebar.expander("📝 Cadastros", expanded=False):
         navegar_para("Cadastros", "Categorias de Risco")
     if st.button("📋 Riscos", key="btn_cad_risco", use_container_width=True):
         navegar_para("Cadastros", "Riscos")
+    if st.button("📚 Documentos da Biblioteca", key="btn_cad_doc_bib", use_container_width=True):
+        navegar_para("Cadastros", "Documentos da Biblioteca")
     if st.button("✍️ Texto da Tela Inicial", key="btn_cad_txt", use_container_width=True):
         navegar_para("Cadastros", "Texto da Tela Inicial")
 
@@ -164,7 +165,7 @@ elif st.session_state.pagina_atual == "Cadastros":
     sub = st.session_state.sub_pagina_atual or "Unidades"
     
     # ---------------------------------------------------------
-    # SUB-MÓDULO 1: UNIDADES (TIPO: ACADÊMICA OU ADMINISTRATIVA)
+    # SUB-MÓDULO: UNIDADES
     # ---------------------------------------------------------
     if sub == "Unidades":
         st.subheader("🏢 Cadastramento de Unidades / Setores Institucionais")
@@ -267,7 +268,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar unidade: {e}")
 
     # ---------------------------------------------------------
-    # SUB-MÓDULO 2: OBJETIVOS ESTRATÉGICOS
+    # SUB-MÓDULO: OBJETIVOS ESTRATÉGICOS
     # ---------------------------------------------------------
     elif sub == "Objetivos Estratégicos":
         st.subheader("🎯 Cadastramento de Objetivos Estratégicos (PDI)")
@@ -328,7 +329,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar: {e}")
 
     # ---------------------------------------------------------
-    # SUB-MÓDULO 3: CATEGORIAS DE RISCO
+    # SUB-MÓDULO: CATEGORIAS DE RISCO
     # ---------------------------------------------------------
     elif sub == "Categorias de Risco":
         st.subheader("🏷️ Cadastramento de Categorias de Risco")
@@ -340,7 +341,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                 res_cat = supabase.table("categorias_risco").select("*").execute()
                 if res_cat.data:
                     for cat_item in res_cat.data:
-                        with st.expander(f"🏷️️ {cat_item['nome']}"):
+                        with st.expander(f"🏷️ {cat_item['nome']}"):
                             c1, c2 = st.columns(2)
                             with c1:
                                 pop_edit_cat = st.popover("✏️ Editar")
@@ -384,7 +385,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar: {e}")
 
     # ---------------------------------------------------------
-    # SUB-MÓDULO 4: RISCOS
+    # SUB-MÓDULO: RISCOS
     # ---------------------------------------------------------
     elif sub == "Riscos":
         st.subheader("📋 Gestão e Cadastro de Riscos Institucionais")
@@ -563,7 +564,87 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar o risco no banco de dados: {e}")
 
     # ---------------------------------------------------------
-    # SUB-MÓDULO 5: CADASTRO DO TEXTO DA TELA INICIAL
+    # SUB-MÓDULO: DOCUMENTOS DA BIBLIOTECA (UPLOAD DE PDF E EXCLUSÃO)
+    # ---------------------------------------------------------
+    elif sub == "Documentos da Biblioteca":
+        st.subheader("📚 Gerenciamento de Materiais e Documentos (PDF)")
+        
+        tab_list_doc, tab_novo_doc = st.tabs(["🔍 Documentos Cadastrados", "➕ Enviar Novo Documento PDF"])
+        
+        with tab_list_doc:
+            try:
+                res_doc = supabase.table("biblioteca").select("*").order("id", desc=True).execute()
+                if res_doc.data:
+                    for doc in res_doc.data:
+                        with st.expander(f"📄 {doc['titulo']} (Enviado em {doc.get('data_upload', '-')})"):
+                            st.write(f"**Descrição:** {doc.get('descricao', 'Sem descrição')}")
+                            
+                            col_doc1, col_doc2 = st.columns([1, 1])
+                            with col_doc1:
+                                st.link_button("📥 Visualizar / Baixar PDF", doc['url_publica'])
+                            with col_doc2:
+                                pop_del_doc = st.popover("🗑️ Excluir Documento")
+                                with pop_del_doc:
+                                    st.warning("Deseja realmente remover este arquivo da biblioteca?")
+                                    if st.button("Confirmar Exclusão", key=f"btn_del_doc_{doc['id']}"):
+                                        try:
+                                            # Exclui o arquivo físico no Storage
+                                            supabase.storage.from_("biblioteca_documentos").remove([doc['nome_arquivo']])
+                                            # Exclui o registro na tabela
+                                            supabase.table("biblioteca").delete().eq("id", doc['id']).execute()
+                                            st.success("Documento removido da biblioteca!")
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Erro ao excluir arquivo: {e}")
+                else:
+                    st.info("Nenhum documento cadastrado na biblioteca.")
+            except Exception as e:
+                st.error(f"Erro ao carregar documentos. Verifique se a tabela 'biblioteca' foi criada no Supabase. Detalhes: {e}")
+
+        with tab_novo_doc:
+            with st.form("form_upload_pdf", clear_on_submit=True):
+                titulo_doc = st.text_input("Título do Documento / Normativa*", placeholder="Ex: Instrução Normativa de Gestão de Riscos 2024")
+                desc_doc = st.text_area("Descrição Breve / Resumo*", placeholder="Informe do que se trata o documento...")
+                arquivo_pdf = st.file_uploader("Selecione o arquivo em formato PDF*", type=["pdf"])
+                
+                submitted_doc = st.form_submit_button("💾 Enviar Documento para a Biblioteca")
+                
+                if submitted_doc:
+                    if not titulo_doc or not arquivo_pdf:
+                        st.warning("Por favor, informe o título e selecione um arquivo PDF.")
+                    else:
+                        try:
+                            # Nome único para o arquivo no Storage
+                            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                            nome_limpo_arq = f"{timestamp}_{arquivo_pdf.name.replace(' ', '_')}"
+                            
+                            # Upload do arquivo para o bucket
+                            bytes_data = arquivo_pdf.getvalue()
+                            supabase.storage.from_("biblioteca_documentos").upload(
+                                path=nome_limpo_arq,
+                                file=bytes_data,
+                                file_options={"content-type": "application/pdf"}
+                            )
+                            
+                            # Obtém a URL pública
+                            url_publica = supabase.storage.from_("biblioteca_documentos").get_public_url(nome_limpo_arq)
+                            
+                            # Registra no banco de dados
+                            supabase.table("biblioteca").insert({
+                                "titulo": titulo_doc,
+                                "descricao": desc_doc,
+                                "nome_arquivo": nome_limpo_arq,
+                                "url_publica": url_publica,
+                                "data_upload": datetime.now().strftime("%Y-%m-%d %H:%M")
+                            }).execute()
+                            
+                            st.success("✅ Documento PDF enviado com sucesso e disponível na Biblioteca!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao salvar arquivo. Verifique se o bucket 'biblioteca_documentos' foi criado como 'Public' no Storage do Supabase. Detalhes: {e}")
+
+    # ---------------------------------------------------------
+    # SUB-MÓDULO: CADASTRO DO TEXTO DA TELA INICIAL
     # ---------------------------------------------------------
     elif sub == "Texto da Tela Inicial":
         st.subheader("✍️ Cadastrar / Editar Texto da Tela Inicial")
@@ -597,6 +678,28 @@ elif st.session_state.pagina_atual == "Cadastros":
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao salvar texto no banco de dados: {e}")
+
+# ---------------------------------------------------------
+# PÁGINA: BIBLIOTECA (EXIBIÇÃO PÚBLICA PARA DOWNLOAD)
+# ---------------------------------------------------------
+elif st.session_state.pagina_atual == "Biblioteca":
+    st.title("📚 Biblioteca de Documentos e Normativas")
+    st.markdown("Acervo de repositório técnico, instruções normativas, manuais e guias de gestão de riscos.")
+    st.divider()
+    
+    try:
+        res_bib = supabase.table("biblioteca").select("*").order("id", desc=True).execute()
+        if res_bib.data:
+            st.write(f"Total de documentos disponíveis: **{len(res_bib.data)}**")
+            
+            for doc in res_bib.data:
+                with st.expander(f"📄 {doc['titulo']} (Disponibilizado em {doc.get('data_upload', '-')})"):
+                    st.write(doc.get('descricao', 'Sem descrição cadastrada.'))
+                    st.link_button("📥 Acessar / Baixar PDF", doc['url_publica'])
+        else:
+            st.info("Nenhum documento disponível no momento. Os administradores podem incluir materiais no menu 'Cadastros > Documentos da Biblioteca'.")
+    except Exception as e:
+        st.error(f"Erro ao carregar a biblioteca: {e}")
 
 # ---------------------------------------------------------
 # DEMAIS PÁGINAS
