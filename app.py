@@ -9,7 +9,7 @@ import os
 # ---------------------------------------------------------
 st.set_page_config(
     page_title="SÍGER - Sistema de Gestão de Riscos", 
-    page_icon="🛡️",
+    page_icon="🛡️️",
     layout="wide"
 )
 
@@ -72,17 +72,17 @@ except:
 # BARRA LATERAL (LOGOTIPO E MENU EXPANSÍVEL)
 # ---------------------------------------------------------
 if url_logo_siger:
-    st.sidebar.image(url_logo_siger, use_column_width=True)
+    st.sidebar.image(url_logo_siger, use_container_width=True)
 elif os.path.exists("logo.png"):
-    st.sidebar.image("logo.png", use_column_width=True)
+    st.sidebar.image("logo.png", use_container_width=True)
 else:
-    st.sidebar.title("🛡️ SÍGER")
+    st.sidebar.title("🛡️️ SÍGER")
     st.sidebar.markdown("**Sistema de Gestão de Riscos**")
 
 # Exibe o logo da instituição na barra lateral, caso tenha sido enviado
 if url_logo_instituicao:
     st.sidebar.caption("Instituição:")
-    st.sidebar.image(url_logo_instituicao, use_column_width=True)
+    st.sidebar.image(url_logo_instituicao, use_container_width=True)
 else:
     st.sidebar.caption("PPGOP / UFSM")
 
@@ -117,7 +117,7 @@ with st.sidebar.expander("📝 Cadastros", expanded=False):
         navegar_para("Cadastros", "Categorias de Risco")
     if st.button("📋 Riscos", key="btn_cad_risco", use_container_width=True):
         navegar_para("Cadastros", "Riscos")
-    if st.button("🖼️ Identidade Visual", key="btn_cad_id_vis", use_container_width=True):
+    if st.button("🖼️️ Identidade Visual", key="btn_cad_id_vis", use_container_width=True):
         navegar_para("Cadastros", "Identidade Visual")
     if st.button("📚 Documentos da Biblioteca", key="btn_cad_doc_bib", use_container_width=True):
         navegar_para("Cadastros", "Documentos da Biblioteca")
@@ -431,7 +431,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                         nivel = r_item.get('nivel_risco', 1)
                         cor_nivel = "🔴 (Crítico)" if nivel >= 15 else "🟡 (Médio)" if nivel >= 8 else "🟢 (Baixo)"
                         
-                        with st.expander(f"🛡️️ Risco #{r_item['id']} | {r_item['unidade']} | Nível {nivel} {cor_nivel}"):
+                        with st.expander(f"🛡️ Risco #{r_item['id']} | {r_item['unidade']} | Nível {nivel} {cor_nivel}"):
                             st.markdown(f"**Evento de Risco:** {r_item['evento_risco']}")
                             st.markdown(f"**Processo:** {r_item['processo']} | **Categoria:** {r_item['categoria']}")
                             st.markdown(f"**Causa:** {r_item['causa']} | **Consequência:** {r_item['consequencia']}")
@@ -698,7 +698,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         except Exception as e:
                                             st.error(f"Erro ao excluir arquivo: {e}")
                 else:
-                    st.info("Nenum documento cadastrado na biblioteca.")
+                    st.info("Nenhum documento cadastrado na biblioteca.")
             except Exception as e:
                 st.error(f"Erro ao carregar documentos: {e}")
 
