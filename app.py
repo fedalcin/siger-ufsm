@@ -81,17 +81,31 @@ if st.sidebar.button("🌐 Transparência", use_container_width=True):
     navegar_para("Transparência")
 
 # ---------------------------------------------------------
-# PÁGINA: INÍCIO
+# PÁGINA: INÍCIO (LÊ O TEXTO DINÂMICO CADASTRADO)
 # ---------------------------------------------------------
 if st.session_state.pagina_atual == "Início":
     st.title("🛡️ SIGER - Sistema de Gestão de Riscos nas IFES")
-    st.markdown("""
-    Bem-vindo ao **SIGER**, a solução integrada para mapeamento, avaliação e monitoramento de riscos 
-    institucionais no âmbito das Instituições Federais de Ensino Superior (IFES).
     
-    * **Fundamentação:** COSO ERM & Teoria Institucional[cite: 1]
-    * **Desenvolvimento:** Pesquisa Aplicada do Programa de Pós-Graduação em Gestão de Organizações Públicas (PPGOP/UFSM)[cite: 1]
-    """)
+    # Busca o texto personalizado salvo no banco de dados
+    texto_inicio_personalizado = ""
+    try:
+        res_cfg = supabase.table("configuracoes").select("valor").eq("chave", "texto_pagina_inicial").execute()
+        if res_cfg.data and len(res_cfg.data) > 0:
+            texto_inicio_personalizado = res_cfg.data[0]["valor"]
+    except Exception as e:
+        texto_inicio_personalizado = ""
+
+    if texto_inicio_personalizado:
+        st.markdown(texto_inicio_personalizado)
+    else:
+        st.markdown("""
+        Bem-vindo ao **SIGER**, a solução integrada para mapeamento, avaliação e monitoramento de riscos 
+        institucionais no âmbito das Instituições Federais de Ensino Superior (IFES).
+        
+        * **Fundamentação:** COSO ERM & Teoria Institucional
+        * **Desenvolvimento:** Pesquisa Aplicada do Programa de Pós-Graduação em Gestão de Organizações Públicas (PPGOP/UFSM)
+        """)
+        
     st.info("👈 Utilize o menu lateral para navegar entre os módulos do sistema.")
 
 # ---------------------------------------------------------
@@ -100,33 +114,9 @@ if st.session_state.pagina_atual == "Início":
 elif st.session_state.pagina_atual == "Cadastros":
     st.title("📝 Módulo de Cadastros")
     
-    # Descrição Introdutória da Aba Cadastros
-    st.markdown("""
-    O **Módulo de Cadastros** constitui a base estruturante do **SIGER**, responsável por organizar e parametrizar 
-    as informações fundamentais para a governança e gestão de riscos na instituição. 
-    
-    Por meio deste módulo, é possível cadastrar as unidades organizacionais, conectar os riscos aos objetivos estratégicos do PDI, 
-    classificá-los por categorias normalizadas e registrar detalhadamente os eventos de risco com suas respectivas causas e consequências[cite: 1].
-    """)
-    
-    with st.expander("ℹ️ Guia Orientativo dos Cadastros Estruturantes", expanded=False):
-        col_g1, col_g2 = st.columns(2)
-        with col_g1:
-            st.markdown("""
-            * **🏢 Unidades:** Mapeamento da estrutura organizacional (Pró-Reitorias, Centros, Diretorias) com códigos únicos sequenciais.
-            * **🎯 Objetivos Estratégicos:** Vínculo direto com as metas e plano de desenvolvimento institucional (PDI).
-            """)
-        with col_g2:
-            st.markdown("""
-            * **🏷️ Categorias de Risco:** Tipologia qualitativa para agrupar e comparar riscos (Operacional, Estratégico, Financeiro, Conformidade).
-            * **📋 Riscos:** Registro completo dos eventos incertos, avaliação de probabilidade/impacto e definição de responsabilidades.
-            """)
-            
-    st.divider()
-    
     aba_cadastro = st.radio(
         "Selecione o tipo de cadastro:",
-        ["Unidades", "Objetivos Estratégicos", "Categorias de Risco", "Riscos"],
+        ["Unidades", "Objetivos Estratégicos", "Categorias de Risco", "Riscos", "Texto da Tela Inicial"],
         horizontal=True
     )
     
@@ -273,7 +263,6 @@ elif st.session_state.pagina_atual == "Cadastros":
         
         tab1, tab2 = st.tabs(["🔍 Riscos Cadastrados", "➕ Novo Risco"])
         
-        # TAB 1: LISTAGEM COMPLETA DOS RISCOS
         with tab1:
             try:
                 resposta = supabase.table("riscos").select("*").order("id", desc=True).execute()
@@ -312,7 +301,6 @@ elif st.session_state.pagina_atual == "Cadastros":
             except Exception as e:
                 st.error(f"Erro ao carregar dados do banco: {e}")
                 
-        # TAB 2: FORMULÁRIO DE CADASTRO DE RISCOS
         with tab2:
             try:
                 res_unidades = supabase.table("unidades").select("codigo, sigla, nome_extenso").execute().data or []
@@ -405,6 +393,44 @@ elif st.session_state.pagina_atual == "Cadastros":
                         except Exception as e:
                             st.error(f"Erro ao salvar o risco no banco de dados: {e}")
 
+    # ---------------------------------------------------------
+    # SUB-MÓDULO 5: CADASTRO DO TEXTO DA TELA INICIAL
+    # ---------------------------------------------------------
+    elif aba_cadastro == "Texto da Tela Inicial":
+        st.subheader("✍️ Cadastrar / Editar Texto da Tela Inicial")
+        st.write("O texto digitado abaixo será exibido dinamicamente na página inicial do aplicativo.")
+        
+        # Busca texto atual salvo
+        texto_atual = ""
+        try:
+            res_txt = supabase.table("configuracoes").select("valor").eq("chave", "texto_pagina_inicial").execute()
+            if res_txt.data and len(res_txt.data) > 0:
+                texto_atual = res_txt.data[0]["valor"]
+        except Exception as e:
+            st.warning("Certifique-se de criar a tabela 'configuracoes' no Supabase com os campos 'chave' (text) e 'valor' (text).")
+
+        with st.form("form_texto_inicial"):
+            novo_texto = st.text_area(
+                "Conteúdo da Tela Inicial (Aceita formatação Markdown)", 
+                value=texto_atual, 
+                height=250,
+                placeholder="Escreva aqui a apresentação do SIGER, a fundamentação teórica ou avisos gerais..."
+            )
+            
+            submitted_texto = st.form_submit_button("💾 Salvar Texto da Tela Inicial")
+            
+            if submitted_texto:
+                try:
+                    # Upsert (Insere ou Atualiza) a chave 'texto_pagina_inicial'
+                    supabase.table("configuracoes").upsert({
+                        "chave": "texto_pagina_inicial",
+                        "valor": novo_texto
+                    }).execute()
+                    st.success("✅ Texto da tela inicial atualizado com sucesso! Acesse o menu 'Início' para visualizar.")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao salvar texto no banco de dados: {e}")
+
     else:
         st.info("Este tipo de cadastro será desenvolvido nas próximas etapas.")
 
@@ -412,5 +438,5 @@ elif st.session_state.pagina_atual == "Cadastros":
 # DEMAIS PÁGINAS
 # ---------------------------------------------------------
 else:
-    st.title(f"🛠️ {st.session_state.pagina_atual}")
+    st.title(f"🛠️️ {st.session_state.pagina_atual}")
     st.info("Módulo em fase de estruturação. Em breve implementaremos as funcionalidades desta área.")
