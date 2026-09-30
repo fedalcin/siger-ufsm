@@ -46,6 +46,21 @@ def init_supabase():
 
 supabase = init_supabase()
 
+# Lista padronizada de tipos de pró-reitorias/unidades nas IFES
+TIPOS_UNIDADE_OPCOES = [
+    "Pró-Reitoria de Graduação (PROGRAD)",
+    "Pró-Reitoria de Pós-Graduação e Pesquisa (PRPGP)",
+    "Pró-Reitoria de Extensão (PRE)",
+    "Pró-Reitoria de Planejamento (PROPLAN)",
+    "Pró-Reitoria de Administração (PRA)",
+    "Pró-Reitoria de Gestão de Pessoas (PROGEP)",
+    "Pró-Reitoria de Assuntos Estudantis (PRAE)",
+    "Reitoria / Órgão Superior",
+    "Centro de Ensino / Unidade Acadêmica",
+    "Superintendência / Hospital Universitário",
+    "Outra Unidade Administrativa"
+]
+
 # ---------------------------------------------------------
 # BARRA LATERAL (LOGOTIPO E MENU EXPANSÍVEL)
 # ---------------------------------------------------------
@@ -58,7 +73,6 @@ else:
 st.sidebar.caption("PPGOP / UFSM")
 st.sidebar.divider()
 
-# Estado da sessão para controlar qual tela/subitem está ativo
 if "pagina_atual" not in st.session_state:
     st.session_state.pagina_atual = "Início"
 if "sub_pagina_atual" not in st.session_state:
@@ -81,7 +95,7 @@ with st.sidebar.expander("⚙️ Administração", expanded=False):
     if st.button("🔧 Configurações Gerais", key="btn_adm_cfg", use_container_width=True):
         navegar_para("Administração do Sistema", "Configurações")
 
-# 3. GRUPO: CADASTROS (DESMEMBRADO EM SUBITENS)
+# 3. GRUPO: CADASTROS (SUBITENS)
 with st.sidebar.expander("📝 Cadastros", expanded=False):
     if st.button("🏢 Unidades", key="btn_cad_unid", use_container_width=True):
         navegar_para("Cadastros", "Unidades")
@@ -91,7 +105,7 @@ with st.sidebar.expander("📝 Cadastros", expanded=False):
         navegar_para("Cadastros", "Categorias de Risco")
     if st.button("📋 Riscos", key="btn_cad_risco", use_container_width=True):
         navegar_para("Cadastros", "Riscos")
-    if st.button("✍️️ Texto da Tela Inicial", key="btn_cad_txt", use_container_width=True):
+    if st.button("✍️ Texto da Tela Inicial", key="btn_cad_txt", use_container_width=True):
         navegar_para("Cadastros", "Texto da Tela Inicial")
 
 # 4. GRUPO: MONITORAMENTO
@@ -169,7 +183,7 @@ elif st.session_state.pagina_atual == "Cadastros":
     sub = st.session_state.sub_pagina_atual or "Unidades"
     
     # ---------------------------------------------------------
-    # SUB-MÓDULO 1: UNIDADES
+    # SUB-MÓDULO 1: UNIDADES (COM TIPO DE PRÓ-REITORIA)
     # ---------------------------------------------------------
     if sub == "Unidades":
         st.subheader("🏢 Cadastramento de Unidades / Setores Institucionais")
@@ -184,14 +198,22 @@ elif st.session_state.pagina_atual == "Cadastros":
                 if dados_unid:
                     df_unid = pd.DataFrame(dados_unid)
                     st.write(f"Total de unidades cadastradas: **{len(df_unid)}**")
+                    
+                    # Garante que a coluna 'tipo_unidade' seja exibida amigavelmente caso exista
+                    colunas_exibir = ["codigo", "sigla", "nome_extenso"]
+                    config_cols = {
+                        "codigo": "Código",
+                        "sigla": "Sigla da Unidade",
+                        "nome_extenso": "Nome por Extenso"
+                    }
+                    if "tipo_unidade" in df_unid.columns:
+                        colunas_exibir.append("tipo_unidade")
+                        config_cols["tipo_unidade"] = "Tipo / Área da Pró-Reitoria"
+                        
                     st.dataframe(
-                        df_unid[["codigo", "sigla", "nome_extenso"]],
+                        df_unid[colunas_exibir],
                         use_container_width=True,
-                        column_config={
-                            "codigo": "Código",
-                            "sigla": "Sigla da Unidade",
-                            "nome_extenso": "Nome por Extenso"
-                        }
+                        column_config=config_cols
                     )
                 else:
                     st.info("Nenhuma unidade cadastrada. Cadastre a primeira unidade na aba 'Nova Unidade'.")
@@ -209,8 +231,12 @@ elif st.session_state.pagina_atual == "Cadastros":
             st.write(f"**Código Sequencial da Unidade:** `{codigo_gerado}`")
             
             with st.form("form_cadastrar_unidade", clear_on_submit=True):
-                sigla = st.text_input("Sigla da Unidade*", placeholder="Ex: PRAE, PRPGP, CCSH, REITORIA").upper()
-                nome_extenso = st.text_input("Nome da Unidade por Extenso*", placeholder="Ex: Pró-Reitoria de Assuntos Estudantis")
+                col_u1, col_u2 = st.columns(2)
+                with col_u1:
+                    sigla = st.text_input("Sigla da Unidade*", placeholder="Ex: PRAE, PRPGP, CCSH, REITORIA").upper()
+                    nome_extenso = st.text_input("Nome da Unidade por Extenso*", placeholder="Ex: Pró-Reitoria de Assuntos Estudantis")
+                with col_u2:
+                    tipo_unidade_sel = st.selectbox("Tipo da Pró-Reitoria / Unidade*", options=TIPOS_UNIDADE_OPCOES)
                 
                 st.caption("* Campos obrigatórios.")
                 submitted_unid = st.form_submit_button("💾 Salvar Unidade")
@@ -222,11 +248,12 @@ elif st.session_state.pagina_atual == "Cadastros":
                         dados_nova_unidade = {
                             "codigo": codigo_gerado,
                             "sigla": sigla,
-                            "nome_extenso": nome_extenso
+                            "nome_extenso": nome_extenso,
+                            "tipo_unidade": tipo_unidade_sel
                         }
                         try:
                             supabase.table("unidades").insert(dados_nova_unidade).execute()
-                            st.success(f"✅ Unidade '{sigla}' registrada com o código {codigo_gerado}!")
+                            st.success(f"✅ Unidade '{sigla}' ({tipo_unidade_sel}) registrada com o código {codigo_gerado}!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao salvar unidade: {e}")
@@ -349,13 +376,20 @@ elif st.session_state.pagina_atual == "Cadastros":
                 
         with tab2:
             try:
-                res_unidades = supabase.table("unidades").select("codigo, sigla, nome_extenso").execute().data or []
+                res_unidades = supabase.table("unidades").select("*").execute().data or []
                 res_oe = supabase.table("objetivos_estrategicos").select("codigo, descricao").execute().data or []
                 res_cat = supabase.table("categorias_risco").select("nome").execute().data or []
             except Exception as e:
                 res_unidades, res_oe, res_cat = [], [], []
 
-            opcoes_unid = [f"{u['codigo']} - {u['sigla']} ({u['nome_extenso']})" for u in res_unidades] if res_unidades else ["(Nenhuma unidade cadastrada)"]
+            if res_unidades:
+                opcoes_unid = [
+                    f"{u['codigo']} - {u['sigla']} ({u.get('tipo_unidade', u['nome_extenso'])})" 
+                    for u in res_unidades
+                ]
+            else:
+                opcoes_unid = ["(Nenhuma unidade cadastrada)"]
+
             opcoes_oe = [f"{o['codigo']} - {o['descricao']}" for o in res_oe] if res_oe else ["(Nenhum objetivo cadastrado)"]
             opcoes_cat = [c['nome'] for c in res_cat] if res_cat else ["Operacional", "Estratégico", "Financeiro/Orçamentário", "Conformidade/Legal", "Imagem/Reputacional"]
 
@@ -476,7 +510,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                     st.error(f"Erro ao salvar texto no banco de dados: {e}")
 
 # ---------------------------------------------------------
-# DEMAIS PÁGINAS (ESTRUTURA DE DEMAIS GRUPOS)
+# DEMAIS PÁGINAS
 # ---------------------------------------------------------
 else:
     st.title(f"🛠️ {st.session_state.pagina_atual}")
