@@ -37,7 +37,7 @@ supabase = init_supabase()
 # ---------------------------------------------------------
 # BARRA LATERAL (MENU POR BOTÕES ALINHADOS À ESQUERDA)
 # ---------------------------------------------------------
-st.sidebar.title("🛡️️ SIGER")
+st.sidebar.title("🛡️ SIGER")
 st.sidebar.markdown("**Sistema de Gestão de Riscos nas IFES**")
 st.sidebar.caption("PPGOP / UFSM")
 st.sidebar.divider()
@@ -89,8 +89,8 @@ if st.session_state.pagina_atual == "Início":
     Bem-vindo ao **SIGER**, a solução integrada para mapeamento, avaliação e monitoramento de riscos 
     institucionais no âmbito das Instituições Federais de Ensino Superior (IFES).
     
-    * **Fundamentação:** COSO ERM & Teoria Institucional
-    * **Desenvolvimento:** Pesquisa Aplicada do Programa de Pós-Graduação em Gestão de Organizações Públicas (PPGOP/UFSM)
+    * **Fundamentação:** COSO ERM & Teoria Institucional[cite: 1]
+    * **Desenvolvimento:** Pesquisa Aplicada do Programa de Pós-Graduação em Gestão de Organizações Públicas (PPGOP/UFSM)[cite: 1]
     """)
     st.info("👈 Utilize o menu lateral para navegar entre os módulos do sistema.")
 
@@ -99,6 +99,30 @@ if st.session_state.pagina_atual == "Início":
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Cadastros":
     st.title("📝 Módulo de Cadastros")
+    
+    # Descrição Introdutória da Aba Cadastros
+    st.markdown("""
+    O **Módulo de Cadastros** constitui a base estruturante do **SIGER**, responsável por organizar e parametrizar 
+    as informações fundamentais para a governança e gestão de riscos na instituição. 
+    
+    Por meio deste módulo, é possível cadastrar as unidades organizacionais, conectar os riscos aos objetivos estratégicos do PDI, 
+    classificá-los por categorias normalizadas e registrar detalhadamente os eventos de risco com suas respectivas causas e consequências[cite: 1].
+    """)
+    
+    with st.expander("ℹ️ Guia Orientativo dos Cadastros Estruturantes", expanded=False):
+        col_g1, col_g2 = st.columns(2)
+        with col_g1:
+            st.markdown("""
+            * **🏢 Unidades:** Mapeamento da estrutura organizacional (Pró-Reitorias, Centros, Diretorias) com códigos únicos sequenciais.
+            * **🎯 Objetivos Estratégicos:** Vínculo direto com as metas e plano de desenvolvimento institucional (PDI).
+            """)
+        with col_g2:
+            st.markdown("""
+            * **🏷️ Categorias de Risco:** Tipologia qualitativa para agrupar e comparar riscos (Operacional, Estratégico, Financeiro, Conformidade).
+            * **📋 Riscos:** Registro completo dos eventos incertos, avaliação de probabilidade/impacto e definição de responsabilidades.
+            """)
+            
+    st.divider()
     
     aba_cadastro = st.radio(
         "Selecione o tipo de cadastro:",
@@ -188,7 +212,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                 else:
                     st.info("Nenhum objetivo estratégico cadastrado.")
             except Exception as e:
-                st.error(f"Erro ao carregar Objetivos Estratégicos. Verifique se a tabela 'objetivos_estrategicos' foi criada no Supabase. Detalhes: {e}")
+                st.error(f"Erro ao carregar Objetivos Estratégicos: {e}")
                 
         with tab_novo_oe:
             with st.form("form_cadastrar_oe", clear_on_submit=True):
@@ -224,7 +248,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                 else:
                     st.info("Nenhuma categoria cadastrada.")
             except Exception as e:
-                st.error(f"Erro ao carregar Categorias. Verifique se a tabela 'categorias_risco' foi criada no Supabase. Detalhes: {e}")
+                st.error(f"Erro ao carregar Categorias: {e}")
                 
         with tab_novo_cat:
             with st.form("form_cadastrar_cat", clear_on_submit=True):
@@ -242,7 +266,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar: {e}")
 
     # ---------------------------------------------------------
-    # SUB-MÓDULO 4: RISCOS (FORMULÁRIO E EXIBIÇÃO REESTRUTURADOS)
+    # SUB-MÓDULO 4: RISCOS
     # ---------------------------------------------------------
     elif aba_cadastro == "Riscos":
         st.subheader("📋 Gestão e Cadastro de Riscos Institucionais")
@@ -290,7 +314,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                 
         # TAB 2: FORMULÁRIO DE CADASTRO DE RISCOS
         with tab2:
-            # Carrega listas de apoio do Supabase
             try:
                 res_unidades = supabase.table("unidades").select("codigo, sigla, nome_extenso").execute().data or []
                 res_oe = supabase.table("objetivos_estrategicos").select("codigo, descricao").execute().data or []
@@ -364,7 +387,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                         try:
                             res_ins = supabase.table("riscos").insert(novo_risco_dados).execute()
                             
-                            # Registra a primeira entrada no histórico de alterações
                             if res_ins.data:
                                 novo_id = res_ins.data[0]["id"]
                                 hist_dados = {
@@ -381,7 +403,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.success("✅ Risco registrado com sucesso!")
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Erro ao salvar o risco no banco de dados. Verifique se os campos da tabela 'riscos' estão corretos. Detalhes: {e}")
+                            st.error(f"Erro ao salvar o risco no banco de dados: {e}")
 
     else:
         st.info("Este tipo de cadastro será desenvolvido nas próximas etapas.")
