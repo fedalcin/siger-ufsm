@@ -5,11 +5,44 @@ from datetime import datetime
 import os
 
 # ---------------------------------------------------------
+# CONEXÃO COM SUPABASE
+# ---------------------------------------------------------
+@st.cache_resource
+def init_supabase():
+    url = st.secrets["SUPABASE_URL"].strip().rstrip('/')
+    if url.endswith("/rest/v1"):
+        url = url[:-8]
+    key = st.secrets["SUPABASE_KEY"].strip()
+    return create_client(url, key)
+
+supabase = init_supabase()
+
+# ---------------------------------------------------------
+# CARREGAMENTO DINÂMICO DA IDENTIDADE VISUAL & FAVICON
+# ---------------------------------------------------------
+url_logo_siger = None
+url_logo_instituicao = None
+
+try:
+    res_siger = supabase.table("configuracoes").select("valor").eq("chave", "url_logo_siger").execute()
+    if res_siger.data and len(res_siger.data) > 0:
+        url_logo_siger = res_siger.data[0]["valor"]
+        
+    res_inst = supabase.table("configuracoes").select("valor").eq("chave", "url_logo_instituicao").execute()
+    if res_inst.data and len(res_inst.data) > 0:
+        url_logo_instituicao = res_inst.data[0]["valor"]
+except:
+    pass
+
+# Define o ícone da aba do navegador (Chrome Favicon)
+favicon_app = url_logo_siger if url_logo_siger else ("logo.png" if os.path.exists("logo.png") else "🛡️")
+
+# ---------------------------------------------------------
 # CONFIGURAÇÃO DE PÁGINA E ESTILOS
 # ---------------------------------------------------------
 st.set_page_config(
-    page_title="SÍGER - Sistema de Gestão de Riscos", 
-    page_icon="🛡️️",
+    page_title="SIGER - Sistema de Gestão de Riscos", 
+    page_icon=favicon_app,
     layout="wide"
 )
 
@@ -35,38 +68,10 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Conexão segura com Supabase
-@st.cache_resource
-def init_supabase():
-    url = st.secrets["SUPABASE_URL"].strip().rstrip('/')
-    if url.endswith("/rest/v1"):
-        url = url[:-8]
-    key = st.secrets["SUPABASE_KEY"].strip()
-    return create_client(url, key)
-
-supabase = init_supabase()
-
 TIPOS_UNIDADE_OPCOES = [
     "Acadêmica",
     "Administrativa"
 ]
-
-# ---------------------------------------------------------
-# CARREGAMENTO DINÂMICO DA IDENTIDADE VISUAL
-# ---------------------------------------------------------
-url_logo_siger = None
-url_logo_instituicao = None
-
-try:
-    res_siger = supabase.table("configuracoes").select("valor").eq("chave", "url_logo_siger").execute()
-    if res_siger.data and len(res_siger.data) > 0:
-        url_logo_siger = res_siger.data[0]["valor"]
-        
-    res_inst = supabase.table("configuracoes").select("valor").eq("chave", "url_logo_instituicao").execute()
-    if res_inst.data and len(res_inst.data) > 0:
-        url_logo_instituicao = res_inst.data[0]["valor"]
-except:
-    pass
 
 # ---------------------------------------------------------
 # BARRA LATERAL (LOGOTIPO E MENU EXPANSÍVEL)
@@ -76,7 +81,7 @@ if url_logo_siger:
 elif os.path.exists("logo.png"):
     st.sidebar.image("logo.png", use_container_width=True)
 else:
-    st.sidebar.title("🛡️️ SÍGER")
+    st.sidebar.title("SIGER")
     st.sidebar.markdown("**Sistema de Gestão de Riscos**")
 
 # Exibe o logo da instituição na barra lateral, caso tenha sido enviado
@@ -117,7 +122,7 @@ with st.sidebar.expander("📝 Cadastros", expanded=False):
         navegar_para("Cadastros", "Categorias de Risco")
     if st.button("📋 Riscos", key="btn_cad_risco", use_container_width=True):
         navegar_para("Cadastros", "Riscos")
-    if st.button("🖼️️ Identidade Visual", key="btn_cad_id_vis", use_container_width=True):
+    if st.button("🖼️ Identidade Visual", key="btn_cad_id_vis", use_container_width=True):
         navegar_para("Cadastros", "Identidade Visual")
     if st.button("📚 Documentos da Biblioteca", key="btn_cad_doc_bib", use_container_width=True):
         navegar_para("Cadastros", "Documentos da Biblioteca")
@@ -160,7 +165,7 @@ with st.sidebar.expander("🌐 Transparência", expanded=False):
 # PÁGINA: INÍCIO
 # ---------------------------------------------------------
 if st.session_state.pagina_atual == "Início":
-    st.title("SÍGER - Sistema de Gestão de Riscos")
+    st.title("SIGER - Sistema de Gestão de Riscos")
     
     texto_inicio_personalizado = ""
     try:
@@ -174,7 +179,7 @@ if st.session_state.pagina_atual == "Início":
         st.markdown(texto_inicio_personalizado)
     else:
         st.markdown("""
-        Bem-vindo ao **SÍGER**, a solução integrada para mapeamento, avaliação e monitoramento de riscos 
+        Bem-vindo ao **SIGER**, a solução integrada para mapeamento, avaliação e monitoramento de riscos 
         institucionais no âmbito das Instituições Federais de Ensino Superior (IFES).
         
         * **Fundamentação:** COSO ERM & Teoria Institucional
@@ -591,28 +596,28 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar o risco no banco de dados: {e}")
 
     # ---------------------------------------------------------
-    # SUB-MÓDULO: IDENTIDADE VISUAL (SÍGER E INSTITUIÇÃO)
+    # SUB-MÓDULO: IDENTIDADE VISUAL (SIGER E INSTITUIÇÃO)
     # ---------------------------------------------------------
     elif sub == "Identidade Visual":
         st.subheader("🖼️ Gestão da Identidade Visual do Sistema")
-        st.write("Personalize os logotipos exibidos no aplicativo SÍGER e nos futuros relatórios da sua Instituição.")
+        st.write("Personalize os logotipos exibidos no aplicativo SIGER e nos futuros relatórios da sua Instituição.")
         st.divider()
         
         col_img1, col_img2 = st.columns(2)
         
-        # 1. LOGO DO SISTEMA SÍGER
+        # 1. LOGO DO SISTEMA SIGER
         with col_img1:
-            st.markdown("### 1. Logotipo do Sistema SÍGER")
-            st.caption("Substitui a marca padrão na barra lateral e topo das páginas.")
+            st.markdown("### 1. Logotipo do Sistema SIGER")
+            st.caption("Substitui a marca padrão na barra lateral, topo e aba do navegador.")
             
             if url_logo_siger:
-                st.image(url_logo_siger, width=200, caption="Logotipo Atual do SÍGER")
+                st.image(url_logo_siger, width=200, caption="Logotipo Atual do SIGER")
             else:
-                st.info("Nenhum logotipo personalizado do SÍGER enviado ainda.")
+                st.info("Nenhum logotipo personalizado do SIGER enviado ainda.")
                 
             with st.form("form_logo_siger", clear_on_submit=True):
-                arq_siger = st.file_uploader("Enviar novo Logotipo do SÍGER (PNG/JPG)", type=["png", "jpg", "jpeg"], key="upl_siger")
-                sub_siger = st.form_submit_button("💾 Salvar Logotipo do SÍGER")
+                arq_siger = st.file_uploader("Enviar novo Logotipo do SIGER (PNG/JPG)", type=["png", "jpg", "jpeg"], key="upl_siger")
+                sub_siger = st.form_submit_button("💾 Salvar Logotipo do SIGER")
                 
                 if sub_siger:
                     if arq_siger:
@@ -626,7 +631,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             url_pub_siger = supabase.storage.from_("identidade_visual").get_public_url(nome_siger)
                             
                             supabase.table("configuracoes").upsert({"chave": "url_logo_siger", "valor": url_pub_siger}).execute()
-                            st.success("✅ Logotipo do SÍGER atualizado com sucesso!")
+                            st.success("✅ Logotipo do SIGER atualizado com sucesso!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao enviar imagem. Verifique se o bucket 'identidade_visual' foi criado no Storage. Detalhes: {e}")
@@ -760,7 +765,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                 "Conteúdo da Tela Inicial (Aceita formatação Markdown)", 
                 value=texto_atual, 
                 height=250,
-                placeholder="Escreva aqui a apresentação do SÍGER, a fundamentação teórica ou avisos gerais..."
+                placeholder="Escreva aqui a apresentação do SIGER, a fundamentação teórica ou avisos gerais..."
             )
             
             submitted_texto = st.form_submit_button("💾 Salvar Texto da Tela Inicial")
