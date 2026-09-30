@@ -45,7 +45,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilização CSS personalizada com botões em Azul Escuro para os Expanders da Sidebar
+# Estilização CSS personalizada com recuo (tab) nos subitens do menu lateral
 st.markdown("""
     <style>
     /* Reduz o espaçamento no topo e laterais da barra lateral */
@@ -98,23 +98,26 @@ st.markdown("""
         color: #ffffff !important;
     }
     
-    /* Botões de Sub-itens dentro das abas expandidas */
+    /* Botões de Sub-itens dentro das abas expandidas com RECUO HIERÁRQUICO (TAB) */
     section[data-testid="stSidebar"] div[data-testid="stExpander"] div.stButton > button {
         text-align: left !important;
         justify-content: flex-start !important;
-        width: 100% !important;
+        width: calc(100% - 20px) !important;
+        margin-left: 20px !important; /* Efeito Tab / Recuo à esquerda */
         border: none !important;
         background-color: #f8f9fa !important;
         color: #333333 !important;
         padding-left: 12px !important;
-        margin-top: 2px !important;
-        margin-bottom: 2px !important;
+        margin-top: 3px !important;
+        margin-bottom: 3px !important;
         border-radius: 4px !important;
+        border-left: 3px solid #002147 !important; /* Marcador discreto à esquerda */
     }
     section[data-testid="stSidebar"] div[data-testid="stExpander"] div.stButton > button:hover {
         background-color: #e2e8f0 !important;
         color: #002147 !important;
-        font-weight: 500 !important;
+        font-weight: bold !important;
+        border-left: 4px solid #003366 !important;
     }
     
     /* Remoção de bordas das caixas de expander */
@@ -168,7 +171,7 @@ if st.sidebar.button("🏠 Início", use_container_width=True, key="btn_inicio_t
 st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 # 1. GRUPO: ADMINISTRAÇÃO
-with st.sidebar.expander("⚙️ Administração", expanded=False):
+with st.sidebar.expander("⚙️️ Administração", expanded=False):
     if st.button("👥 Usuários e Permissões", key="btn_adm_usr", use_container_width=True):
         navegar_para("Administração do Sistema", "Usuários")
     if st.button("🔧 Configurações Gerais", key="btn_adm_cfg", use_container_width=True):
@@ -408,7 +411,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                             st.rerun()
                                             
                             with col_oe_del:
-                                pop_del_oe = st.popover("🗑️️ Excluir")
+                                pop_del_oe = st.popover("🗑️ Excluir")
                                 with pop_del_oe:
                                     st.warning("Confirmar exclusão?")
                                     if st.button("Excluir Objetivo", key=f"btn_del_oe_{oe_item['id']}"):
@@ -526,7 +529,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             col_r_edit, col_r_del = st.columns([1, 1])
                             
                             with col_r_edit:
-                                pop_edit_r = st.popover("✏️ Editar Risco")
+                                pop_edit_r = st.popover("✏️️ Editar Risco")
                                 with pop_edit_r:
                                     st.markdown("### Editar Informações do Risco")
                                     with st.form(f"form_edit_risco_{r_item['id']}"):
