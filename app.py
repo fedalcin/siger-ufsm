@@ -13,13 +13,24 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilização CSS para alinhar todos os botões da barra lateral à esquerda
+# Estilização CSS para alinhar botões da barra lateral e personalizar os expanders
 st.markdown("""
     <style>
     section[data-testid="stSidebar"] div.stButton > button {
         text-align: left !important;
         justify-content: flex-start !important;
         width: 100% !important;
+        border: none !important;
+        background-color: transparent !important;
+        padding-left: 10px !important;
+    }
+    section[data-testid="stSidebar"] div.stButton > button:hover {
+        background-color: #f0f2f6 !important;
+        color: #000000 !important;
+    }
+    div[data-testid="stSidebarUserContent"] details {
+        border: none !important;
+        margin-bottom: 5px !important;
     }
     </style>
 """, unsafe_allow_html=True)
@@ -36,63 +47,98 @@ def init_supabase():
 supabase = init_supabase()
 
 # ---------------------------------------------------------
-# BARRA LATERAL (LOGOTIPO E MENU POR BOTÕES)
+# BARRA LATERAL (LOGOTIPO E MENU EXPANSÍVEL)
 # ---------------------------------------------------------
-# Exibe a imagem do logotipo se ela existir no repositório
 if os.path.exists("logo.png"):
     st.sidebar.image("logo.png", use_column_width=True)
 else:
-    st.sidebar.title("🛡️️ SÍGER")
+    st.sidebar.title("🛡️ SÍGER")
     st.sidebar.markdown("**Sistema de Gestão de Riscos**")
 
 st.sidebar.caption("PPGOP / UFSM")
 st.sidebar.divider()
 
+# Estado da sessão para controlar qual tela/subitem está ativo
 if "pagina_atual" not in st.session_state:
     st.session_state.pagina_atual = "Início"
+if "sub_pagina_atual" not in st.session_state:
+    st.session_state.sub_pagina_atual = None
 
-def navegar_para(pagina):
+def navegar_para(pagina, sub_pagina=None):
     st.session_state.pagina_atual = pagina
+    st.session_state.sub_pagina_atual = sub_pagina
 
 st.sidebar.subheader("Menu Principal")
 
+# 1. GRUPO: INÍCIO
 if st.sidebar.button("🏠 Início", use_container_width=True):
     navegar_para("Início")
 
-if st.sidebar.button("⚙️️ Administração do Sistema", use_container_width=True):
-    navegar_para("Administração do Sistema")
+# 2. GRUPO: ADMINISTRAÇÃO DO SISTEMA
+with st.sidebar.expander("⚙️ Administração", expanded=False):
+    if st.button("👥 Usuários e Permissões", key="btn_adm_usr", use_container_width=True):
+        navegar_para("Administração do Sistema", "Usuários")
+    if st.button("🔧 Configurações Gerais", key="btn_adm_cfg", use_container_width=True):
+        navegar_para("Administração do Sistema", "Configurações")
 
-if st.sidebar.button("📝 Cadastros", use_container_width=True):
-    navegar_para("Cadastros")
+# 3. GRUPO: CADASTROS (DESMEMBRADO EM SUBITENS)
+with st.sidebar.expander("📝 Cadastros", expanded=False):
+    if st.button("🏢 Unidades", key="btn_cad_unid", use_container_width=True):
+        navegar_para("Cadastros", "Unidades")
+    if st.button("🎯 Objetivos Estratégicos", key="btn_cad_oe", use_container_width=True):
+        navegar_para("Cadastros", "Objetivos Estratégicos")
+    if st.button("🏷️ Categorias de Risco", key="btn_cad_cat", use_container_width=True):
+        navegar_para("Cadastros", "Categorias de Risco")
+    if st.button("📋 Riscos", key="btn_cad_risco", use_container_width=True):
+        navegar_para("Cadastros", "Riscos")
+    if st.button("✍️️ Texto da Tela Inicial", key="btn_cad_txt", use_container_width=True):
+        navegar_para("Cadastros", "Texto da Tela Inicial")
 
-if st.sidebar.button("🔄 Monitoramento", use_container_width=True):
-    navegar_para("Monitoramento")
+# 4. GRUPO: MONITORAMENTO
+with st.sidebar.expander("🔄 Monitoramento", expanded=False):
+    if st.button("📌 Acompanhamento de Riscos", key="btn_mon_acomp", use_container_width=True):
+        navegar_para("Monitoramento", "Acompanhamento")
+    if st.button("📅 Matriz de Revisões", key="btn_mon_rev", use_container_width=True):
+        navegar_para("Monitoramento", "Revisões")
 
-if st.sidebar.button("🧠 Inteligência Gerencial", use_container_width=True):
-    navegar_para("Inteligência Gerencial")
+# 5. GRUPO: INTELIGÊNCIA GERENCIAL
+with st.sidebar.expander("🧠 Inteligência Gerencial", expanded=False):
+    if st.button("💡 Análise de Tendências", key="btn_ig_tend", use_container_width=True):
+        navegar_para("Inteligência Gerencial", "Tendências")
 
-if st.sidebar.button("📊 Dashboards", use_container_width=True):
-    navegar_para("Dashboards")
+# 6. GRUPO: DASHBOARDS
+with st.sidebar.expander("📊 Dashboards", expanded=False):
+    if st.button("📈 Painel Geral", key="btn_dash_geral", use_container_width=True):
+        navegar_para("Dashboards", "Painel Geral")
+    if st.button("🎯 Matriz de Risco (5x5)", key="btn_dash_matriz", use_container_width=True):
+        navegar_para("Dashboards", "Matriz 5x5")
 
-if st.sidebar.button("🛡️ Planos de Tratamento", use_container_width=True):
-    navegar_para("Planos de Tratamento")
+# 7. GRUPO: PLANOS DE TRATAMENTO
+with st.sidebar.expander("🛡️ Planos de Tratamento", expanded=False):
+    if st.button("📋 Ações de Mitigação", key="btn_pt_acoes", use_container_width=True):
+        navegar_para("Planos de Tratamento", "Ações")
 
-if st.sidebar.button("📚 Biblioteca", use_container_width=True):
-    navegar_para("Biblioteca")
+# 8. GRUPO: BIBLIOTECA
+with st.sidebar.expander("📚 Biblioteca", expanded=False):
+    if st.button("📄 Documentos e Normativas", key="btn_bib_doc", use_container_width=True):
+        navegar_para("Biblioteca", "Documentos")
 
-if st.sidebar.button("📑 Relatórios", use_container_width=True):
-    navegar_para("Relatórios")
+# 9. GRUPO: RELATÓRIOS
+with st.sidebar.expander("📑 Relatórios", expanded=False):
+    if st.button("🖨️ Relatório de Riscos (PDF/Excel)", key="btn_rel_riscos", use_container_width=True):
+        navegar_para("Relatórios", "Relatório Riscos")
 
-if st.sidebar.button("🌐 Transparência", use_container_width=True):
-    navegar_para("Transparência")
+# 10. GRUPO: TRANSPARÊNCIA
+with st.sidebar.expander("🌐 Transparência", expanded=False):
+    if st.button("🔓 Painel Público", key="btn_transp_pub", use_container_width=True):
+        navegar_para("Transparência", "Painel Público")
 
 # ---------------------------------------------------------
-# PÁGINA: INÍCIO (LÊ O TEXTO DINÂMICO CADASTRADO)
+# PÁGINA: INÍCIO
 # ---------------------------------------------------------
 if st.session_state.pagina_atual == "Início":
     st.title("SÍGER - Sistema de Gestão de Riscos")
     
-    # Busca o texto personalizado salvo no banco de dados
     texto_inicio_personalizado = ""
     try:
         res_cfg = supabase.table("configuracoes").select("valor").eq("chave", "texto_pagina_inicial").execute()
@@ -120,18 +166,12 @@ if st.session_state.pagina_atual == "Início":
 elif st.session_state.pagina_atual == "Cadastros":
     st.title("📝 Módulo de Cadastros")
     
-    aba_cadastro = st.radio(
-        "Selecione o tipo de cadastro:",
-        ["Unidades", "Objetivos Estratégicos", "Categorias de Risco", "Riscos", "Texto da Tela Inicial"],
-        horizontal=True
-    )
-    
-    st.divider()
+    sub = st.session_state.sub_pagina_atual or "Unidades"
     
     # ---------------------------------------------------------
     # SUB-MÓDULO 1: UNIDADES
     # ---------------------------------------------------------
-    if aba_cadastro == "Unidades":
+    if sub == "Unidades":
         st.subheader("🏢 Cadastramento de Unidades / Setores Institucionais")
         
         tab_list_unid, tab_novo_unid = st.tabs(["🔍 Unidades Cadastradas", "➕ Nova Unidade"])
@@ -194,7 +234,7 @@ elif st.session_state.pagina_atual == "Cadastros":
     # ---------------------------------------------------------
     # SUB-MÓDULO 2: OBJETIVOS ESTRATÉGICOS
     # ---------------------------------------------------------
-    elif aba_cadastro == "Objetivos Estratégicos":
+    elif sub == "Objetivos Estratégicos":
         st.subheader("🎯 Cadastramento de Objetivos Estratégicos (PDI)")
         
         tab_list_oe, tab_novo_oe = st.tabs(["🔍 Objetivos Cadastrados", "➕ Novo Objetivo Estratégico"])
@@ -230,7 +270,7 @@ elif st.session_state.pagina_atual == "Cadastros":
     # ---------------------------------------------------------
     # SUB-MÓDULO 3: CATEGORIAS DE RISCO
     # ---------------------------------------------------------
-    elif aba_cadastro == "Categorias de Risco":
+    elif sub == "Categorias de Risco":
         st.subheader("🏷️ Cadastramento de Categorias de Risco")
         
         tab_list_cat, tab_novo_cat = st.tabs(["🔍 Categorias Cadastradas", "➕ Nova Categoria"])
@@ -264,7 +304,7 @@ elif st.session_state.pagina_atual == "Cadastros":
     # ---------------------------------------------------------
     # SUB-MÓDULO 4: RISCOS
     # ---------------------------------------------------------
-    elif aba_cadastro == "Riscos":
+    elif sub == "Riscos":
         st.subheader("📋 Gestão e Cadastro de Riscos Institucionais")
         
         tab1, tab2 = st.tabs(["🔍 Riscos Cadastrados", "➕ Novo Risco"])
@@ -402,7 +442,7 @@ elif st.session_state.pagina_atual == "Cadastros":
     # ---------------------------------------------------------
     # SUB-MÓDULO 5: CADASTRO DO TEXTO DA TELA INICIAL
     # ---------------------------------------------------------
-    elif aba_cadastro == "Texto da Tela Inicial":
+    elif sub == "Texto da Tela Inicial":
         st.subheader("✍️ Cadastrar / Editar Texto da Tela Inicial")
         st.write("O texto digitado abaixo será exibido dinamicamente na página inicial do aplicativo.")
         
@@ -435,12 +475,11 @@ elif st.session_state.pagina_atual == "Cadastros":
                 except Exception as e:
                     st.error(f"Erro ao salvar texto no banco de dados: {e}")
 
-    else:
-        st.info("Este tipo de cadastro será desenvolvido nas próximas etapas.")
-
 # ---------------------------------------------------------
-# DEMAIS PÁGINAS
+# DEMAIS PÁGINAS (ESTRUTURA DE DEMAIS GRUPOS)
 # ---------------------------------------------------------
 else:
     st.title(f"🛠️ {st.session_state.pagina_atual}")
+    if st.session_state.sub_pagina_atual:
+        st.subheader(f"Área: {st.session_state.sub_pagina_atual}")
     st.info("Módulo em fase de estruturação. Em breve implementaremos as funcionalidades desta área.")
