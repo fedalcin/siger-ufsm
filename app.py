@@ -46,18 +46,10 @@ def init_supabase():
 
 supabase = init_supabase()
 
+# Duas opções solicitadas para o tipo da unidade
 TIPOS_UNIDADE_OPCOES = [
-    "Pró-Reitoria de Graduação (PROGRAD)",
-    "Pró-Reitoria de Pós-Graduação e Pesquisa (PRPGP)",
-    "Pró-Reitoria de Extensão (PRE)",
-    "Pró-Reitoria de Planejamento (PROPLAN)",
-    "Pró-Reitoria de Administração (PRA)",
-    "Pró-Reitoria de Gestão de Pessoas (PROGEP)",
-    "Pró-Reitoria de Assuntos Estudantis (PRAE)",
-    "Reitoria / Órgão Superior",
-    "Centro de Ensino / Unidade Acadêmica",
-    "Superintendência / Hospital Universitário",
-    "Outra Unidade Administrativa"
+    "Acadêmica",
+    "Administrativa"
 ]
 
 # ---------------------------------------------------------
@@ -101,7 +93,7 @@ with st.sidebar.expander("📝 Cadastros", expanded=False):
         navegar_para("Cadastros", "Categorias de Risco")
     if st.button("📋 Riscos", key="btn_cad_risco", use_container_width=True):
         navegar_para("Cadastros", "Riscos")
-    if st.button("✍️️ Texto da Tela Inicial", key="btn_cad_txt", use_container_width=True):
+    if st.button("✍️ Texto da Tela Inicial", key="btn_cad_txt", use_container_width=True):
         navegar_para("Cadastros", "Texto da Tela Inicial")
 
 with st.sidebar.expander("🔄 Monitoramento", expanded=False):
@@ -172,7 +164,7 @@ elif st.session_state.pagina_atual == "Cadastros":
     sub = st.session_state.sub_pagina_atual or "Unidades"
     
     # ---------------------------------------------------------
-    # SUB-MÓDULO 1: UNIDADES (COM EDIÇÃO E EXCLUSÃO PROTEGIDA)
+    # SUB-MÓDULO 1: UNIDADES (TIPO: ACADÊMICA OU ADMINISTRATIVA)
     # ---------------------------------------------------------
     if sub == "Unidades":
         st.subheader("🏢 Cadastramento de Unidades / Setores Institucionais")
@@ -188,11 +180,12 @@ elif st.session_state.pagina_atual == "Cadastros":
                     st.write(f"Total de unidades cadastradas: **{len(dados_unid)}**")
                     
                     for item in dados_unid:
-                        with st.expander(f"📍 `{item['codigo']}` - {item['sigla']} | {item['nome_extenso']}"):
+                        tipo_exibicao = item.get('tipo_unidade', 'Não informado')
+                        with st.expander(f"📍 `{item['codigo']}` - {item['sigla']} | {item['nome_extenso']} ({tipo_exibicao})"):
                             col_info, col_acoes = st.columns([3, 1])
                             
                             with col_info:
-                                st.write(f"**Tipo/Área:** {item.get('tipo_unidade', 'Não informado')}")
+                                st.write(f"**Tipo da Unidade:** {tipo_exibicao}")
                             
                             with col_acoes:
                                 modal_edit = st.popover("✏️ Editar")
@@ -202,7 +195,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         edit_sigla = st.text_input("Sigla", value=item['sigla']).upper()
                                         edit_nome = st.text_input("Nome Extenso", value=item['nome_extenso'])
                                         idx_tipo = TIPOS_UNIDADE_OPCOES.index(item['tipo_unidade']) if item.get('tipo_unidade') in TIPOS_UNIDADE_OPCOES else 0
-                                        edit_tipo = st.selectbox("Tipo", options=TIPOS_UNIDADE_OPCOES, index=idx_tipo)
+                                        edit_tipo = st.selectbox("Tipo da Unidade", options=TIPOS_UNIDADE_OPCOES, index=idx_tipo)
                                         
                                         if st.form_submit_button("💾 Salvar Alterações"):
                                             try:
@@ -216,13 +209,11 @@ elif st.session_state.pagina_atual == "Cadastros":
                                             except Exception as e:
                                                 st.error(f"Erro ao atualizar: {e}")
 
-                                # EXCLUSÃO COM VERIFICAÇÃO DE INTEGRIDADE
                                 modal_del = st.popover("🗑️ Excluir")
                                 with modal_del:
                                     st.warning("Tem certeza que deseja excluir esta unidade?")
                                     if st.button("Confirmar Exclusão", key=f"btn_del_unid_{item['id']}"):
                                         try:
-                                            # Verifica se há riscos vinculados a esta unidade
                                             res_riscos = supabase.table("riscos").select("id").like("unidade", f"%{item['sigla']}%").execute()
                                             if res_riscos.data and len(res_riscos.data) > 0:
                                                 st.error(f"❌ Não é possível excluir a unidade '{item['sigla']}' pois existem {len(res_riscos.data)} risco(s) associado(s) a ela.")
@@ -253,7 +244,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                     sigla = st.text_input("Sigla da Unidade*", placeholder="Ex: PRAE, PRPGP, CCSH, REITORIA").upper()
                     nome_extenso = st.text_input("Nome da Unidade por Extenso*", placeholder="Ex: Pró-Reitoria de Assuntos Estudantis")
                 with col_u2:
-                    tipo_unidade_sel = st.selectbox("Tipo da Pró-Reitoria / Unidade*", options=TIPOS_UNIDADE_OPCOES)
+                    tipo_unidade_sel = st.selectbox("Tipo da Unidade*", options=TIPOS_UNIDADE_OPCOES)
                 
                 st.caption("* Campos obrigatórios.")
                 submitted_unid = st.form_submit_button("💾 Salvar Unidade")
@@ -270,13 +261,13 @@ elif st.session_state.pagina_atual == "Cadastros":
                         }
                         try:
                             supabase.table("unidades").insert(dados_nova_unidade).execute()
-                            st.success(f"✅ Unidade '{sigla}' registrada!")
+                            st.success(f"✅ Unidade '{sigla}' ({tipo_unidade_sel}) registrada!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao salvar unidade: {e}")
 
     # ---------------------------------------------------------
-    # SUB-MÓDULO 2: OBJETIVOS ESTRATÉGICOS (EDIÇÃO E EXCLUSÃO)
+    # SUB-MÓDULO 2: OBJETIVOS ESTRATÉGICOS
     # ---------------------------------------------------------
     elif sub == "Objetivos Estratégicos":
         st.subheader("🎯 Cadastramento de Objetivos Estratégicos (PDI)")
@@ -307,7 +298,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                                 with pop_del_oe:
                                     st.warning("Confirmar exclusão?")
                                     if st.button("Excluir Objetivo", key=f"btn_del_oe_{oe_item['id']}"):
-                                        # Verifica vínculo com Riscos
                                         res_vinc = supabase.table("riscos").select("id").like("objetivo_estrategico", f"%{oe_item['codigo']}%").execute()
                                         if res_vinc.data and len(res_vinc.data) > 0:
                                             st.error(f"❌ Impossível excluir: existem {len(res_vinc.data)} risco(s) vinculados a este objetivo.")
@@ -338,7 +328,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar: {e}")
 
     # ---------------------------------------------------------
-    # SUB-MÓDULO 3: CATEGORIAS DE RISCO (EDIÇÃO E EXCLUSÃO)
+    # SUB-MÓDULO 3: CATEGORIAS DE RISCO
     # ---------------------------------------------------------
     elif sub == "Categorias de Risco":
         st.subheader("🏷️ Cadastramento de Categorias de Risco")
@@ -350,7 +340,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                 res_cat = supabase.table("categorias_risco").select("*").execute()
                 if res_cat.data:
                     for cat_item in res_cat.data:
-                        with st.expander(f"🏷️ {cat_item['nome']}"):
+                        with st.expander(f"🏷️️ {cat_item['nome']}"):
                             c1, c2 = st.columns(2)
                             with c1:
                                 pop_edit_cat = st.popover("✏️ Editar")
@@ -394,7 +384,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar: {e}")
 
     # ---------------------------------------------------------
-    # SUB-MÓDULO 4: RISCOS (EDIÇÃO COMPLETA E EXCLUSÃO PROTEGIDA)
+    # SUB-MÓDULO 4: RISCOS
     # ---------------------------------------------------------
     elif sub == "Riscos":
         st.subheader("📋 Gestão e Cadastro de Riscos Institucionais")
@@ -449,7 +439,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                                                 "situacao": e_sit
                                             }).eq("id", r_item['id']).execute()
                                             
-                                            # Registra no histórico a alteração
                                             supabase.table("risco_historico").insert({
                                                 "risco_id": r_item['id'],
                                                 "data_alteracao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
@@ -466,9 +455,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                     st.warning("Deseja realmente excluir este risco e seu histórico?")
                                     if st.button("Confirmar Exclusão", key=f"btn_del_r_{r_item['id']}"):
                                         try:
-                                            # Remove primeiro o histórico vinculado para manter a consistência
                                             supabase.table("risco_historico").delete().eq("risco_id", r_item['id']).execute()
-                                            # Exclui o risco
                                             supabase.table("riscos").delete().eq("id", r_item['id']).execute()
                                             st.success("Risco excluído!")
                                             st.rerun()
