@@ -45,14 +45,38 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilização CSS personalizada com recuo (tab) nos subitens do menu lateral
+# Estilização CSS personalizada para remover espaços em branco no topo da sidebar
 st.markdown("""
     <style>
-    /* Reduz o espaçamento no topo e laterais da barra lateral */
+    /* Remove padding/espaço em branco no topo da barra lateral e eleva o logotipo e menu */
+    section[data-testid="stSidebar"] {
+        padding-top: 0rem !important;
+    }
     section[data-testid="stSidebar"] > div:first-child {
-        padding-top: 1rem !important;
-        padding-left: 0.8rem !important;
-        padding-right: 0.8rem !important;
+        padding-top: 0.2rem !important;
+        padding-left: 0.6rem !important;
+        padding-right: 0.6rem !important;
+    }
+    div[data-testid="stSidebarUserContent"] {
+        padding-top: 0rem !important;
+    }
+
+    /* Reduz espaço do container de imagem da logo do SIGER */
+    section[data-testid="stSidebar"] div[data-testid="stImage"] {
+        margin-top: 0rem !important;
+        margin-bottom: 0rem !important;
+        padding-top: 0rem !important;
+    }
+
+    /* Reduz margens do divisor e subcabeçalho */
+    section[data-testid="stSidebar"] hr {
+        margin-top: 0.4rem !important;
+        margin-bottom: 0.4rem !important;
+    }
+    section[data-testid="stSidebar"] h3 {
+        padding-top: 0rem !important;
+        margin-top: 0rem !important;
+        margin-bottom: 0.3rem !important;
     }
     
     /* Botões Principais e Títulos de Grupos (Expander Headers) em Azul Escuro */
@@ -60,9 +84,9 @@ st.markdown("""
         background-color: #002147 !important;
         color: #ffffff !important;
         border-radius: 6px !important;
-        padding: 10px 14px !important;
+        padding: 8px 12px !important;
         font-weight: bold !important;
-        margin-bottom: 6px !important;
+        margin-bottom: 4px !important;
         border: 1px solid #001733 !important;
         transition: background-color 0.3s ease;
     }
@@ -87,8 +111,8 @@ st.markdown("""
         color: #ffffff !important;
         font-weight: bold !important;
         border-radius: 6px !important;
-        padding: 10px 14px !important;
-        margin-bottom: 8px !important;
+        padding: 8px 12px !important;
+        margin-bottom: 4px !important;
         width: 100% !important;
         text-align: left !important;
         border: 1px solid #001733 !important;
@@ -107,11 +131,11 @@ st.markdown("""
         border: none !important;
         background-color: #f8f9fa !important;
         color: #333333 !important;
-        padding-left: 12px !important;
-        margin-top: 3px !important;
-        margin-bottom: 3px !important;
+        padding-left: 10px !important;
+        margin-top: 2px !important;
+        margin-bottom: 2px !important;
         border-radius: 4px !important;
-        border-left: 3px solid #002147 !important; /* Marcador discreto à esquerda */
+        border-left: 3px solid #002147 !important;
     }
     section[data-testid="stSidebar"] div[data-testid="stExpander"] div.stButton > button:hover {
         background-color: #e2e8f0 !important;
@@ -171,7 +195,7 @@ if st.sidebar.button("🏠 Início", use_container_width=True, key="btn_inicio_t
 st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 # 1. GRUPO: ADMINISTRAÇÃO
-with st.sidebar.expander("⚙️️ Administração", expanded=False):
+with st.sidebar.expander("⚙️ Administração", expanded=False):
     if st.button("👥 Usuários e Permissões", key="btn_adm_usr", use_container_width=True):
         navegar_para("Administração do Sistema", "Usuários")
     if st.button("🔧 Configurações Gerais", key="btn_adm_cfg", use_container_width=True):
@@ -445,10 +469,10 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar: {e}")
 
     # ---------------------------------------------------------
-    # SUB-MÓDULO: CATEGORIAS DE RISCO
+    # SUB-MÓDULO: CATEGORIAS DE RISCO (COM TIPO E SUBTIPO)
     # ---------------------------------------------------------
     elif sub == "Categorias de Risco":
-        st.subheader("🏷️ Cadastramento de Categorias de Risco")
+        st.subheader("🏷️ Cadastramento de Categorias de Risco (Tipo e Subtipo)")
         
         tab_list_cat, tab_novo_cat = st.tabs(["🔍 Categorias Cadastradas", "➕ Nova Categoria"])
         
@@ -456,49 +480,78 @@ elif st.session_state.pagina_atual == "Cadastros":
             try:
                 res_cat = supabase.table("categorias_risco").select("*").execute()
                 if res_cat.data:
+                    st.write(f"Total de categorias cadastradas: **{len(res_cat.data)}**")
                     for cat_item in res_cat.data:
-                        with st.expander(f"🏷️ {cat_item['nome']}"):
+                        tipo_val = cat_item.get('tipo', cat_item.get('nome', 'Não Informado'))
+                        subtipo_val = cat_item.get('subtipo', '')
+                        
+                        titulo_cat = f"🏷️ **{tipo_val}**" + (f" / *{subtipo_val}*" if subtipo_val else "")
+                        
+                        with st.expander(titulo_cat):
                             c1, c2 = st.columns(2)
                             with c1:
-                                pop_edit_cat = st.popover("✏️ Editar")
+                                pop_edit_cat = st.popover("✏️ Editar Categoria")
                                 with pop_edit_cat:
                                     with st.form(f"form_edit_cat_{cat_item['id']}"):
-                                        nome_edit = st.text_input("Nome da Categoria", value=cat_item['nome'])
-                                        if st.form_submit_button("Salvar"):
-                                            supabase.table("categorias_risco").update({"nome": nome_edit}).eq("id", cat_item['id']).execute()
-                                            st.success("Atualizado!")
+                                        tipo_edit = st.text_input("Tipo de Risco", value=tipo_val)
+                                        subtipo_edit = st.text_input("Subtipo de Risco", value=subtipo_val)
+                                        
+                                        if st.form_submit_button("💾 Salvar Alterações"):
+                                            # Salva o tipo e subtipo, e atualiza 'nome' para manter compatibilidade
+                                            nome_unificado = f"{tipo_edit} - {subtipo_edit}" if subtipo_edit else tipo_edit
+                                            supabase.table("categorias_risco").update({
+                                                "tipo": tipo_edit,
+                                                "subtipo": subtipo_edit,
+                                                "nome": nome_unificado
+                                            }).eq("id", cat_item['id']).execute()
+                                            st.success("Categoria atualizada com sucesso!")
                                             st.rerun()
                             with c2:
-                                pop_del_cat = st.popover("🗑️ Excluir")
+                                pop_del_cat = st.popover("🗑️ Excluir Categoria")
                                 with pop_del_cat:
-                                    st.warning("Confirmar exclusão?")
-                                    if st.button("Excluir Categoria", key=f"btn_del_cat_{cat_item['id']}"):
-                                        res_vinc = supabase.table("riscos").select("id").eq("categoria", cat_item['nome']).execute()
-                                        if res_vinc.data and len(res_vinc.data) > 0:
-                                            st.error(f"❌ Impossível excluir: existem {len(res_vinc.data)} risco(s) cadastrados nesta categoria.")
-                                        else:
-                                            supabase.table("categorias_risco").delete().eq("id", cat_item['id']).execute()
-                                            st.success("Excluído!")
-                                            st.rerun()
+                                    st.warning("Confirmar exclusão desta categoria?")
+                                    if st.button("Confirmar Exclusão", key=f"btn_del_cat_{cat_item['id']}"):
+                                        try:
+                                            res_vinc = supabase.table("riscos").select("id").eq("categoria", cat_item.get('nome', tipo_val)).execute()
+                                            if res_vinc.data and len(res_vinc.data) > 0:
+                                                st.error(f"❌ Impossível excluir: existem {len(res_vinc.data)} risco(s) vinculados a esta categoria.")
+                                            else:
+                                                supabase.table("categorias_risco").delete().eq("id", cat_item['id']).execute()
+                                                st.success("Categoria excluída!")
+                                                st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Erro ao excluir: {e}")
                 else:
-                    st.info("Nenhuma categoria cadastrada.")
+                    st.info("Nenhuma categoria de risco cadastrada.")
             except Exception as e:
-                st.error(f"Erro ao carregar Categorias: {e}")
+                st.error(f"Erro ao carregar Categorias de Risco: {e}")
                 
         with tab_novo_cat:
             with st.form("form_cadastrar_cat", clear_on_submit=True):
-                nome_cat = st.text_input("Nome da Categoria*", placeholder="Ex: Operacional, Estratégico, Financeiro")
+                col_cat1, col_cat2 = st.columns(2)
+                with col_cat1:
+                    tipo_cat = st.text_input("Tipo de Risco*", placeholder="Ex: Operacional, Estratégico, Financeiro, Legal")
+                with col_cat2:
+                    subtipo_cat = st.text_input("Subtipo de Risco*", placeholder="Ex: Falha de Sistema, Fraude Interna, Perda Orçamentária")
+                
+                st.caption("* Preencha o Tipo e o Subtipo da categoria.")
                 submitted_cat = st.form_submit_button("💾 Salvar Categoria")
+                
                 if submitted_cat:
-                    if not nome_cat:
-                        st.warning("Preencha o nome da categoria.")
+                    if not tipo_cat or not subtipo_cat:
+                        st.warning("Por favor, preencha tanto o Tipo quanto o Subtipo.")
                     else:
                         try:
-                            supabase.table("categorias_risco").insert({"nome": nome_cat}).execute()
-                            st.success("✅ Categoria cadastrada!")
+                            nome_unificado = f"{tipo_cat} - {subtipo_cat}"
+                            supabase.table("categorias_risco").insert({
+                                "tipo": tipo_cat,
+                                "subtipo": subtipo_cat,
+                                "nome": nome_unificado
+                            }).execute()
+                            st.success(f"✅ Categoria '{tipo_cat} / {subtipo_cat}' cadastrada com sucesso!")
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Erro ao salvar: {e}")
+                            st.error(f"Erro ao salvar categoria no banco: {e}. Dica: Se a tabela 'categorias_risco' no Supabase não possuir as colunas 'tipo' e 'subtipo', adicione-as como 'text' no Table Editor.")
 
     # ---------------------------------------------------------
     # SUB-MÓDULO: RISCOS
@@ -529,7 +582,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             col_r_edit, col_r_del = st.columns([1, 1])
                             
                             with col_r_edit:
-                                pop_edit_r = st.popover("✏️️ Editar Risco")
+                                pop_edit_r = st.popover("✏️ Editar Risco")
                                 with pop_edit_r:
                                     st.markdown("### Editar Informações do Risco")
                                     with st.form(f"form_edit_risco_{r_item['id']}"):
@@ -587,7 +640,7 @@ elif st.session_state.pagina_atual == "Cadastros":
             try:
                 res_unidades = supabase.table("unidades").select("*").execute().data or []
                 res_oe = supabase.table("objetivos_estrategicos").select("codigo, descricao").execute().data or []
-                res_cat = supabase.table("categorias_risco").select("nome").execute().data or []
+                res_cat = supabase.table("categorias_risco").select("*").execute().data or []
             except Exception as e:
                 res_unidades, res_oe, res_cat = [], [], []
 
@@ -597,7 +650,17 @@ elif st.session_state.pagina_atual == "Cadastros":
                 opcoes_unid = ["(Nenhuma unidade cadastrada)"]
 
             opcoes_oe = [f"{o['codigo']} - {o['descricao']}" for o in res_oe] if res_oe else ["(Nenhum objetivo cadastrado)"]
-            opcoes_cat = [c['nome'] for c in res_cat] if res_cat else ["Operacional", "Estratégico", "Financeiro/Orçamentário", "Conformidade/Legal", "Imagem/Reputacional"]
+            
+            # Formatação de opções de categoria com tipo e subtipo
+            if res_cat:
+                opcoes_cat = []
+                for c in res_cat:
+                    if c.get('tipo') and c.get('subtipo'):
+                        opcoes_cat.append(f"{c['tipo']} - {c['subtipo']}")
+                    else:
+                        opcoes_cat.append(c.get('nome', 'Geral'))
+            else:
+                opcoes_cat = ["Operacional - Processos", "Estratégico - Governança", "Financeiro - Orçamento", "Conformidade - Normas"]
 
             with st.form("form_cadastrar_risco", clear_on_submit=True):
                 st.markdown("##### 1. Contexto do Risco")
