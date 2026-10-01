@@ -172,9 +172,11 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
+# Opções para o seletor de Tipo de Unidade
 TIPOS_UNIDADE_OPCOES = [
-    "Acadêmica",
-    "Administrativa"
+    "Unidade Acadêmica",
+    "Pró-Reitoria",
+    "Diretoria"
 ]
 
 # ---------------------------------------------------------
@@ -348,8 +350,11 @@ elif st.session_state.pagina_atual == "Cadastros":
                                     with st.form(f"form_edit_unid_{item['id']}"):
                                         edit_sigla = st.text_input("Sigla", value=item['sigla']).upper()
                                         edit_nome = st.text_input("Nome Extenso", value=item['nome_extenso'])
-                                        idx_tipo = TIPOS_UNIDADE_OPCOES.index(item['tipo_unidade']) if item.get('tipo_unidade') in TIPOS_UNIDADE_OPCOES else 0
-                                        edit_tipo = st.selectbox("Tipo da Unidade", options=TIPOS_UNIDADE_OPCOES, index=idx_tipo)
+                                        
+                                        # Identifica o índice atual do tipo de unidade nas opções
+                                        val_atual = item.get('tipo_unidade')
+                                        idx_tipo = TIPOS_UNIDADE_OPCOES.index(val_atual) if val_atual in TIPOS_UNIDADE_OPCOES else 0
+                                        edit_tipo = st.selectbox("Tipo da Unidade*", options=TIPOS_UNIDADE_OPCOES, index=idx_tipo)
                                         
                                         if st.form_submit_button("💾 Salvar Alterações"):
                                             try:
@@ -421,7 +426,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar unidade: {e}")
 
     # ---------------------------------------------------------
-    # SUB-MÓDULO: OBJETIVOS ESTRATÉGICOS (ATUALIZADO)
+    # SUB-MÓDULO: OBJETIVOS ESTRATÉGICOS
     # ---------------------------------------------------------
     elif sub == "Objetivos Estratégicos":
         st.subheader("🎯 Cadastramento de Objetivos Estratégicos (PDI)")
@@ -536,7 +541,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                         tipo_val = cat_item.get('tipo', cat_item.get('nome', 'Não Informado'))
                         subtipo_val = cat_item.get('subtipo', '')
                         
-                        titulo_cat = f"🏷️️ **{tipo_val}**" + (f" / *{subtipo_val}*" if subtipo_val else "")
+                        titulo_cat = f"🏷️ **{tipo_val}**" + (f" / *{subtipo_val}*" if subtipo_val else "")
                         
                         with st.expander(titulo_cat):
                             c1, c2 = st.columns(2)
