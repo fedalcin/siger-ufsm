@@ -421,7 +421,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar unidade: {e}")
 
     # ---------------------------------------------------------
-    # SUB-MÓDULO: OBJETIVOS ESTRATÉGICOS
+    # SUB-MÓDULO: OBJETIVOS ESTRATÉGICOS (ATUALIZADO)
     # ---------------------------------------------------------
     elif sub == "Objetivos Estratégicos":
         st.subheader("🎯 Cadastramento de Objetivos Estratégicos (PDI)")
@@ -430,35 +430,60 @@ elif st.session_state.pagina_atual == "Cadastros":
         
         with tab_list_oe:
             try:
-                res_oe = supabase.table("objetivos_estrategicos").select("*").execute()
+                res_oe = supabase.table("objetivos_estrategicos").select("*").order("codigo").execute()
                 if res_oe.data:
+                    st.write(f"Total de objetivos cadastrados: **{len(res_oe.data)}**")
                     for oe_item in res_oe.data:
-                        with st.expander(f"🎯 `{oe_item['codigo']}` - {oe_item['descricao']}"):
+                        cod_oe = oe_item['codigo']
+                        desc_oe = oe_item['descricao']
+                        desafio_oe = oe_item.get('desafio', '')
+                        dimensao_oe = oe_item.get('dimensao', '')
+                        
+                        with st.expander(f"🎯 `{cod_oe}` - {desc_oe}"):
+                            st.markdown(f"**Dimensão:** {dimensao_oe}")
+                            st.markdown(f"**Desafio:** {desafio_oe}")
+                            
                             col_oe_edit, col_oe_del = st.columns([1, 1])
                             
                             with col_oe_edit:
-                                pop_edit_oe = st.popover("✏️ Editar")
+                                pop_edit_oe = st.popover("✏️ Editar Objetivo")
                                 with pop_edit_oe:
-                                    with st.form(f"form_edit_oe_{oe_item['id']}"):
-                                        cod_edit = st.text_input("Código", value=oe_item['codigo'])
-                                        desc_edit = st.text_area("Descrição", value=oe_item['descricao'])
-                                        if st.form_submit_button("Salvar"):
-                                            supabase.table("objetivos_estrategicos").update({"codigo": cod_edit, "descricao": desc_edit}).eq("id", oe_item['id']).execute()
-                                            st.success("Atualizado!")
-                                            st.rerun()
+                                    with st.form(f"form_edit_oe_{cod_oe}"):
+                                        st.write(f"**Código:** `{cod_oe}`")
+                                        desc_edit = st.text_area("Descrição*", value=desc_oe)
+                                        dimensao_edit = st.text_input("Dimensão*", value=dimensao_oe)
+                                        desafio_edit = st.text_area("Desafio*", value=desafio_oe)
+                                        
+                                        if st.form_submit_button("💾 Salvar Alterações"):
+                                            if not desc_edit or not dimensao_edit or not desafio_edit:
+                                                st.warning("Preencha todos os campos obrigatórios.")
+                                            else:
+                                                try:
+                                                    supabase.table("objetivos_estrategicos").update({
+                                                        "descricao": desc_edit,
+                                                        "dimensao": dimensao_edit,
+                                                        "desafio": desafio_edit
+                                                    }).eq("codigo", cod_oe).execute()
+                                                    st.success("Objetivo Estratégico atualizado!")
+                                                    st.rerun()
+                                                except Exception as e:
+                                                    st.error(f"Erro ao atualizar: {e}")
                                             
                             with col_oe_del:
-                                pop_del_oe = st.popover("🗑️ Excluir")
+                                pop_del_oe = st.popover("🗑️ Excluir Objetivo")
                                 with pop_del_oe:
-                                    st.warning("Confirmar exclusão?")
-                                    if st.button("Excluir Objetivo", key=f"btn_del_oe_{oe_item['id']}"):
-                                        res_vinc = supabase.table("riscos").select("id").like("objetivo_estrategico", f"%{oe_item['codigo']}%").execute()
-                                        if res_vinc.data and len(res_vinc.data) > 0:
-                                            st.error(f"❌ Impossível excluir: existem {len(res_vinc.data)} risco(s) vinculados a este objetivo.")
-                                        else:
-                                            supabase.table("objetivos_estrategicos").delete().eq("id", oe_item['id']).execute()
-                                            st.success("Excluído!")
-                                            st.rerun()
+                                    st.warning(f"Confirmar exclusão do objetivo '{cod_oe}'?")
+                                    if st.button("Confirmar Exclusão", key=f"btn_del_oe_{cod_oe}"):
+                                        try:
+                                            res_vinc = supabase.table("riscos").select("id").like("objetivo_estrategico", f"%{cod_oe}%").execute()
+                                            if res_vinc.data and len(res_vinc.data) > 0:
+                                                st.error(f"❌ Impossível excluir: existem {len(res_vinc.data)} risco(s) vinculados a este objetivo.")
+                                            else:
+                                                supabase.table("objetivos_estrategicos").delete().eq("codigo", cod_oe).execute()
+                                                st.success("Objetivo Estratégico excluído!")
+                                                st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Erro ao excluir: {e}")
                 else:
                     st.info("Nenhum objetivo estratégico cadastrado.")
             except Exception as e:
@@ -466,20 +491,33 @@ elif st.session_state.pagina_atual == "Cadastros":
                 
         with tab_novo_oe:
             with st.form("form_cadastrar_oe", clear_on_submit=True):
-                codigo_oe = st.text_input("Código do Objetivo*", placeholder="Ex: OE-01, OE-02")
-                descricao_oe = st.text_area("Descrição do Objetivo Estratégico*", placeholder="Ex: Promover a excelência no ensino de graduação")
+                col_o1, col_o2 = st.columns(2)
+                with col_o1:
+                    codigo_oe = st.text_input("Código do Objetivo*", placeholder="Ex: OE-01, OE-02")
+                    dimensao_oe = st.text_input("Dimensão*", placeholder="Ex: Ensino, Governança, Infraestrutura, Pessoas")
+                with col_o2:
+                    descricao_oe = st.text_area("Descrição do Objetivo Estratégico*", placeholder="Ex: Promover a excelência no ensino de graduação")
                 
+                desafio_oe = st.text_area("Desafio*", placeholder="Ex: Ampliar o uso de tecnologias educacionais inovadoras e metodologias ativas")
+                
+                st.caption("* Todos os campos são de preenchimento obrigatório.")
                 submitted_oe = st.form_submit_button("💾 Salvar Objetivo Estratégico")
+                
                 if submitted_oe:
-                    if not codigo_oe or not descricao_oe:
-                        st.warning("Preencha o Código e a Descrição.")
+                    if not codigo_oe or not descricao_oe or not dimensao_oe or not desafio_oe:
+                        st.warning("Por favor, preencha o Código, a Descrição, a Dimensão e o Desafio.")
                     else:
                         try:
-                            supabase.table("objetivos_estrategicos").insert({"codigo": codigo_oe, "descricao": descricao_oe}).execute()
-                            st.success("✅ Objetivo Estratégico cadastrado!")
+                            supabase.table("objetivos_estrategicos").insert({
+                                "codigo": codigo_oe,
+                                "descricao": descricao_oe,
+                                "dimensao": dimensao_oe,
+                                "desafio": desafio_oe
+                            }).execute()
+                            st.success(f"✅ Objetivo Estratégico '{codigo_oe}' cadastrado com sucesso!")
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Erro ao salvar: {e}")
+                            st.error(f"Erro ao salvar objetivo estratégico: {e}")
 
     # ---------------------------------------------------------
     # SUB-MÓDULO: CATEGORIAS DE RISCO (COM TIPO E SUBTIPO)
@@ -498,7 +536,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                         tipo_val = cat_item.get('tipo', cat_item.get('nome', 'Não Informado'))
                         subtipo_val = cat_item.get('subtipo', '')
                         
-                        titulo_cat = f"🏷️ **{tipo_val}**" + (f" / *{subtipo_val}*" if subtipo_val else "")
+                        titulo_cat = f"🏷️️ **{tipo_val}**" + (f" / *{subtipo_val}*" if subtipo_val else "")
                         
                         with st.expander(titulo_cat):
                             c1, c2 = st.columns(2)
