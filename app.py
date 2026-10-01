@@ -21,12 +21,17 @@ supabase = init_supabase()
 # CARREGAMENTO DINÂMICO DA IDENTIDADE VISUAL & FAVICON
 # ---------------------------------------------------------
 url_logo_siger = None
+url_logo_reduzido = None
 url_logo_instituicao = None
 
 try:
     res_siger = supabase.table("configuracoes").select("valor").eq("chave", "url_logo_siger").execute()
     if res_siger.data and len(res_siger.data) > 0:
         url_logo_siger = res_siger.data[0]["valor"]
+
+    res_red = supabase.table("configuracoes").select("valor").eq("chave", "url_logo_reduzido").execute()
+    if res_red.data and len(res_red.data) > 0:
+        url_logo_reduzido = res_red.data[0]["valor"]
         
     res_inst = supabase.table("configuracoes").select("valor").eq("chave", "url_logo_instituicao").execute()
     if res_inst.data and len(res_inst.data) > 0:
@@ -34,7 +39,15 @@ try:
 except:
     pass
 
-favicon_app = url_logo_siger if url_logo_siger else ("logo.png" if os.path.exists("logo.png") else "🛡️")
+# Define o ícone da aba do navegador (Chrome Favicon): Prioriza o logo reduzido/ícone
+if url_logo_reduzido:
+    favicon_app = url_logo_reduzido
+elif url_logo_siger:
+    favicon_app = url_logo_siger
+elif os.path.exists("logo.png"):
+    favicon_app = "logo.png"
+else:
+    favicon_app = "🛡️"
 
 # ---------------------------------------------------------
 # CONFIGURAÇÃO DE PÁGINA E ESTILOS CSS
@@ -497,7 +510,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         subtipo_edit = st.text_input("Subtipo de Risco", value=subtipo_val)
                                         
                                         if st.form_submit_button("💾 Salvar Alterações"):
-                                            # Salva o tipo e subtipo, e atualiza 'nome' para manter compatibilidade
                                             nome_unificado = f"{tipo_edit} - {subtipo_edit}" if subtipo_edit else tipo_edit
                                             supabase.table("categorias_risco").update({
                                                 "tipo": tipo_edit,
@@ -524,7 +536,10 @@ elif st.session_state.pagina_atual == "Cadastros":
                 else:
                     st.info("Nenhuma categoria de risco cadastrada.")
             except Exception as e:
-                st.error(f"Erro ao carregar Categorias de Risco: {e}")
+                if "PGRST205" in str(e):
+                    st.warning("⚠️ A tabela 'categorias_risco' ainda não foi criada no Supabase. Execute o script SQL no painel do Supabase.")
+                else:
+                    st.error(f"Erro ao carregar Categorias de Risco: {e}")
                 
         with tab_novo_cat:
             with st.form("form_cadastrar_cat", clear_on_submit=True):
@@ -551,7 +566,10 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.success(f"✅ Categoria '{tipo_cat} / {subtipo_cat}' cadastrada com sucesso!")
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Erro ao salvar categoria no banco: {e}. Dica: Se a tabela 'categorias_risco' no Supabase não possuir as colunas 'tipo' e 'subtipo', adicione-as como 'text' no Table Editor.")
+                            if "PGRST205" in str(e):
+                                st.error("❌ A tabela 'public.categorias_risco' não existe no banco de dados. Execute o script SQL no SQL Editor do Supabase.")
+                            else:
+                                st.error(f"Erro ao salvar categoria no banco: {e}")
 
     # ---------------------------------------------------------
     # SUB-MÓDULO: RISCOS
@@ -747,24 +765,24 @@ elif st.session_state.pagina_atual == "Cadastros":
     # ---------------------------------------------------------
     elif sub == "Identidade Visual":
         st.subheader("🖼️ Gestão da Identidade Visual do Sistema")
-        st.write("Personalize os logotipos exibidos no aplicativo SIGER e nos futuros relatórios da sua Instituição.")
+        st.write("Personalize os logotipos exibidos no aplicativo SIGER, o ícone da aba do navegador e a marca da sua Instituição.")
         st.divider()
         
-        col_img1, col_img2 = st.columns(2)
+        col_img1, col_img2, col_img3 = st.columns(3)
         
-        # 1. LOGO DO SISTEMA SIGER
+        # 1. LOGO DO SISTEMA SIGER (COMPLETO)
         with col_img1:
-            st.markdown("### 1. Logotipo do Sistema SIGER")
-            st.caption("Substitui a marca padrão na barra lateral, topo e aba do navegador.")
+            st.markdown("### 1. Logotipo Completo SIGER")
+            st.caption("Utilizado na barra lateral do sistema.")
             
             if url_logo_siger:
-                st.image(url_logo_siger, width=200, caption="Logotipo Atual do SIGER")
+                st.image(url_logo_siger, width=180, caption="Logotipo Completo Atual")
             else:
-                st.info("Nenhum logotipo personalizado do SIGER enviado ainda.")
+                st.info("Nenhum logotipo completo enviado.")
                 
             with st.form("form_logo_siger", clear_on_submit=True):
-                arq_siger = st.file_uploader("Enviar novo Logotipo do SIGER (PNG/JPG)", type=["png", "jpg", "jpeg"], key="upl_siger")
-                sub_siger = st.form_submit_button("💾 Salvar Logotipo do SIGER")
+                arq_siger = st.file_uploader("Enviar Logo Completo (PNG/JPG)", type=["png", "jpg", "jpeg"], key="upl_siger")
+                sub_siger = st.form_submit_button("💾 Salvar Logo Completo")
                 
                 if sub_siger:
                     if arq_siger:
@@ -778,26 +796,59 @@ elif st.session_state.pagina_atual == "Cadastros":
                             url_pub_siger = supabase.storage.from_("identidade_visual").get_public_url(nome_siger)
                             
                             supabase.table("configuracoes").upsert({"chave": "url_logo_siger", "valor": url_pub_siger}).execute()
-                            st.success("✅ Logotipo do SIGER atualizado com sucesso!")
+                            st.success("✅ Logo Completo do SIGER atualizado!")
                             st.rerun()
                         except Exception as e:
-                            st.error(f"Erro ao enviar imagem. Verifique se o bucket 'identidade_visual' foi criado no Storage. Detalhes: {e}")
+                            st.error(f"Erro ao enviar imagem: {e}")
                     else:
                         st.warning("Selecione um arquivo de imagem.")
 
-        # 2. LOGO DA INSTITUIÇÃO
+        # 2. LOGO REDUZIDO / ÍCONE (FAVICON DO CHROME)
         with col_img2:
-            st.markdown("### 2. Logotipo da Instituição (IFES)")
-            st.caption("Exibido no cabeçalho da página inicial e futuramente nos relatórios emitidos.")
+            st.markdown("### 2. Logotipo Reduzido / Ícone")
+            st.caption("Utilizado na aba do navegador Chrome (Favicon) e espaços reduzidos.")
+            
+            if url_logo_reduzido:
+                st.image(url_logo_reduzido, width=80, caption="Ícone / Favicon Atual")
+            else:
+                st.info("Nenhum logotipo reduzido enviado.")
+                
+            with st.form("form_logo_reduzido", clear_on_submit=True):
+                arq_red = st.file_uploader("Enviar Ícone/Logo Reduzido (PNG/JPG/ICO)", type=["png", "jpg", "jpeg", "ico"], key="upl_red")
+                sub_red = st.form_submit_button("💾 Salvar Logo Reduzido")
+                
+                if sub_red:
+                    if arq_red:
+                        try:
+                            nome_red = f"logo_reduzido_{datetime.now().strftime('%Y%m%d_%H%M%S')}.png"
+                            supabase.storage.from_("identidade_visual").upload(
+                                path=nome_red,
+                                file=arq_red.getvalue(),
+                                file_options={"content-type": arq_red.type}
+                            )
+                            url_pub_red = supabase.storage.from_("identidade_visual").get_public_url(nome_red)
+                            
+                            supabase.table("configuracoes").upsert({"chave": "url_logo_reduzido", "valor": url_pub_red}).execute()
+                            st.success("✅ Logo Reduzido atualizado! O ícone na aba do Chrome será renovado.")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao enviar imagem: {e}")
+                    else:
+                        st.warning("Selecione um arquivo de imagem.")
+
+        # 3. LOGO DA INSTITUIÇÃO
+        with col_img3:
+            st.markdown("### 3. Logotipo da Instituição")
+            st.caption("Exibido no cabeçalho da tela inicial e nos relatórios emitidos.")
             
             if url_logo_instituicao:
-                st.image(url_logo_instituicao, width=200, caption="Logotipo da Instituição Atual")
+                st.image(url_logo_instituicao, width=180, caption="Logo Institucional Atual")
             else:
-                st.info("Nenhum logotipo da instituição enviado ainda.")
+                st.info("Nenhum logo da instituição enviado.")
                 
             with st.form("form_logo_inst", clear_on_submit=True):
-                arq_inst = st.file_uploader("Enviar Logotipo da Instituição (PNG/JPG)", type=["png", "jpg", "jpeg"], key="upl_inst")
-                sub_inst = st.form_submit_button("💾 Salvar Logotipo da Instituição")
+                arq_inst = st.file_uploader("Enviar Logo da Instituição (PNG/JPG)", type=["png", "jpg", "jpeg"], key="upl_inst")
+                sub_inst = st.form_submit_button("💾 Salvar Logo Instituição")
                 
                 if sub_inst:
                     if arq_inst:
@@ -811,7 +862,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             url_pub_inst = supabase.storage.from_("identidade_visual").get_public_url(nome_inst)
                             
                             supabase.table("configuracoes").upsert({"chave": "url_logo_instituicao", "valor": url_pub_inst}).execute()
-                            st.success("✅ Logotipo da Instituição atualizado com sucesso!")
+                            st.success("✅ Logo da Instituição atualizado!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao enviar imagem: {e}")
