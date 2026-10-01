@@ -351,7 +351,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         edit_sigla = st.text_input("Sigla", value=item['sigla']).upper()
                                         edit_nome = st.text_input("Nome Extenso", value=item['nome_extenso'])
                                         
-                                        # Identifica o índice atual do tipo de unidade nas opções
                                         val_atual = item.get('tipo_unidade')
                                         idx_tipo = TIPOS_UNIDADE_OPCOES.index(val_atual) if val_atual in TIPOS_UNIDADE_OPCOES else 0
                                         edit_tipo = st.selectbox("Tipo da Unidade*", options=TIPOS_UNIDADE_OPCOES, index=idx_tipo)
@@ -525,53 +524,61 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar objetivo estratégico: {e}")
 
     # ---------------------------------------------------------
-    # SUB-MÓDULO: CATEGORIAS DE RISCO (COM TIPO E SUBTIPO)
+    # SUB-MÓDULO: CATEGORIAS DE RISCOS (AJUSTADO: TABELA public.categorias_riscos)
     # ---------------------------------------------------------
     elif sub == "Categorias de Risco":
-        st.subheader("🏷️ Cadastramento de Categorias de Risco (Tipo e Subtipo)")
+        st.subheader("🏷️️ Cadastramento de Categorias de Risco (Tipo e Sub-tipo)")
         
         tab_list_cat, tab_novo_cat = st.tabs(["🔍 Categorias Cadastradas", "➕ Nova Categoria"])
         
         with tab_list_cat:
             try:
-                res_cat = supabase.table("categorias_risco").select("*").execute()
+                res_cat = supabase.table("categorias_riscos").select("*").order("tipo").execute()
                 if res_cat.data:
                     st.write(f"Total de categorias cadastradas: **{len(res_cat.data)}**")
                     for cat_item in res_cat.data:
-                        tipo_val = cat_item.get('tipo', cat_item.get('nome', 'Não Informado'))
-                        subtipo_val = cat_item.get('subtipo', '')
+                        tipo_val = cat_item.get('tipo', 'Não Informado')
+                        subtipo_val = cat_item.get('sub_tipo', '')
+                        detalhamento_val = cat_item.get('detalhamento', '')
                         
                         titulo_cat = f"🏷️ **{tipo_val}**" + (f" / *{subtipo_val}*" if subtipo_val else "")
                         
                         with st.expander(titulo_cat):
+                            if detalhamento_val:
+                                st.markdown(f"**Detalhamento:** {detalhamento_val}")
+                                
                             c1, c2 = st.columns(2)
                             with c1:
-                                pop_edit_cat = st.popover("✏️ Editar Categoria")
+                                pop_edit_cat = st.popover("✏️️ Editar Categoria")
                                 with pop_edit_cat:
                                     with st.form(f"form_edit_cat_{cat_item['id']}"):
-                                        tipo_edit = st.text_input("Tipo de Risco", value=tipo_val)
-                                        subtipo_edit = st.text_input("Subtipo de Risco", value=subtipo_val)
+                                        tipo_edit = st.text_input("Tipo de Risco*", value=tipo_val)
+                                        subtipo_edit = st.text_input("Sub-tipo de Risco*", value=subtipo_val)
+                                        detalhamento_edit = st.text_area("Detalhamento", value=detalhamento_val or "")
                                         
                                         if st.form_submit_button("💾 Salvar Alterações"):
-                                            nome_unificado = f"{tipo_edit} - {subtipo_edit}" if subtipo_edit else tipo_edit
-                                            supabase.table("categorias_risco").update({
-                                                "tipo": tipo_edit,
-                                                "subtipo": subtipo_edit,
-                                                "nome": nome_unificado
-                                            }).eq("id", cat_item['id']).execute()
-                                            st.success("Categoria atualizada com sucesso!")
-                                            st.rerun()
+                                            if not tipo_edit or not subtipo_edit:
+                                                st.warning("Tipo e Sub-tipo são obrigatórios.")
+                                            else:
+                                                supabase.table("categorias_riscos").update({
+                                                    "tipo": tipo_edit,
+                                                    "sub_tipo": subtipo_edit,
+                                                    "detalhamento": detalhamento_edit
+                                                }).eq("id", cat_item['id']).execute()
+                                                st.success("Categoria atualizada com sucesso!")
+                                                st.rerun()
                             with c2:
                                 pop_del_cat = st.popover("🗑️ Excluir Categoria")
                                 with pop_del_cat:
                                     st.warning("Confirmar exclusão desta categoria?")
                                     if st.button("Confirmar Exclusão", key=f"btn_del_cat_{cat_item['id']}"):
                                         try:
-                                            res_vinc = supabase.table("riscos").select("id").eq("categoria", cat_item.get('nome', tipo_val)).execute()
+                                            tag_cat = f"{tipo_val} - {subtipo_val}"
+                                            res_vinc = supabase.table("riscos").select("id").like("categoria", f"%{tipo_val}%").execute()
                                             if res_vinc.data and len(res_vinc.data) > 0:
                                                 st.error(f"❌ Impossível excluir: existem {len(res_vinc.data)} risco(s) vinculados a esta categoria.")
                                             else:
-                                                supabase.table("categorias_risco").delete().eq("id", cat_item['id']).execute()
+                                                supabase.table("categorias_riscos").delete().eq("id", cat_item['id']).execute()
                                                 st.success("Categoria excluída!")
                                                 st.rerun()
                                         except Exception as e:
@@ -579,10 +586,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                 else:
                     st.info("Nenhuma categoria de risco cadastrada.")
             except Exception as e:
-                if "PGRST205" in str(e):
-                    st.warning("⚠️ A tabela 'categorias_risco' ainda não foi criada no Supabase. Execute o script SQL no painel do Supabase.")
-                else:
-                    st.error(f"Erro ao carregar Categorias de Risco: {e}")
+                st.error(f"Erro ao carregar Categorias de Risco: {e}")
                 
         with tab_novo_cat:
             with st.form("form_cadastrar_cat", clear_on_submit=True):
@@ -590,29 +594,27 @@ elif st.session_state.pagina_atual == "Cadastros":
                 with col_cat1:
                     tipo_cat = st.text_input("Tipo de Risco*", placeholder="Ex: Operacional, Estratégico, Financeiro, Legal")
                 with col_cat2:
-                    subtipo_cat = st.text_input("Subtipo de Risco*", placeholder="Ex: Falha de Sistema, Fraude Interna, Perda Orçamentária")
+                    subtipo_cat = st.text_input("Sub-tipo de Risco*", placeholder="Ex: Falha de Sistema, Fraude Interna, Perda Orçamentária")
                 
-                st.caption("* Preencha o Tipo e o Subtipo da categoria.")
+                detalhamento_cat = st.text_area("Detalhamento (Opcional)", placeholder="Descrição complementar do tipo/sub-tipo de risco...")
+                
+                st.caption("* Tipo e Sub-tipo são de preenchimento obrigatório.")
                 submitted_cat = st.form_submit_button("💾 Salvar Categoria")
                 
                 if submitted_cat:
                     if not tipo_cat or not subtipo_cat:
-                        st.warning("Por favor, preencha tanto o Tipo quanto o Subtipo.")
+                        st.warning("Por favor, preencha tanto o Tipo quanto o Sub-tipo.")
                     else:
                         try:
-                            nome_unificado = f"{tipo_cat} - {subtipo_cat}"
-                            supabase.table("categorias_risco").insert({
+                            supabase.table("categorias_riscos").insert({
                                 "tipo": tipo_cat,
-                                "subtipo": subtipo_cat,
-                                "nome": nome_unificado
+                                "sub_tipo": subtipo_cat,
+                                "detalhamento": detalhamento_cat
                             }).execute()
                             st.success(f"✅ Categoria '{tipo_cat} / {subtipo_cat}' cadastrada com sucesso!")
                             st.rerun()
                         except Exception as e:
-                            if "PGRST205" in str(e):
-                                st.error("❌ A tabela 'public.categorias_risco' não existe no banco de dados. Execute o script SQL no SQL Editor do Supabase.")
-                            else:
-                                st.error(f"Erro ao salvar categoria no banco: {e}")
+                            st.error(f"Erro ao salvar categoria no banco: {e}")
 
     # ---------------------------------------------------------
     # SUB-MÓDULO: RISCOS
@@ -701,7 +703,7 @@ elif st.session_state.pagina_atual == "Cadastros":
             try:
                 res_unidades = supabase.table("unidades").select("*").execute().data or []
                 res_oe = supabase.table("objetivos_estrategicos").select("codigo, descricao").execute().data or []
-                res_cat = supabase.table("categorias_risco").select("*").execute().data or []
+                res_cat = supabase.table("categorias_riscos").select("*").execute().data or []
             except Exception as e:
                 res_unidades, res_oe, res_cat = [], [], []
 
@@ -712,14 +714,16 @@ elif st.session_state.pagina_atual == "Cadastros":
 
             opcoes_oe = [f"{o['codigo']} - {o['descricao']}" for o in res_oe] if res_oe else ["(Nenhum objetivo cadastrado)"]
             
-            # Formatação de opções de categoria com tipo e subtipo
+            # Formatação de opções de categoria a partir da tabela categorias_riscos
             if res_cat:
                 opcoes_cat = []
                 for c in res_cat:
-                    if c.get('tipo') and c.get('subtipo'):
-                        opcoes_cat.append(f"{c['tipo']} - {c['subtipo']}")
-                    else:
-                        opcoes_cat.append(c.get('nome', 'Geral'))
+                    tipo_c = c.get('tipo', '')
+                    sub_c = c.get('sub_tipo', '')
+                    if tipo_c and sub_c:
+                        opcoes_cat.append(f"{tipo_c} - {sub_c}")
+                    elif tipo_c:
+                        opcoes_cat.append(tipo_c)
             else:
                 opcoes_cat = ["Operacional - Processos", "Estratégico - Governança", "Financeiro - Orçamento", "Conformidade - Normas"]
 
