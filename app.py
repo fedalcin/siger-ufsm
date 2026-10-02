@@ -39,7 +39,6 @@ try:
 except:
     pass
 
-# Define o ícone da aba do navegador (Chrome Favicon): Prioriza o logo reduzido/ícone
 if url_logo_reduzido:
     favicon_app = url_logo_reduzido
 elif url_logo_siger:
@@ -58,10 +57,8 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilização CSS personalizada para remover espaços em branco no topo da sidebar
 st.markdown("""
     <style>
-    /* Remove padding/espaço em branco no topo da barra lateral e eleva o logotipo e menu */
     section[data-testid="stSidebar"] {
         padding-top: 0rem !important;
     }
@@ -74,14 +71,12 @@ st.markdown("""
         padding-top: 0rem !important;
     }
 
-    /* Reduz espaço do container de imagem da logo do SIGER */
     section[data-testid="stSidebar"] div[data-testid="stImage"] {
         margin-top: 0rem !important;
         margin-bottom: 0rem !important;
         padding-top: 0rem !important;
     }
 
-    /* Reduz margens do divisor e subcabeçalho */
     section[data-testid="stSidebar"] hr {
         margin-top: 0.4rem !important;
         margin-bottom: 0.4rem !important;
@@ -92,7 +87,6 @@ st.markdown("""
         margin-bottom: 0.3rem !important;
     }
     
-    /* Botões Principais e Títulos de Grupos (Expander Headers) em Azul Escuro */
     section[data-testid="stSidebar"] div[data-testid="stExpander"] details summary {
         background-color: #002147 !important;
         color: #ffffff !important;
@@ -104,21 +98,18 @@ st.markdown("""
         transition: background-color 0.3s ease;
     }
     
-    /* Efeito de destaque ao passar o mouse nos títulos dos grupos */
     section[data-testid="stSidebar"] div[data-testid="stExpander"] details summary:hover {
         background-color: #003366 !important;
         color: #ffffff !important;
         cursor: pointer;
     }
 
-    /* Ajusta a cor das setas e do texto dentro dos expanders */
     section[data-testid="stSidebar"] div[data-testid="stExpander"] details summary p,
     section[data-testid="stSidebar"] div[data-testid="stExpander"] details summary svg {
         color: #ffffff !important;
         fill: #ffffff !important;
     }
 
-    /* Botão de Início sem Expander em estilo Azul Escuro destacado */
     .btn-inicio-sidebar button {
         background-color: #002147 !important;
         color: #ffffff !important;
@@ -135,12 +126,11 @@ st.markdown("""
         color: #ffffff !important;
     }
     
-    /* Botões de Sub-itens dentro das abas expandidas com RECUO HIERÁRQUICO (TAB) */
     section[data-testid="stSidebar"] div[data-testid="stExpander"] div.stButton > button {
         text-align: left !important;
         justify-content: flex-start !important;
         width: calc(100% - 20px) !important;
-        margin-left: 20px !important; /* Efeito Tab / Recuo à esquerda */
+        margin-left: 20px !important;
         border: none !important;
         background-color: #f8f9fa !important;
         color: #333333 !important;
@@ -157,13 +147,11 @@ st.markdown("""
         border-left: 4px solid #003366 !important;
     }
     
-    /* Remoção de bordas das caixas de expander */
     section[data-testid="stSidebar"] div[data-testid="stExpander"] {
         border: none !important;
         box-shadow: none !important;
     }
     
-    /* Classe para alinhar textos no modo JUSTIFICADO na página inicial */
     .texto-justificado {
         text-align: justify !important;
         text-justify: inter-word !important;
@@ -172,7 +160,6 @@ st.markdown("""
     </style>
 """, unsafe_allow_html=True)
 
-# Opções para o seletor de Tipo de Unidade
 TIPOS_UNIDADE_OPCOES = [
     "Unidade Acadêmica",
     "Pró-Reitoria",
@@ -203,20 +190,17 @@ def navegar_para(pagina, sub_pagina=None):
 
 st.sidebar.subheader("Menu Principal")
 
-# Botão Início customizado
 st.sidebar.markdown('<div class="btn-inicio-sidebar">', unsafe_allow_html=True)
 if st.sidebar.button("🏠 Início", use_container_width=True, key="btn_inicio_top"):
     navegar_para("Início")
 st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
-# 1. GRUPO: ADMINISTRAÇÃO
 with st.sidebar.expander("⚙️ Administração", expanded=False):
     if st.button("👥 Usuários e Permissões", key="btn_adm_usr", use_container_width=True):
         navegar_para("Administração do Sistema", "Usuários")
     if st.button("🔧 Configurações Gerais", key="btn_adm_cfg", use_container_width=True):
         navegar_para("Administração do Sistema", "Configurações")
 
-# 2. GRUPO: CADASTROS
 with st.sidebar.expander("📝 Cadastros", expanded=False):
     if st.button("🏢 Unidades", key="btn_cad_unid", use_container_width=True):
         navegar_para("Cadastros", "Unidades")
@@ -233,47 +217,40 @@ with st.sidebar.expander("📝 Cadastros", expanded=False):
     if st.button("✍️ Texto da Tela Inicial", key="btn_cad_txt", use_container_width=True):
         navegar_para("Cadastros", "Texto da Tela Inicial")
 
-# 3. GRUPO: MONITORAMENTO
 with st.sidebar.expander("🔄 Monitoramento", expanded=False):
     if st.button("📌 Acompanhamento de Riscos", key="btn_mon_acomp", use_container_width=True):
         navegar_para("Monitoramento", "Acompanhamento")
     if st.button("📅 Matriz de Revisões", key="btn_mon_rev", use_container_width=True):
         navegar_para("Monitoramento", "Revisões")
 
-# 4. GRUPO: INTELIGÊNCIA GERENCIAL
 with st.sidebar.expander("🧠 Inteligência Gerencial", expanded=False):
     if st.button("💡 Análise de Tendências", key="btn_ig_tend", use_container_width=True):
         navegar_para("Inteligência Gerencial", "Tendências")
 
-# 5. GRUPO: DASHBOARDS
 with st.sidebar.expander("📊 Dashboards", expanded=False):
     if st.button("📈 Painel Geral", key="btn_dash_geral", use_container_width=True):
         navegar_para("Dashboards", "Painel Geral")
     if st.button("🎯 Matriz de Risco (5x5)", key="btn_dash_matriz", use_container_width=True):
         navegar_para("Dashboards", "Matriz 5x5")
 
-# 6. GRUPO: PLANOS DE TRATAMENTO
 with st.sidebar.expander("🛡️ Planos de Tratamento", expanded=False):
     if st.button("📋 Ações de Mitigação", key="btn_pt_acoes", use_container_width=True):
         navegar_para("Planos de Tratamento", "Ações")
 
-# 7. GRUPO: BIBLIOTECA
 with st.sidebar.expander("📚 Biblioteca", expanded=False):
     if st.button("📄 Documentos e Normativas", key="btn_bib_doc", use_container_width=True):
         navegar_para("Biblioteca", "Documentos")
 
-# 8. GRUPO: RELATÓRIOS
 with st.sidebar.expander("📑 Relatórios", expanded=False):
     if st.button("🖨️ Relatório de Riscos (PDF/Excel)", key="btn_rel_riscos", use_container_width=True):
         navegar_para("Relatórios", "Relatório Riscos")
 
-# 9. GRUPO: TRANSPARÊNCIA
 with st.sidebar.expander("🌐 Transparência", expanded=False):
     if st.button("🔓 Painel Público", key="btn_transp_pub", use_container_width=True):
         navegar_para("Transparência", "Painel Público")
 
 # ---------------------------------------------------------
-# PÁGINA: INÍCIO (COM TEXTO JUSTIFICADO E LOGO DA INSTITUIÇÃO)
+# PÁGINA: INÍCIO
 # ---------------------------------------------------------
 if st.session_state.pagina_atual == "Início":
     if url_logo_instituicao:
@@ -524,10 +501,10 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar objetivo estratégico: {e}")
 
     # ---------------------------------------------------------
-    # SUB-MÓDULO: CATEGORIAS DE RISCOS (AJUSTADO: TABELA public.categorias_riscos)
+    # SUB-MÓDULO: CATEGORIAS DE RISCOS
     # ---------------------------------------------------------
     elif sub == "Categorias de Risco":
-        st.subheader("🏷️️ Cadastramento de Categorias de Risco (Tipo e Sub-tipo)")
+        st.subheader("🏷 Cadastramento de Categorias de Risco (Tipo e Sub-tipo)")
         
         tab_list_cat, tab_novo_cat = st.tabs(["🔍 Categorias Cadastradas", "➕ Nova Categoria"])
         
@@ -541,7 +518,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                         subtipo_val = cat_item.get('sub_tipo', '')
                         detalhamento_val = cat_item.get('detalhamento', '')
                         
-                        titulo_cat = f"🏷️ **{tipo_val}**" + (f" / *{subtipo_val}*" if subtipo_val else "")
+                        titulo_cat = f"🏷️️ **{tipo_val}**" + (f" / *{subtipo_val}*" if subtipo_val else "")
                         
                         with st.expander(titulo_cat):
                             if detalhamento_val:
@@ -549,7 +526,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                 
                             c1, c2 = st.columns(2)
                             with c1:
-                                pop_edit_cat = st.popover("✏️️ Editar Categoria")
+                                pop_edit_cat = st.popover("✏ Edit Categoria")
                                 with pop_edit_cat:
                                     with st.form(f"form_edit_cat_{cat_item['id']}"):
                                         tipo_edit = st.text_input("Tipo de Risco*", value=tipo_val)
@@ -573,14 +550,9 @@ elif st.session_state.pagina_atual == "Cadastros":
                                     st.warning("Confirmar exclusão desta categoria?")
                                     if st.button("Confirmar Exclusão", key=f"btn_del_cat_{cat_item['id']}"):
                                         try:
-                                            tag_cat = f"{tipo_val} - {subtipo_val}"
-                                            res_vinc = supabase.table("riscos").select("id").like("categoria", f"%{tipo_val}%").execute()
-                                            if res_vinc.data and len(res_vinc.data) > 0:
-                                                st.error(f"❌ Impossível excluir: existem {len(res_vinc.data)} risco(s) vinculados a esta categoria.")
-                                            else:
-                                                supabase.table("categorias_riscos").delete().eq("id", cat_item['id']).execute()
-                                                st.success("Categoria excluída!")
-                                                st.rerun()
+                                            supabase.table("categorias_riscos").delete().eq("id", cat_item['id']).execute()
+                                            st.success("Categoria excluída!")
+                                            st.rerun()
                                         except Exception as e:
                                             st.error(f"Erro ao excluir: {e}")
                 else:
@@ -617,7 +589,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar categoria no banco: {e}")
 
     # ---------------------------------------------------------
-    # SUB-MÓDULO: RISCOS
+    # SUB-MÓDULO: RISCOS (REFORMULADO COM TODOS OS NOVOS CAMPOS)
     # ---------------------------------------------------------
     elif sub == "Riscos":
         st.subheader("📋 Gestão e Cadastro de Riscos Institucionais")
@@ -633,14 +605,26 @@ elif st.session_state.pagina_atual == "Cadastros":
                     st.write(f"Total de riscos registrados: **{len(dados)}**")
                     
                     for r_item in dados:
-                        nivel = r_item.get('nivel_risco', 1)
+                        nivel = r_item.get('nivel_risco', 1) or 1
                         cor_nivel = "🔴 (Crítico)" if nivel >= 15 else "🟡 (Médio)" if nivel >= 8 else "🟢 (Baixo)"
+                        cod_exib = r_item.get('id')
                         
-                        with st.expander(f"🛡️ Risco #{r_item['id']} | {r_item['unidade']} | Nível {nivel} {cor_nivel}"):
-                            st.markdown(f"**Evento de Risco:** {r_item['evento_risco']}")
-                            st.markdown(f"**Processo:** {r_item['processo']} | **Categoria:** {r_item['categoria']}")
-                            st.markdown(f"**Causa:** {r_item['causa']} | **Consequência:** {r_item['consequencia']}")
-                            st.markdown(f"**Responsável:** {r_item['responsavel']} | **Situação:** {r_item['situacao']}")
+                        with st.expander(f"🛡️ Risco #{cod_exib} | {r_item.get('unidade', 'Sem Unidade')} | Nível {nivel} {cor_nivel}"):
+                            col_det1, col_det2 = st.columns(2)
+                            with col_det1:
+                                st.markdown(f"**Evento:** {r_item.get('evento', '-')}")
+                                st.markdown(f"**Descrição do Risco:** {r_item.get('descricao_risco', '-')}")
+                                st.markdown(f"**Causa:** {r_item.get('causa', '-')}")
+                                st.markdown(f"**Consequência:** {r_item.get('consequencia', '-')}")
+                                st.markdown(f"**Processo Relacionado:** {r_item.get('processo_relacionado', '-')}")
+                            with col_det2:
+                                st.markdown(f"**Categoria:** {r_item.get('categoria_risco', '-')}")
+                                st.markdown(f"**Objetivo Estratégico:** {r_item.get('objetivo_estrategico', '-')}")
+                                st.markdown(f"**Gestor do Risco:** {r_item.get('gestor_risco', '-')}")
+                                st.markdown(f"**Data de Identificação:** {r_item.get('data_identificacao', '-')}")
+                                st.markdown(f"**Periodicidade de Revisão:** {r_item.get('periodicidade_revisao', '-')}")
+                                st.markdown(f"**Situação/Status:** `{r_item.get('situacao_status', '-')}`")
+                                st.markdown(f"**Matriz de Avaliação:** Probabilidade **{r_item.get('probabilidade', 1)}** x Impacto **{r_item.get('impacto', 1)}**")
                             
                             col_r_edit, col_r_del = st.columns([1, 1])
                             
@@ -649,35 +633,37 @@ elif st.session_state.pagina_atual == "Cadastros":
                                 with pop_edit_r:
                                     st.markdown("### Editar Informações do Risco")
                                     with st.form(f"form_edit_risco_{r_item['id']}"):
-                                        e_proc = st.text_input("Processo", value=r_item['processo'])
-                                        e_evento = st.text_area("Evento de Risco", value=r_item['evento_risco'])
-                                        e_causa = st.text_area("Causa", value=r_item['causa'])
-                                        e_cons = st.text_area("Consequência", value=r_item['consequencia'])
-                                        e_prob = st.slider("Probabilidade", 1, 5, value=r_item['probabilidade'])
-                                        e_imp = st.slider("Impacto", 1, 5, value=r_item['impacto'])
-                                        e_resp = st.text_input("Responsável", value=r_item['responsavel'])
-                                        e_sit = st.selectbox("Situação", ["Identificado", "Em Análise", "Em Tratamento", "Monitorado", "Encerrado/Mitigado"], index=0)
+                                        e_evento = st.text_input("Evento", value=r_item.get('evento', ''))
+                                        e_desc = st.text_area("Descrição do Risco", value=r_item.get('descricao_risco', ''))
+                                        e_causa = st.text_area("Causa", value=r_item.get('causa', ''))
+                                        e_cons = st.text_area("Consequência", value=r_item.get('consequencia', ''))
+                                        e_proc = st.text_input("Processo Relacionado", value=r_item.get('processo_relacionado', ''))
+                                        
+                                        col_ep1, col_ep2 = st.columns(2)
+                                        with col_ep1:
+                                            e_prob = st.slider("Probabilidade", 1, 5, value=r_item.get('probabilidade', 3))
+                                        with col_ep2:
+                                            e_imp = st.slider("Impacto", 1, 5, value=r_item.get('impacto', 3))
+                                            
+                                        e_gestor = st.text_input("Gestor do Risco", value=r_item.get('gestor_risco', ''))
+                                        e_period = st.selectbox("Periodicidade de Revisão", ["Mensal", "Trimestral", "Semestral", "Anual"], index=2)
+                                        e_sit = st.selectbox("Situação/Status", ["Identificado", "Em Análise", "Em Tratamento", "Monitorado", "Encerrado/Mitigado"], index=0)
                                         
                                         if st.form_submit_button("💾 Salvar Alterações"):
                                             novo_nivel = e_prob * e_imp
                                             supabase.table("riscos").update({
-                                                "processo": e_proc,
-                                                "evento_risco": e_evento,
+                                                "evento": e_evento,
+                                                "descricao_risco": e_desc,
                                                 "causa": e_causa,
                                                 "consequencia": e_cons,
+                                                "processo_relacionado": e_proc,
                                                 "probabilidade": e_prob,
                                                 "impacto": e_imp,
                                                 "nivel_risco": novo_nivel,
-                                                "responsavel": e_resp,
-                                                "situacao": e_sit
+                                                "gestor_risco": e_gestor,
+                                                "periodicidade_revisao": e_period,
+                                                "situacao_status": e_sit
                                             }).eq("id", r_item['id']).execute()
-                                            
-                                            supabase.table("risco_historico").insert({
-                                                "risco_id": r_item['id'],
-                                                "data_alteracao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                                "responsavel_alteracao": e_resp,
-                                                "detalhes": f"Risco editado. Novo Nível: {novo_nivel} (P:{e_prob}, I:{e_imp}). Situação: {e_sit}."
-                                            }).execute()
                                             
                                             st.success("Risco atualizado!")
                                             st.rerun()
@@ -685,10 +671,9 @@ elif st.session_state.pagina_atual == "Cadastros":
                             with col_r_del:
                                 pop_del_r = st.popover("🗑️ Excluir Risco")
                                 with pop_del_r:
-                                    st.warning("Deseja realmente excluir este risco e seu histórico?")
+                                    st.warning("Deseja realmente excluir este risco?")
                                     if st.button("Confirmar Exclusão", key=f"btn_del_r_{r_item['id']}"):
                                         try:
-                                            supabase.table("risco_historico").delete().eq("risco_id", r_item['id']).execute()
                                             supabase.table("riscos").delete().eq("id", r_item['id']).execute()
                                             st.success("Risco excluído!")
                                             st.rerun()
@@ -707,101 +692,78 @@ elif st.session_state.pagina_atual == "Cadastros":
             except Exception as e:
                 res_unidades, res_oe, res_cat = [], [], []
 
-            if res_unidades:
-                opcoes_unid = [f"{u['codigo']} - {u['sigla']} ({u.get('tipo_unidade', u['nome_extenso'])})" for u in res_unidades]
-            else:
-                opcoes_unid = ["(Nenhuma unidade cadastrada)"]
-
+            opcoes_unid = [f"{u['codigo']} - {u['sigla']} ({u.get('tipo_unidade', u['nome_extenso'])})" for u in res_unidades] if res_unidades else ["(Nenhuma unidade cadastrada)"]
             opcoes_oe = [f"{o['codigo']} - {o['descricao']}" for o in res_oe] if res_oe else ["(Nenhum objetivo cadastrado)"]
             
-            # Formatação de opções de categoria a partir da tabela categorias_riscos
             if res_cat:
-                opcoes_cat = []
-                for c in res_cat:
-                    tipo_c = c.get('tipo', '')
-                    sub_c = c.get('sub_tipo', '')
-                    if tipo_c and sub_c:
-                        opcoes_cat.append(f"{tipo_c} - {sub_c}")
-                    elif tipo_c:
-                        opcoes_cat.append(tipo_c)
+                opcoes_cat = [f"{c['tipo']} - {c['sub_tipo']}" for c in res_cat if c.get('tipo') and c.get('sub_tipo')]
             else:
                 opcoes_cat = ["Operacional - Processos", "Estratégico - Governança", "Financeiro - Orçamento", "Conformidade - Normas"]
 
             with st.form("form_cadastrar_risco", clear_on_submit=True):
-                st.markdown("##### 1. Contexto do Risco")
+                st.markdown("##### 1. Contexto Institucional")
                 col_c1, col_c2 = st.columns(2)
                 with col_c1:
                     unidade_sel = st.selectbox("Unidade Responsável*", options=opcoes_unid)
-                    processo_input = st.text_input("Processo Associado*", placeholder="Ex: Concessão de Bolsas, Pregão Eletrônico, Matrícula")
+                    processo_rel_input = st.text_input("Processo Relacionado*", placeholder="Ex: Concessão de Bolsas, Pregão Eletrônico, Matrícula")
                 with col_c2:
                     oe_sel = st.selectbox("Objetivo Estratégico Relacionado*", options=opcoes_oe)
                     categoria_sel = st.selectbox("Categoria do Risco*", options=opcoes_cat)
 
-                st.markdown("##### 2. Identificação e Análise do Risco")
-                evento_input = st.text_area("Evento de Risco*", placeholder="Descreva o evento incerto que pode afetar os objetivos...")
+                st.markdown("##### 2. Identificação do Risco (Causa, Evento e Consequência)")
+                evento_input = st.text_input("Evento de Risco*", placeholder="O que pode acontecer? (Ex: Indisponibilidade do sistema de matrícula)")
+                desc_risco_input = st.text_area("Descrição Detalhada do Risco*", placeholder="Detalhamento complementar do contexto do risco...")
+                
                 col_i1, col_i2 = st.columns(2)
                 with col_i1:
                     causa_input = st.text_area("Causa(s)*", placeholder="Quais fatores geram ou favorecem a ocorrência deste risco?")
                 with col_i2:
                     consequencia_input = st.text_area("Consequência(s)*", placeholder="Quais os impactos caso o risco se concretize?")
 
-                st.markdown("##### 3. Avaliação Qualitativa")
+                st.markdown("##### 3. Avaliação Qualitativa (Probabilidade x Impacto)")
                 col_a1, col_a2 = st.columns(2)
                 with col_a1:
-                    prob_val = st.slider("Probabilidade (1: Muito Baixa a 5: Muito Alta)", 1, 5, 3)
+                    prob_val = st.slider("Probabilidade (1: Muito Baixa a 5: Muito Alta)*", 1, 5, 3)
                 with col_a2:
-                    imp_val = st.slider("Impacto (1: Muito Baixo a 5: Muito Alto)", 1, 5, 3)
+                    imp_val = st.slider("Impacto (1: Muito Baixo a 5: Muito Alto)*", 1, 5, 3)
 
-                st.markdown("##### 4. Governança, Controle e Prazos")
+                st.markdown("##### 4. Governança, Gestão e Prazos")
                 col_g1, col_g2, col_g3 = st.columns(3)
                 with col_g1:
-                    resp_input = st.text_input("Responsável pelo Risco*", placeholder="Nome / Cargo do servidor responsável")
-                    situacao_sel = st.selectbox("Situação Inicial*", ["Identificado", "Em Análise", "Em Tratamento", "Monitorado", "Encerrado/Mitigado"])
+                    gestor_input = st.text_input("Gestor do Risco*", placeholder="Nome / Cargo do servidor responsável")
+                    situacao_sel = st.selectbox("Situação/Status Inicial*", ["Identificado", "Em Análise", "Em Tratamento", "Monitorado", "Encerrado/Mitigado"])
                 with col_g2:
-                    dt_cadastro = st.date_input("Data do Cadastro*", datetime.now())
+                    dt_ident = st.date_input("Data de Identificação*", datetime.now())
                 with col_g3:
-                    dt_revisao = st.date_input("Data Prevista para Revisão*", datetime.now())
+                    period_sel = st.selectbox("Periodicidade de Revisão*", ["Mensal", "Trimestral", "Semestral", "Anual"], index=2)
 
-                st.caption("* Campos de preenchimento obrigatório/recomendado.")
+                st.caption("* Campos de preenchimento obrigatório.")
                 submitted_risco = st.form_submit_button("💾 Salvar Risco no Sistema")
                 
                 if submitted_risco:
-                    if not evento_input or not processo_input or not resp_input:
-                        st.warning("Preencha os campos obrigatórios (Processo, Evento de Risco e Responsável).")
+                    if not evento_input or not desc_risco_input or not gestor_input or not causa_input or not consequencia_input:
+                        st.warning("Preencha todos os campos obrigatórios (Evento, Descrição, Causa, Consequência e Gestor).")
                     else:
                         nivel_calc = prob_val * imp_val
                         novo_risco_dados = {
                             "unidade": unidade_sel,
-                            "processo": processo_input,
+                            "processo_relacionado": processo_rel_input,
                             "objetivo_estrategico": oe_sel,
-                            "categoria": categoria_sel,
-                            "evento_risco": evento_input,
+                            "categoria_risco": categoria_sel,
+                            "evento": evento_input,
+                            "descricao_risco": desc_risco_input,
                             "causa": causa_input,
                             "consequencia": consequencia_input,
                             "probabilidade": prob_val,
                             "impacto": imp_val,
                             "nivel_risco": nivel_calc,
-                            "responsavel": resp_input,
-                            "data_cadastro": dt_cadastro.strftime("%Y-%m-%d"),
-                            "data_revisao": dt_revisao.strftime("%Y-%m-%d"),
-                            "situacao": situacao_sel
+                            "gestor_risco": gestor_input,
+                            "data_identificacao": dt_ident.strftime("%Y-%m-%d"),
+                            "periodicidade_revisao": period_sel,
+                            "situacao_status": situacao_sel
                         }
                         try:
-                            res_ins = supabase.table("riscos").insert(novo_risco_dados).execute()
-                            
-                            if res_ins.data:
-                                novo_id = res_ins.data[0]["id"]
-                                hist_dados = {
-                                    "risco_id": novo_id,
-                                    "data_alteracao": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
-                                    "responsavel_alteracao": resp_input,
-                                    "detalhes": f"Cadastro inicial do risco com Nível {nivel_calc} (Probabilidade: {prob_val}, Impacto: {imp_val}). Situação: {situacao_sel}."
-                                }
-                                try:
-                                    supabase.table("risco_historico").insert(hist_dados).execute()
-                                except:
-                                    pass
-
+                            supabase.table("riscos").insert(novo_risco_dados).execute()
                             st.success("✅ Risco registrado com sucesso!")
                             st.rerun()
                         except Exception as e:
@@ -817,7 +779,6 @@ elif st.session_state.pagina_atual == "Cadastros":
         
         col_img1, col_img2, col_img3 = st.columns(3)
         
-        # 1. LOGO DO SISTEMA SIGER (COMPLETO)
         with col_img1:
             st.markdown("### 1. Logotipo Completo SIGER")
             st.caption("Utilizado na barra lateral do sistema.")
@@ -850,7 +811,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                     else:
                         st.warning("Selecione um arquivo de imagem.")
 
-        # 2. LOGO REDUZIDO / ÍCONE (FAVICON DO CHROME)
         with col_img2:
             st.markdown("### 2. Logotipo Reduzido / Ícone")
             st.caption("Utilizado na aba do navegador Chrome (Favicon) e espaços reduzidos.")
@@ -876,14 +836,13 @@ elif st.session_state.pagina_atual == "Cadastros":
                             url_pub_red = supabase.storage.from_("identidade_visual").get_public_url(nome_red)
                             
                             supabase.table("configuracoes").upsert({"chave": "url_logo_reduzido", "valor": url_pub_red}).execute()
-                            st.success("✅ Logo Reduzido atualizado! O ícone na aba do Chrome será renovado.")
+                            st.success("✅ Logo Reduzido atualizado!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao enviar imagem: {e}")
                     else:
                         st.warning("Selecione um arquivo de imagem.")
 
-        # 3. LOGO DA INSTITUIÇÃO
         with col_img3:
             st.markdown("### 3. Logotipo da Instituição")
             st.caption("Exibido no cabeçalho da tela inicial e nos relatórios emitidos.")
@@ -1021,7 +980,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                         "chave": "texto_pagina_inicial",
                         "valor": novo_texto
                     }).execute()
-                    st.success("✅ Texto da tela inicial atualizado com sucesso! Acesse o menu 'Início' para visualizar.")
+                    st.success("✅ Texto da tela inicial atualizado com sucesso!")
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao salvar texto no banco de dados: {e}")
@@ -1044,7 +1003,7 @@ elif st.session_state.pagina_atual == "Biblioteca":
                     st.write(doc.get('descricao', 'Sem descrição cadastrada.'))
                     st.link_button("📥 Acessar / Baixar PDF", doc['url_publica'])
         else:
-            st.info("Nenhum documento disponível no momento. Os administradores podem incluir materiais no menu 'Cadastros > Documentos da Biblioteca'.")
+            st.info("Nenhum documento disponível no momento.")
     except Exception as e:
         st.error(f"Erro ao carregar a biblioteca: {e}")
 
@@ -1055,4 +1014,4 @@ else:
     st.title(f"🛠️ {st.session_state.pagina_atual}")
     if st.session_state.sub_pagina_atual:
         st.subheader(f"Área: {st.session_state.sub_pagina_atual}")
-    st.info("Módulo em fase de estruturação. Em breve implementaremos as funcionalidades desta área.")
+    st.info("Módulo em fase de estruturação.")
