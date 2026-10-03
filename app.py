@@ -39,7 +39,6 @@ try:
 except:
     pass
 
-# Define o ícone da aba do navegador (Chrome Favicon)
 if url_logo_reduzido:
     favicon_app = url_logo_reduzido
 elif url_logo_siger:
@@ -58,7 +57,6 @@ st.set_page_config(
     layout="wide"
 )
 
-# Estilização CSS personalizada
 st.markdown("""
     <style>
     section[data-testid="stSidebar"] {
@@ -168,7 +166,6 @@ TIPOS_UNIDADE_OPCOES = [
     "Diretoria"
 ]
 
-# Função auxiliar para formatar strings YYYY-MM-DD para DD/MM/AAAA
 def formatar_data_br(data_str):
     if not data_str:
         return "-"
@@ -178,7 +175,6 @@ def formatar_data_br(data_str):
     except Exception:
         return data_str
 
-# Função auxiliar para formatar strings ISO para DD/MM/AAAA HH:MM
 def formatar_data_hora_br(data_hora_str):
     if not data_hora_str:
         return "-"
@@ -188,7 +184,6 @@ def formatar_data_hora_br(data_hora_str):
     except Exception:
         return data_hora_str
 
-# Função auxiliar para calcular badge temporal do prazo
 def obter_badge_prazo(data_conclusao_str, status_acao):
     if status_acao == "Concluída":
         return "🟢 Concluída", "success"
@@ -208,6 +203,39 @@ def obter_badge_prazo(data_conclusao_str, status_acao):
             return f"🟢 No Prazo ({dias_restantes} dias)", "info"
     except Exception:
         return "⚪ Data Inválida", "off"
+
+# ---------------------------------------------------------
+# ETAPA 5: FUNÇÃO DE AUTOMAÇÃO DE STATUS DO RISCO
+# ---------------------------------------------------------
+def recalcular_e_atualizar_status_risco(risco_id):
+    """
+    Avalia as ações vinculadas ao risco e atualiza o status:
+    - Se houver ação "Em andamento" / "Em Andamento" -> Status Risco: "Em tratamento"
+    - Se TODAS as ações forem "Concluída" -> Status Risco: "Monitorado"
+    """
+    try:
+        # Busca todas as ações vinculadas ao risco
+        res_acoes = supabase.table("acoes_tratamento").select("status_acao").eq("risco_id", risco_id).execute()
+        acoes = res_acoes.data or []
+        
+        if not acoes:
+            return
+        
+        total_acoes = len(acoes)
+        concluidas = sum(1 for a in acoes if a.get("status_acao") == "Concluída")
+        em_andamento = sum(1 for a in acoes if a.get("status_acao") in ["Em andamento", "Em Andamento"])
+
+        novo_status_risco = None
+
+        if concluidas == total_acoes:
+            novo_status_risco = "Monitorado"
+        elif em_andamento > 0 or concluidas > 0:
+            novo_status_risco = "Em tratamento"
+
+        if novo_status_risco:
+            supabase.table("riscos").update({"situacao_status": novo_status_risco}).eq("id", risco_id).execute()
+    except Exception as e:
+        st.error(f"Erro ao recalcular status automático do risco: {e}")
 
 # ---------------------------------------------------------
 # BARRA LATERAL (LOGOTIPO SIGER E MENU EXPANSÍVEL)
@@ -233,7 +261,6 @@ def navegar_para(pagina, sub_pagina=None):
 
 st.sidebar.subheader("Menu Principal")
 
-# Botões Principais no Topo
 st.sidebar.markdown('<div class="btn-inicio-sidebar">', unsafe_allow_html=True)
 if st.sidebar.button("🏠 Início", use_container_width=True, key="btn_inicio_top"):
     navegar_para("Início")
@@ -341,13 +368,12 @@ if st.session_state.pagina_atual == "Início":
     st.info("👈 Utilize o menu lateral para navegar entre os módulos do sistema.")
 
 # ---------------------------------------------------------
-# PÁGINA ETAPA 3 & 4: CAIXA DE ENTRADA E WORKFLOW DE EXECUÇÃO
+# PÁGINA: CAIXA DE ENTRADA
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Caixa de Entrada":
     st.title("📥 Caixa de Entrada de Demandas")
     st.caption("Acompanhe, gerencie, responda e tramite ações e revisões sob responsabilidade de sua unidade.")
     
-    # 1. Filtro de Simulação de Unidade / Usuário Logado
     try:
         res_unid_list = supabase.table("unidades").select("sigla, nome_extenso").order("sigla").execute().data or []
         opcoes_unid = [u["sigla"] for u in res_unid_list]
@@ -367,7 +393,6 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
 
     st.divider()
 
-    # 2. Busca das ações pertencentes à unidade ativa
     try:
         res_cx_acoes = supabase.table("acoes_tratamento")\
             .select("*, riscos(id, evento, unidade, gestor_risco, situacao_status)")\
@@ -381,21 +406,18 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
         st.error(f"Erro ao carregar demandas da caixa de entrada: {e}")
         lista_demandas = []
 
-    # Categorização das demandas por status
     demandas_pendentes = [a for a in lista_demandas if a.get("status_acao") in ["Pendente", None]]
-    demandas_andamento = [a for a in lista_demandas if a.get("status_acao") == "Em andamento"]
+    demandas_andamento = [a for a in lista_demandas if a.get("status_acao") in ["Em andamento", "Em Andamento"]]
     demandas_devolvidas = [a for a in lista_demandas if a.get("status_acao") == "Devolvida"]
     demandas_concluidas = [a for a in lista_demandas if a.get("status_acao") == "Concluída"]
 
-    # Abas organizadoras
     tab_pend, tab_and, tab_dev, tab_conc = st.tabs([
         f"📥 Novas / Pendentes ({len(demandas_pendentes)})",
-        f"⏳ Em andamento ({len(demandas_andamento)})",
+        f"⏳ Em Andamento ({len(demandas_andamento)})",
         f"↩️ Devolvidas ({len(demandas_devolvidas)})",
         f"✅ Concluídas ({len(demandas_concluidas)})"
     ])
 
-    # Função interna para renderizar a lista de demandas e o formulário do workflow (ETAPA 4)
     def renderizar_lista_demandas(demandas_lista, exibe_badge_nova=False):
         if not demandas_lista:
             st.info("Nenhuma demanda encontrada nesta categoria para a unidade selecionada.")
@@ -412,18 +434,19 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
             evento_risco = dados_risco.get("evento", "Não especificado")
             gestor_risco = dados_risco.get("gestor_risco", "Gestor do Risco")
             unidade_risco_origem = dados_risco.get("unidade", unidade_ativa)
+            situacao_risco = dados_risco.get("situacao_status", "Identificado")
             
-            # Cálculo de Badges Visuais
             txt_badge_prazo, tipo_badge_prazo = obter_badge_prazo(acao_item.get("previsao_data_conclusao"), status_ac)
             
             badge_nova_txt = "🔵 Nova | " if (exibe_badge_nova and status_ac == "Pendente") else ""
-            titulo_card = f"{badge_nova_txt}Risco #{r_id} (Ação {seq}) | {txt_badge_prazo} | {nome_acao}"
+            titulo_card = f"{badge_nova_txt}Risco #{r_id} ({situacao_risco}) | Ação {seq} | {txt_badge_prazo} | {nome_acao}"
 
             with st.expander(titulo_card):
                 c_det1, c_det2 = st.columns([2, 1])
                 
                 with c_det1:
                     st.markdown(f"**Evento de Risco:** {evento_risco}")
+                    st.markdown(f"**Status Atual do Risco:** `{situacao_risco}`")
                     st.markdown(f"**Ação:** {nome_acao}")
                     st.markdown(f"**Objetivo:** {acao_item.get('objetivo_acao', '-')}")
                     st.markdown(f"**Como Executar:** {acao_item.get('como_sera_implementada', '-')}")
@@ -436,7 +459,6 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                     
                 st.divider()
                 
-                # Busca a última movimentação da ação
                 pct_atual = 0
                 try:
                     res_ult_mov = supabase.table("movimentacoes_acoes")\
@@ -459,7 +481,6 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                 except Exception:
                     st.caption("Não foi possível carregar a última movimentação.")
 
-                # Busca a última tramitação registrada
                 try:
                     res_ult_tram = supabase.table("tramitacoes")\
                         .select("*")\
@@ -474,91 +495,119 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                 except Exception:
                     pass
 
-                # ---------------------------------------------------------
-                # ETAPA 4: POPOVER DE WORKFLOW (ATUAÇÃO E TRAMITAÇÃO)
-                # ---------------------------------------------------------
-                pop_atuar = st.popover("⚡ Responder / Atualizar Demanda")
-                with pop_atuar:
-                    st.markdown(f"### Atuação na Ação nº {seq} (Risco #{r_id})")
-                    
-                    with st.form(f"form_wf_atuacao_{r_id}_{seq}"):
-                        st.markdown("##### 1. Progresso e Status da Ação")
-                        novo_pct = st.slider("Percentual de Execução Concluído", 0, 100, value=int(pct_atual), step=5, key=f"sld_pct_{r_id}_{seq}")
+                col_btn_wf1, col_btn_wf2 = st.columns([1, 1])
+
+                with col_btn_wf1:
+                    pop_atuar = st.popover("⚡ Responder / Atualizar Demanda")
+                    with pop_atuar:
+                        st.markdown(f"### Atuação na Ação nº {seq} (Risco #{r_id})")
                         
-                        opcoes_status_wf = ["Pendente", "Em andamento", "Devolvida", "Concluída"]
-                        idx_st_wf = opcoes_status_wf.index(status_ac) if status_ac in opcoes_status_wf else 1
-                        novo_status_ac = st.selectbox("Novo Status da Ação", opcoes_status_wf, index=idx_st_wf, key=f"sb_st_{r_id}_{seq}")
-                        
-                        st.markdown("##### 2. Descrição das Atividades Realizadas / Parecer Técnico")
-                        desc_avanco_wf = st.text_area(
-                            "Relato de Avanço / Evidências / Justificativa*", 
-                            placeholder="Descreva as medidas adotadas, prazos pactuados, links de evidências ou motivos de eventual devolução/atraso...",
-                            key=f"txt_av_{r_id}_{seq}"
-                        )
-                        
-                        st.markdown("##### 3. Tramitação da Demanda")
-                        col_t_wf1, col_t_wf2 = st.columns(2)
-                        with col_t_wf1:
-                            # Destino padrão pode ser a unidade de origem do Risco ou outra selecionada
-                            idx_dest = opcoes_unid.index(unidade_risco_origem) if unidade_risco_origem in opcoes_unid else 0
-                            unid_destino_wf = st.selectbox("Encaminhar/Tramitar Para Unidade*", opcoes_unid, index=idx_dest, key=f"sb_dest_{r_id}_{seq}")
-                        with col_t_wf2:
-                            resp_destino_wf = st.text_input("Nome do Destinatário / Responsável*", value=gestor_risco, key=f"txt_resp_dest_{r_id}_{seq}")
+                        with st.form(f"form_wf_atuacao_{r_id}_{seq}"):
+                            st.markdown("##### 1. Progresso e Status da Ação")
+                            novo_pct = st.slider("Percentual de Execução Concluído", 0, 100, value=int(pct_atual), step=5, key=f"sld_pct_{r_id}_{seq}")
                             
-                        remetente_wf = st.text_input("Seu Nome (Servidor Remetente)*", value=acao_item.get('nome_responsavel_implementacao', ''), key=f"txt_rem_{r_id}_{seq}")
-                        
-                        btn_enviar_wf = st.form_submit_button("🚀 Gravar Avanço e Tramitar Demanda")
-                        
-                        if btn_enviar_wf:
-                            if not desc_avanco_wf or not remetente_wf or not resp_destino_wf:
-                                st.warning("Por favor, preencha o relato do avanço, seu nome e o destinatário.")
-                            else:
-                                try:
-                                    # A. Atualiza a ação de tratamento (Status e Unidade Responsável caso tenha sido repassada)
-                                    supabase.table("acoes_tratamento").update({
-                                        "status_acao": novo_status_ac,
-                                        "unidade_responsavel": unid_destino_wf,
-                                        "nome_responsavel_implementacao": resp_destino_wf
-                                    }).eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
-                                    
-                                    # B. Insere a nova movimentação no histórico
-                                    dados_mov_wf = {
-                                        "risco_id": r_id,
-                                        "numero_sequencial": seq,
-                                        "status_anterior": status_ac,
-                                        "status_novo": novo_status_ac,
-                                        "descricao_avanco": desc_avanco_wf,
-                                        "percentual_conclusao": novo_pct,
-                                        "unidade_responsavel": unid_destino_wf,
-                                        "usuario_responsavel": resp_destino_wf
-                                    }
-                                    supabase.table("movimentacoes_acoes").insert(dados_mov_wf).execute()
+                            opcoes_status_wf = ["Pendente", "Em andamento", "Devolvida", "Concluída"]
+                            idx_st_wf = opcoes_status_wf.index(status_ac) if status_ac in opcoes_status_wf else 1
+                            novo_status_ac = st.selectbox("Novo Status da Ação", opcoes_status_wf, index=idx_st_wf, key=f"sb_st_{r_id}_{seq}")
+                            
+                            st.markdown("##### 2. Descrição das Atividades Realizadas / Parecer Técnico")
+                            desc_avanco_wf = st.text_area(
+                                "Relato de Avanço / Evidências / Justificativa*", 
+                                placeholder="Descreva as medidas adotadas, prazos pactuados, links de evidências...",
+                                key=f"txt_av_{r_id}_{seq}"
+                            )
+                            
+                            st.markdown("##### 3. Tramitação da Demanda")
+                            col_t_wf1, col_t_wf2 = st.columns(2)
+                            with col_t_wf1:
+                                idx_dest = opcoes_unid.index(unidade_risco_origem) if unidade_risco_origem in opcoes_unid else 0
+                                unid_destino_wf = st.selectbox("Encaminhar/Tramitar Para Unidade*", opcoes_unid, index=idx_dest, key=f"sb_dest_{r_id}_{seq}")
+                            with col_t_wf2:
+                                resp_destino_wf = st.text_input("Nome do Destinatário / Responsável*", value=gestor_risco, key=f"txt_resp_dest_{r_id}_{seq}")
+                                
+                            remetente_wf = st.text_input("Seu Nome (Servidor Remetente)*", value=acao_item.get('nome_responsavel_implementacao', ''), key=f"txt_rem_{r_id}_{seq}")
+                            
+                            btn_enviar_wf = st.form_submit_button("🚀 Gravar Avanço e Tramitar Demanda")
+                            
+                            if btn_enviar_wf:
+                                if not desc_avanco_wf or not remetente_wf or not resp_destino_wf:
+                                    st.warning("Por favor, preencha o relato do avanço, seu nome e o destinatário.")
+                                else:
+                                    try:
+                                        supabase.table("acoes_tratamento").update({
+                                            "status_acao": novo_status_ac,
+                                            "unidade_responsavel": unid_destino_wf,
+                                            "nome_responsavel_implementacao": resp_destino_wf
+                                        }).eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
+                                        
+                                        dados_mov_wf = {
+                                            "risco_id": r_id,
+                                            "numero_sequencial": seq,
+                                            "status_anterior": status_ac,
+                                            "status_novo": novo_status_ac,
+                                            "descricao_avanco": desc_avanco_wf,
+                                            "percentual_conclusao": novo_pct,
+                                            "unidade_responsavel": unid_destino_wf,
+                                            "usuario_responsavel": resp_destino_wf
+                                        }
+                                        supabase.table("movimentacoes_acoes").insert(dados_mov_wf).execute()
 
-                                    # C. Insere o registro de tramitação
-                                    dados_tram_wf = {
-                                        "risco_id": r_id,
-                                        "unidade_origem": unidade_ativa,
-                                        "unidade_destino": unid_destino_wf,
-                                        "usuario_remetente": remetente_wf,
-                                        "parecer_observacao": desc_avanco_wf
-                                    }
-                                    supabase.table("tramitacoes").insert(dados_tram_wf).execute()
+                                        dados_tram_wf = {
+                                            "risco_id": r_id,
+                                            "unidade_origem": unidade_ativa,
+                                            "unidade_destino": unid_destino_wf,
+                                            "usuario_remetente": remetente_wf,
+                                            "parecer_observacao": desc_avanco_wf
+                                        }
+                                        supabase.table("tramitacoes").insert(dados_tram_wf).execute()
 
-                                    st.success("✅ Demanda atualizada e tramitada com sucesso!")
-                                    st.rerun()
-                                except Exception as e_wf:
-                                    st.error(f"Erro ao processar workflow: {e_wf}")
+                                        # ETAPA 5: Executa a regra automática de transição de status do Risco
+                                        recalcular_e_atualizar_status_risco(r_id)
 
-    # Renders das abas
+                                        st.success("✅ Demanda atualizada, tramitada e status do risco recalculado!")
+                                        st.rerun()
+                                    except Exception as e_wf:
+                                        st.error(f"Erro ao processar workflow: {e_wf}")
+
+                # ETAPA 5: MODAL DE ENCERRAMENTO FORMAL DO RISCO
+                with col_btn_wf2:
+                    if situacao_risco != "Encerrado":
+                        pop_encerrar = st.popover("🔒 Encerrar Risco Formalmente")
+                        with pop_encerrar:
+                            st.markdown(f"### Encerramento Formal do Risco #{r_id}")
+                            st.warning("⚠️ O encerramento formal finaliza o acompanhamento deste risco na instituição.")
+                            
+                            with st.form(f"form_encerrar_risco_{r_id}_{seq}"):
+                                resp_encerramento = st.text_input("Responsável pelo Encerramento*", value=gestor_risco)
+                                justificativa_enc = st.text_area("Justificativa e Parecer Final de Encerramento*", placeholder="Descreva os motivos, metas alcançadas ou eliminação das causas do risco...")
+                                
+                                if st.form_submit_button("🏁 Confirmar Encerramento Formal"):
+                                    if not justificativa_enc or not resp_encerramento:
+                                        st.warning("Preencha o responsável e a justificativa para encerrar.")
+                                    else:
+                                        try:
+                                            supabase.table("riscos").update({"situacao_status": "Encerrado"}).eq("id", r_id).execute()
+                                            
+                                            dados_tram_enc = {
+                                                "risco_id": r_id,
+                                                "unidade_origem": unidade_ativa,
+                                                "unidade_destino": unidade_ativa,
+                                                "usuario_remetente": resp_encerramento,
+                                                "parecer_observacao": f"🔒 ENCERRAMENTO FORMAL DO RISCO: {justificativa_enc}"
+                                            }
+                                            supabase.table("tramitacoes").insert(dados_tram_enc).execute()
+
+                                            st.success("✅ Risco encerrado formalmente com sucesso!")
+                                            st.rerun()
+                                        except Exception as e_enc:
+                                            st.error(f"Erro ao encerrar risco: {e_enc}")
+
     with tab_pend:
         renderizar_lista_demandas(demandas_pendentes, exibe_badge_nova=True)
-        
     with tab_and:
         renderizar_lista_demandas(demandas_andamento)
-        
     with tab_dev:
         renderizar_lista_demandas(demandas_devolvidas)
-        
     with tab_conc:
         renderizar_lista_demandas(demandas_concluidas)
 
@@ -646,7 +695,8 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                                 if st.button("Confirmar Exclusão", key=f"btn_del_ac_{r_id}_{seq}"):
                                     try:
                                         supabase.table("acoes_tratamento").delete().eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
-                                        st.success("Ação removida com sucesso!")
+                                        recalcular_e_atualizar_status_risco(r_id)
+                                        st.success("Ação removida e status do risco atualizado!")
                                         st.rerun()
                                     except Exception as e:
                                         st.error(f"Erro ao excluir ação: {e}")
@@ -745,7 +795,10 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                             }
                             supabase.table("tramitacoes").insert(dados_tramitacao_acao).execute()
 
-                            st.success(f"✅ Ação nº {prox_seq} cadastrada, movimentação (0%) inicializada e tramitada com sucesso!")
+                            # ETAPA 5: Transição automática para "Em tratamento" se o Risco estava "Identificado"
+                            supabase.table("riscos").update({"situacao_status": "Em tratamento"}).eq("id", id_risco_sel).execute()
+
+                            st.success(f"✅ Ação nº {prox_seq} cadastrada! O status do Risco #{id_risco_sel} foi alterado para 'Em tratamento'.")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao salvar ação no banco de dados: {e}")
@@ -757,9 +810,6 @@ elif st.session_state.pagina_atual == "Cadastros":
     st.title("📝 Módulo de Cadastros")
     sub = st.session_state.sub_pagina_atual or "Unidades"
     
-    # ---------------------------------------------------------
-    # SUB-MÓDULO: UNIDADES
-    # ---------------------------------------------------------
     if sub == "Unidades":
         st.subheader("🏢 Cadastramento de Unidades / Setores Institucionais")
         tab_list_unid, tab_novo_unid = st.tabs(["🔍 Unidades Cadastradas", "➕ Nova Unidade"])
@@ -815,12 +865,8 @@ elif st.session_state.pagina_atual == "Cadastros":
                                                 st.error(f"❌ Não é possível excluir '{sigla_item}'. Existem {len(res_riscos.data)} risco(s) vinculados.")
                                             else:
                                                 res_del = supabase.table("unidades").delete().eq("sigla", sigla_item).execute()
-                                                
-                                                if hasattr(res_del, 'data') and len(res_del.data) == 0:
-                                                    st.error("⚠️ A exclusão foi bloqueada pelas políticas de segurança (RLS) do Supabase.")
-                                                else:
-                                                    st.toast(f"Unidade '{sigla_item}' excluída com sucesso!", icon="🗑️")
-                                                    st.rerun()
+                                                st.toast(f"Unidade '{sigla_item}' excluída com sucesso!", icon="🗑️")
+                                                st.rerun()
                                         except Exception as e:
                                             st.error(f"Erro ao tentar excluir: {e}")
                 else:
@@ -856,9 +902,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                         except Exception as e:
                             st.error(f"Erro ao salvar unidade: {e}")
 
-    # ---------------------------------------------------------
-    # SUB-MÓDULO: OBJETIVOS ESTRATÉGICOS
-    # ---------------------------------------------------------
     elif sub == "Objetivos Estratégicos":
         st.subheader("🎯 Cadastramento de Objetivos Estratégicos (PDI)")
         tab_list_oe, tab_novo_oe = st.tabs(["🔍 Objetivos Cadastrados", "➕ Novo Objetivo Estratégico"])
@@ -954,9 +997,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                         except Exception as e:
                             st.error(f"Erro ao salvar objetivo estratégico: {e}")
 
-    # ---------------------------------------------------------
-    # SUB-MÓDULO: CATEGORIAS DE RISCOS
-    # ---------------------------------------------------------
     elif sub == "Categorias de Risco":
         st.subheader("🏷 Cadastramento de Categorias de Risco (Tipo e Sub-tipo)")
         tab_list_cat, tab_novo_cat = st.tabs(["🔍 Categorias Cadastradas", "➕ Nova Categoria"])
@@ -1045,9 +1085,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                         except Exception as e:
                             st.error(f"Erro ao salvar categoria no banco: {e}")
 
-    # ---------------------------------------------------------
-    # SUB-MÓDULO: RISCOS
-    # ---------------------------------------------------------
     elif sub == "Riscos":
         st.subheader("📋 Gestão e Cadastro de Riscos Institucionais")
         tab1, tab2 = st.tabs(["🔍 Riscos Cadastrados", "➕ Novo Risco"])
@@ -1064,14 +1101,15 @@ elif st.session_state.pagina_atual == "Cadastros":
                         nivel = r_item.get('nivel_risco', 1)
                         cor_nivel = "🔴 (Crítico)" if nivel >= 15 else "🟡 (Médio)" if nivel >= 8 else "🟢 (Baixo)"
                         dt_ident_fmt = formatar_data_br(r_item.get('data_identificacao'))
+                        st_risco = r_item.get('situacao_status', 'Identificado')
                         
-                        with st.expander(f"🛡️ Risco #{r_item['id']} | {r_item['unidade']} | Nível {nivel} {cor_nivel}"):
+                        with st.expander(f"🛡️ Risco #{r_item['id']} ({st_risco}) | {r_item['unidade']} | Nível {nivel} {cor_nivel}"):
                             st.markdown(f"**Risco:** {r_item.get('evento', '')}")
                             st.markdown(f"**Causa:** {r_item.get('causa', '')} | **Consequência:** {r_item.get('consequencia', '')}")
-                            st.markdown(f"**Gestor:** {r_item.get('gestor_risco', '')} | **Situação:** {r_item.get('situacao_status', '')}")
+                            st.markdown(f"**Gestor:** {r_item.get('gestor_risco', '')} | **Situação Atual:** `{st_risco}`")
                             st.markdown(f"**Data de Identificação:** {dt_ident_fmt}")
                             
-                            col_r_edit, col_r_del = st.columns([1, 1])
+                            col_r_edit, col_r_del, col_r_enc = st.columns([1, 1, 1])
                             
                             with col_r_edit:
                                 pop_edit_r = st.popover("✏️ Editar Risco")
@@ -1117,6 +1155,37 @@ elif st.session_state.pagina_atual == "Cadastros":
                                             st.rerun()
                                         except Exception as e:
                                             st.error(f"Erro ao excluir: {e}")
+
+                            # ETAPA 5: ENCERRAMENTO FORMAL DENTRO DE CADASTRO DE RISCOS
+                            with col_r_enc:
+                                if st_risco != "Encerrado":
+                                    pop_enc_cad = st.popover("🔒 Encerrar Formalmente")
+                                    with pop_enc_cad:
+                                        st.markdown(f"### Encerramento Formal do Risco #{r_item['id']}")
+                                        with st.form(f"form_encerrar_cad_r_{r_item['id']}"):
+                                            resp_enc_cad = st.text_input("Gestor/Responsável*", value=r_item.get('gestor_risco', ''))
+                                            justificativa_enc_cad = st.text_area("Justificativa de Encerramento*", placeholder="Informe o parecer de encerramento...")
+                                            
+                                            if st.form_submit_button("🏁 Confirmar Encerramento"):
+                                                if not justificativa_enc_cad or not resp_enc_cad:
+                                                    st.warning("Preencha todos os campos obrigatórios.")
+                                                else:
+                                                    try:
+                                                        supabase.table("riscos").update({"situacao_status": "Encerrado"}).eq("id", r_item['id']).execute()
+                                                        
+                                                        dados_tram_enc = {
+                                                            "risco_id": r_item['id'],
+                                                            "unidade_origem": r_item.get('unidade', 'S/U'),
+                                                            "unidade_destino": r_item.get('unidade', 'S/U'),
+                                                            "usuario_remetente": resp_enc_cad,
+                                                            "parecer_observacao": f"🔒 ENCERRAMENTO FORMAL DO RISCO: {justificativa_enc_cad}"
+                                                        }
+                                                        supabase.table("tramitacoes").insert(dados_tram_enc).execute()
+
+                                                        st.success("✅ Risco encerrado formalmente!")
+                                                        st.rerun()
+                                                    except Exception as e_enc:
+                                                        st.error(f"Erro ao encerrar risco: {e_enc}")
                 else:
                     st.info("Nenhum risco cadastrado até o momento.")
             except Exception as e:
@@ -1213,14 +1282,9 @@ elif st.session_state.pagina_atual == "Cadastros":
                         except Exception as e:
                             st.error(f"Erro ao salvar o risco no banco de dados: {e}")
 
-    # ---------------------------------------------------------
-    # SUB-MÓDULO: IDENTIDADE VISUAL
-    # ---------------------------------------------------------
     elif sub == "Identidade Visual":
         st.subheader("🖼️ Gestão da Identidade Visual do Sistema")
-        st.write("Personalize os logotipos exibidos no aplicativo SIGER.")
         st.divider()
-        
         col_img1, col_img2, col_img3 = st.columns(3)
         
         with col_img1:
@@ -1292,9 +1356,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                         except Exception as e:
                             st.error(f"Erro ao enviar imagem: {e}")
 
-    # ---------------------------------------------------------
-    # SUB-MÓDULO: DOCUMENTOS DA BIBLIOTECA
-    # ---------------------------------------------------------
     elif sub == "Documentos da Biblioteca":
         st.subheader("📚 Gerenciamento de Materiais e Documentos (PDF)")
         tab_list_doc, tab_novo_doc = st.tabs(["🔍 Documentos Cadastrados", "➕ Enviar Novo Documento PDF"])
@@ -1307,7 +1368,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                         dt_upload_fmt = formatar_data_hora_br(doc.get('data_upload'))
                         with st.expander(f"📄 {doc['titulo']} (Enviado em {dt_upload_fmt})"):
                             st.write(f"**Descrição:** {doc.get('descricao', 'Sem descrição')}")
-                            
                             col_doc1, col_doc2 = st.columns([1, 1])
                             with col_doc1:
                                 st.link_button("📥 Visualizar / Baixar PDF", doc['url_publica'])
@@ -1363,18 +1423,14 @@ elif st.session_state.pagina_atual == "Cadastros":
                         except Exception as e:
                             st.error(f"Erro ao salvar arquivo: {e}")
 
-    # ---------------------------------------------------------
-    # SUB-MÓDULO: CADASTRO DO TEXTO DA TELA INICIAL
-    # ---------------------------------------------------------
     elif sub == "Texto da Tela Inicial":
         st.subheader("✍️ Cadastrar / Editar Texto da Tela Inicial")
-        
         texto_atual = ""
         try:
             res_txt = supabase.table("configuracoes").select("valor").eq("chave", "texto_pagina_inicial").execute()
             if res_txt.data and len(res_txt.data) > 0:
                 texto_atual = res_txt.data[0]["valor"]
-        except Exception as e:
+        except Exception:
             pass
 
         with st.form("form_texto_inicial"):
@@ -1383,10 +1439,7 @@ elif st.session_state.pagina_atual == "Cadastros":
             
             if submitted_texto:
                 try:
-                    supabase.table("configuracoes").upsert({
-                        "chave": "texto_pagina_inicial",
-                        "valor": novo_texto
-                    }).execute()
+                    supabase.table("configuracoes").upsert({"chave": "texto_pagina_inicial", "valor": novo_texto}).execute()
                     st.success("✅ Texto atualizado!")
                     st.rerun()
                 except Exception as e:
