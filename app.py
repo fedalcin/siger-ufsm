@@ -218,7 +218,7 @@ with st.sidebar.expander("📝 Cadastros", expanded=False):
         navegar_para("Cadastros", "Identidade Visual")
     if st.button("📚 Documentos da Biblioteca", key="btn_cad_doc_bib", use_container_width=True):
         navegar_para("Cadastros", "Documentos da Biblioteca")
-    if st.button("✍️ Texto da Tela Inicial", key="btn_cad_txt", use_container_width=True):
+    if st.button("✍️️ Texto da Tela Inicial", key="btn_cad_txt", use_container_width=True):
         navegar_para("Cadastros", "Texto da Tela Inicial")
 
 # 3. GRUPO: PLANOS DE TRATAMENTO
@@ -321,7 +321,7 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                     badge_carater = "🟢" if carater == "Preventivo" else "🟡" if carater == "Corretivo" else "🔵"
                     
                     with st.expander(f"{badge_carater} Risco #{r_id} | Ação {seq}: {nome_acao}"):
-                        st.markdown(f"**Evento do Risco:** {evento_txt}")
+                        st.markdown(f"**Risco:** {evento_txt}")
                         st.markdown(f"**Caráter da Ação:** {carater}")
                         st.markdown(f"**Objetivo da Ação:** {acao_item['objetivo_acao']}")
                         st.markdown(f"**Unidade Responsável:** {acao_item['unidade_responsavel']}")
@@ -332,7 +332,7 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                         col_ac_edit, col_ac_del = st.columns([1, 1])
                         
                         with col_ac_edit:
-                            pop_edit_ac = st.popover("✏️️ Editar Ação")
+                            pop_edit_ac = st.popover("✏ Editar Ação")
                             with pop_edit_ac:
                                 with st.form(f"form_edit_acao_{r_id}_{seq}"):
                                     edit_nome_ac = st.text_input("Ação", value=nome_acao)
@@ -393,7 +393,7 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
         if not res_riscos_db:
             st.warning("⚠️ É necessário ter pelo menos um Risco cadastrado no sistema para criar um Plano de Tratamento.")
         else:
-            mapa_riscos = {f"Risco #{r['id']} - {r['evento'] if r['evento'] else 'Sem Evento'}": r['id'] for r in res_riscos_db}
+            mapa_riscos = {f"Risco #{r['id']} - {r['evento'] if r['evento'] else 'Sem Risco'}" : r['id'] for r in res_riscos_db}
             
             if res_unid_db:
                 opcoes_unid_siglas = [u['sigla'] for u in res_unid_db]
@@ -772,8 +772,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                         cor_nivel = "🔴 (Crítico)" if nivel >= 15 else "🟡 (Médio)" if nivel >= 8 else "🟢 (Baixo)"
                         
                         with st.expander(f"🛡️ Risco #{r_item['id']} | {r_item['unidade']} | Nível {nivel} {cor_nivel}"):
-                            st.markdown(f"**Evento de Risco:** {r_item.get('evento', '')}")
-                            st.markdown(f"**Processo Relacionado:** {r_item.get('processo_relacionado', '')}")
+                            st.markdown(f"**Risco:** {r_item.get('evento', '')}")
                             st.markdown(f"**Causa:** {r_item.get('causa', '')} | **Consequência:** {r_item.get('consequencia', '')}")
                             st.markdown(f"**Gestor:** {r_item.get('gestor_risco', '')} | **Situação:** {r_item.get('situacao_status', '')}")
                             
@@ -784,8 +783,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                 with pop_edit_r:
                                     st.markdown("### Editar Informações do Risco")
                                     with st.form(f"form_edit_risco_{r_item['id']}"):
-                                        e_proc = st.text_input("Processo Relacionado", value=r_item.get('processo_relacionado', ''))
-                                        e_evento = st.text_area("Evento de Risco", value=r_item.get('evento', ''))
+                                        e_evento = st.text_area("Risco", value=r_item.get('evento', ''))
                                         e_causa = st.text_area("Causa", value=r_item.get('causa', ''))
                                         e_cons = st.text_area("Consequência", value=r_item.get('consequencia', ''))
                                         e_prob = st.slider("Probabilidade", 1, 5, value=r_item.get('probabilidade', 1))
@@ -800,7 +798,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         if st.form_submit_button("💾 Salvar Alterações"):
                                             novo_nivel = e_prob * e_imp
                                             supabase.table("riscos").update({
-                                                "processo_relacionado": e_proc,
                                                 "evento": e_evento,
                                                 "causa": e_causa,
                                                 "consequencia": e_cons,
@@ -847,14 +844,12 @@ elif st.session_state.pagina_atual == "Cadastros":
                 col_c1, col_c2 = st.columns(2)
                 with col_c1:
                     unid_label = st.selectbox("Unidade Responsável*", options=list(mapa_unidades.keys()))
-                    processo_input = st.text_input("Processo Relacionado*", placeholder="Ex: Gestão de Contratos, Pregão Eletrônico")
                 with col_c2:
                     oe_label = st.selectbox("Objetivo Estratégico Relacionado*", options=list(mapa_oe.keys()))
                     cat_label = st.selectbox("Categoria do Risco*", options=list(mapa_cat.keys()))
 
                 st.markdown("##### 2. Identificação e Análise do Risco")
-                evento_input = st.text_area("Evento de Risco*", placeholder="Descreva o evento incerto...")
-                desc_risco_input = st.text_area("Descrição do Risco", placeholder="Detalhamento complementar do risco...")
+                evento_input = st.text_area("Risco*", placeholder="Descreva o risco")
                 
                 col_i1, col_i2 = st.columns(2)
                 with col_i1:
@@ -872,7 +867,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                 st.markdown("##### 4. Governança, Controle e Prazos")
                 col_g1, col_g2, col_g3 = st.columns(3)
                 with col_g1:
-                    resp_input = st.text_input("Gestor do Risco*", placeholder="Nome/Cargo do servidor responsável")
+                    resp_input = st.text_input("Gestor do Risco*", placeholder="Nome do servidor responsável")
                     situacao_sel = st.selectbox("Situação Inicial*", ['Identificado', 'Em Análise', 'Em Tratamento', 'Monitorado', 'Encerrado/Mitigado'])
                 with col_g2:
                     dt_identificacao = st.date_input("Data de Identificação*", datetime.now())
@@ -883,17 +878,15 @@ elif st.session_state.pagina_atual == "Cadastros":
                 submitted_risco = st.form_submit_button("💾 Salvar Risco")
                 
                 if submitted_risco:
-                    if not evento_input or not processo_input or not resp_input:
-                        st.warning("Preencha os campos obrigatórios (Processo, Evento de Risco e Gestor).")
+                    if not evento_input or not resp_input:
+                        st.warning("Preencha os campos obrigatórios (Risco e Gestor do Risco).")
                     else:
                         nivel_calc = prob_val * imp_val
                         novo_risco_dados = {
                             "unidade": mapa_unidades[unid_label],
-                            "processo_relacionado": processo_input,
                             "objetivo_estrategico": mapa_oe[oe_label],
                             "categoria_risco": mapa_cat[cat_label],
                             "evento": evento_input,
-                            "descricao_risco": desc_risco_input,
                             "causa": causa_input,
                             "consequencia": consequencia_input,
                             "probabilidade": prob_val,
@@ -1009,7 +1002,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             with col_doc1:
                                 st.link_button("📥 Visualizar / Baixar PDF", doc['url_publica'])
                             with col_doc2:
-                                pop_del_doc = st.popover("🗑️️ Excluir Documento")
+                                pop_del_doc = st.popover("🗑 Excluir Documento")
                                 with pop_del_doc:
                                     st.warning("Deseja realmente remover este arquivo da biblioteca?")
                                     if st.button("Confirmar Exclusão", key=f"btn_del_doc_{doc['id']}"):
@@ -1021,7 +1014,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         except Exception as e:
                                             st.error(f"Erro ao excluir arquivo: {e}")
                 else:
-                    st.info("Nenhum documento cadastrado na biblioteca.")
+                    st.info("Nenum documento cadastrado na biblioteca.")
             except Exception as e:
                 st.error(f"Erro ao carregar documentos: {e}")
 
