@@ -304,7 +304,6 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
     
     with tab_list_acoes:
         try:
-            # Consulta das ações juntamente com o evento do risco associado
             res_acoes = supabase.table("acoes_tratamento").select("*, riscos(id, evento, unidade)").order("risco_id").order("numero_sequencial").execute()
             
             if res_acoes.data:
@@ -316,7 +315,6 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                     carater = acao_item["carater_acao"]
                     nome_acao = acao_item["acao"]
                     
-                    # Recupera dados do risco associado
                     dados_risco_rel = acao_item.get("riscos") or {}
                     evento_txt = dados_risco_rel.get("evento", "Não especificado")
                     
@@ -386,7 +384,6 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
             st.error(f"Erro ao carregar ações de tratamento: {e}")
             
     with tab_nova_acao:
-        # Carrega dados dos riscos e unidades para preencher os seletores
         try:
             res_riscos_db = supabase.table("riscos").select("id, evento, unidade").order("id").execute().data or []
             res_unid_db = supabase.table("unidades").select("sigla, nome_extenso").order("sigla").execute().data or []
@@ -403,11 +400,9 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
             else:
                 opcoes_unid_siglas = ["S/U"]
 
-            # Seleção de Risco fora do formulário para cálculo dinâmico do número sequencial
             risco_selecionado_label = st.selectbox("Selecione o Risco Mapeado*", options=list(mapa_riscos.keys()))
             id_risco_sel = mapa_riscos[risco_selecionado_label]
             
-            # Busca o número sequencial atual para o risco escolhido
             try:
                 res_seq = supabase.table("acoes_tratamento").select("numero_sequencial").eq("risco_id", id_risco_sel).order("numero_sequencial", desc=True).limit(1).execute()
                 prox_seq = (res_seq.data[0]["numero_sequencial"] + 1) if res_seq.data else 1
@@ -466,7 +461,7 @@ elif st.session_state.pagina_atual == "Cadastros":
     sub = st.session_state.sub_pagina_atual or "Unidades"
     
     # ---------------------------------------------------------
-    # SUB-MÓDULO: UNIDADES
+    # SUB-MÓDULO: UNIDADES (AJUSTADO PARA A ESTRUTURA REAL DO BANCO)
     # ---------------------------------------------------------
     if sub == "Unidades":
         st.subheader("🏢 Cadastramento de Unidades / Setores Institucionais")
@@ -474,25 +469,31 @@ elif st.session_state.pagina_atual == "Cadastros":
         
         with tab_list_unid:
             try:
-                resposta_unid = supabase.table("unidades").select("*").order("codigo").execute()
+                # Consulta ajustada ordenando pela chave primária 'sigla'
+                resposta_unid = supabase.table("unidades").select("*").order("sigla").execute()
                 dados_unid = resposta_unid.data
                 
                 if dados_unid:
                     st.write(f"Total de unidades cadastradas: **{len(dados_unid)}**")
                     for item in dados_unid:
+                        sigla_item = item['sigla']
+                        nome_item = item.get('nome_extenso', '')
                         tipo_exibicao = item.get('tipo_unidade', 'Não informado')
-                        with st.expander(f"📍 `{item['codigo']}` - {item['sigla']} | {item['nome_extenso']} ({tipo_exibicao})"):
+                        
+                        with st.expander(f"📍 **{sigla_item}** | {nome_item} ({tipo_exibicao})"):
                             col_info, col_acoes = st.columns([3, 1])
                             with col_info:
+                                st.write(f"**Sigla:** {sigla_item}")
+                                st.write(f"**Nome por Extenso:** {nome_item}")
                                 st.write(f"**Tipo da Unidade:** {tipo_exibicao}")
                             
                             with col_acoes:
                                 modal_edit = st.popover("✏️ Editar")
                                 with modal_edit:
                                     st.markdown("### Editar Unidade")
-                                    with st.form(f"form_edit_unid_{item['id']}"):
-                                        edit_sigla = st.text_input("Sigla", value=item['sigla']).upper()
-                                        edit_nome = st.text_input("Nome Extenso", value=item['nome_extenso'])
+                                    with st.form(f"form_edit_unid_{sigla_item}"):
+                                        st.write(f"**Sigla:** `{sigla_item}` (Chave Primária)")
+                                        edit_nome = st.text_input("Nome Extenso", value=nome_item)
                                         val_atual = item.get('tipo_unidade')
                                         idx_tipo = TIPOS_UNIDADE_OPCOES.index(val_atual) if val_atual in TIPOS_UNIDADE_OPCOES else 0
                                         edit_tipo = st.selectbox("Tipo da Unidade*", options=TIPOS_UNIDADE_OPCOES, index=idx_tipo)
@@ -500,10 +501,9 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         if st.form_submit_button("💾 Salvar Alterações"):
                                             try:
                                                 supabase.table("unidades").update({
-                                                    "sigla": edit_sigla,
                                                     "nome_extenso": edit_nome,
                                                     "tipo_unidade": edit_tipo
-                                                }).eq("id", item['id']).execute()
+                                                }).eq("sigla", sigla_item).execute()
                                                 st.success("Unidade atualizada!")
                                                 st.rerun()
                                             except Exception as e:
@@ -511,14 +511,14 @@ elif st.session_state.pagina_atual == "Cadastros":
 
                                 modal_del = st.popover("🗑️ Excluir")
                                 with modal_del:
-                                    st.warning("Tem certeza que deseja excluir esta unidade?")
-                                    if st.button("Confirmar Exclusão", key=f"btn_del_unid_{item['id']}"):
+                                    st.warning(f"Tem certeza que deseja excluir a unidade '{sigla_item}'?")
+                                    if st.button("Confirmar Exclusão", key=f"btn_del_unid_{sigla_item}"):
                                         try:
-                                            res_riscos = supabase.table("riscos").select("id").eq("unidade", item['sigla']).execute()
+                                            res_riscos = supabase.table("riscos").select("id").eq("unidade", sigla_item).execute()
                                             if res_riscos.data and len(res_riscos.data) > 0:
-                                                st.error(f"❌ Não é possível excluir a unidade '{item['sigla']}' pois existem {len(res_riscos.data)} risco(s) associado(s) a ela.")
+                                                st.error(f"❌ Não é possível excluir a unidade '{sigla_item}' pois existem {len(res_riscos.data)} risco(s) associado(s) a ela.")
                                             else:
-                                                supabase.table("unidades").delete().eq("id", item['id']).execute()
+                                                supabase.table("unidades").delete().eq("sigla", sigla_item).execute()
                                                 st.success("Unidade excluída com sucesso!")
                                                 st.rerun()
                                         except Exception as e:
@@ -529,19 +529,10 @@ elif st.session_state.pagina_atual == "Cadastros":
                 st.error(f"Erro ao carregar unidades: {e}")
                 
         with tab_novo_unid:
-            try:
-                res_count = supabase.table("unidades").select("id").execute()
-                proximo_num = len(res_count.data) + 1 if res_count.data else 1
-            except:
-                proximo_num = 1
-                
-            codigo_gerado = f"{proximo_num:03d}"
-            st.write(f"**Código Sequencial da Unidade:** `{codigo_gerado}`")
-            
             with st.form("form_cadastrar_unidade", clear_on_submit=True):
                 col_u1, col_u2 = st.columns(2)
                 with col_u1:
-                    sigla = st.text_input("Sigla da Unidade*", placeholder="Ex: PRAE, PRPGP, CCSH, REITORIA").upper()
+                    sigla = st.text_input("Sigla da Unidade*", placeholder="Ex: PRAE, PRPGP, CCSH, REITORIA").upper().strip()
                     nome_extenso = st.text_input("Nome da Unidade por Extenso*", placeholder="Ex: Pró-Reitoria de Assuntos Estudantis")
                 with col_u2:
                     tipo_unidade_sel = st.selectbox("Tipo da Unidade*", options=TIPOS_UNIDADE_OPCOES)
@@ -554,7 +545,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                         st.warning("Por favor, preencha a Sigla e o Nome por Extenso.")
                     else:
                         dados_nova_unidade = {
-                            "codigo": codigo_gerado,
                             "sigla": sigla,
                             "nome_extenso": nome_extenso,
                             "tipo_unidade": tipo_unidade_sel
@@ -689,7 +679,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                 
                             c1, c2 = st.columns(2)
                             with c1:
-                                pop_edit_cat = st.popover("✏ Editar Categoria")
+                                pop_edit_cat = st.popover("✏ Edit Categoria")
                                 with pop_edit_cat:
                                     with st.form(f"form_edit_cat_{cat_item['id']}"):
                                         tipo_edit = st.text_input("Tipo de Risco*", value=tipo_val)
