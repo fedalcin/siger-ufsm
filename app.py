@@ -1,7 +1,7 @@
 import streamlit as st
 from supabase import create_client, Client
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, date, timedelta
 import os
 
 # ---------------------------------------------------------
@@ -168,7 +168,7 @@ TIPOS_UNIDADE_OPCOES = [
     "Diretoria"
 ]
 
-# Função auxiliar para formatar strings YYYY-MM-DD para DD/MM/AAAA na exibição
+# Função auxiliar para formatar strings YYYY-MM-DD para DD/MM/AAAA
 def formatar_data_br(data_str):
     if not data_str:
         return "-"
@@ -178,15 +178,36 @@ def formatar_data_br(data_str):
     except Exception:
         return data_str
 
-# Função auxiliar para formatar strings de data/hora ISO para DD/MM/AAAA HH:MM na exibição
+# Função auxiliar para formatar strings ISO para DD/MM/AAAA HH:MM
 def formatar_data_hora_br(data_hora_str):
     if not data_hora_str:
         return "-"
     try:
-        dt = datetime.strptime(data_hora_str, "%Y-%m-%d %H:%M")
+        dt = datetime.strptime(data_hora_str[:16].replace("T", " "), "%Y-%m-%d %H:%M")
         return dt.strftime("%d/%m/%Y %H:%M")
     except Exception:
         return data_hora_str
+
+# Função auxiliar para calcular badge temporal do prazo
+def obter_badge_prazo(data_conclusao_str, status_acao):
+    if status_acao == "Concluída":
+        return "🟢 Concluída", "success"
+    if not data_conclusao_str:
+        return "⚪ Sem Prazo", "off"
+    
+    try:
+        dt_fim = datetime.strptime(data_conclusao_str[:10], "%Y-%m-%d").date()
+        hoje = date.today()
+        dias_restantes = (dt_fim - hoje).days
+
+        if dias_restantes < 0:
+            return f"🔴 Atrasada ({abs(dias_restantes)} dias)", "error"
+        elif dias_restantes <= 7:
+            return f"🟡 Próxima do Vencimento ({dias_restantes} dias)", "warning"
+        else:
+            return f"🟢 No Prazo ({dias_restantes} dias)", "info"
+    except Exception:
+        return "⚪ Data Inválida", "off"
 
 # ---------------------------------------------------------
 # BARRA LATERAL (LOGOTIPO SIGER E MENU EXPANSÍVEL)
@@ -212,10 +233,15 @@ def navegar_para(pagina, sub_pagina=None):
 
 st.sidebar.subheader("Menu Principal")
 
+# ETAPA 3: Botões Principais no Topo
 st.sidebar.markdown('<div class="btn-inicio-sidebar">', unsafe_allow_html=True)
 if st.sidebar.button("🏠 Início", use_container_width=True, key="btn_inicio_top"):
     navegar_para("Início")
+if st.sidebar.button("📥 Caixa de Entrada", use_container_width=True, key="btn_cx_entrada_top"):
+    navegar_para("Caixa de Entrada")
 st.sidebar.markdown('</div>', unsafe_allow_html=True)
+
+st.sidebar.divider()
 
 # 1. GRUPO: ADMINISTRAÇÃO
 with st.sidebar.expander("⚙️ Administração", expanded=False):
@@ -313,6 +339,153 @@ if st.session_state.pagina_atual == "Início":
         
     st.divider()
     st.info("👈 Utilize o menu lateral para navegar entre os módulos do sistema.")
+
+# ---------------------------------------------------------
+# PÁGINA ETAPA 3: CAIXA DE ENTRADA (INTERFACE BASE & FILTROS)
+# ---------------------------------------------------------
+elif st.session_state.pagina_atual == "Caixa de Entrada":
+    st.title("📥 Caixa de Entrada de Demandas")
+    st.caption("Acompanhe, gerencie e responda às ações e tramitações sob responsabilidade de sua unidade.")
+    
+    # 1. Filtro de Simulação de Unidade / Usuário Logado
+    try:
+        res_unid_list = supabase.table("unidades").select("sigla, nome_extenso").order("sigla").execute().data or []
+        opcoes_unid = [u["sigla"] for u in res_unid_list]
+    except Exception:
+        opcoes_unid = []
+
+    if not opcoes_unid:
+        opcoes_unid = ["S/U"]
+
+    col_filtro1, col_filtro2 = st.columns([2, 2])
+    with col_filtro1:
+        unidade_ativa = st.selectbox("🏢 Unidade Consultada (Simulação de Contexto/Perfil):", options=opcoes_unid)
+    with col_filtro2:
+        st.write("")
+        st.write("")
+        st.info(f"Exibindo pendências direcionadas para a unidade **{unidade_ativa}**")
+
+    st.divider()
+
+    # 2. Busca das ações pertencentes à unidade ativa
+    try:
+        res_cx_acoes = supabase.table("acoes_tratamento")\
+            .select("*, riscos(id, evento, unidade, gestor_risco)")\
+            .eq("unidade_responsavel", unidade_ativa)\
+            .order("risco_id")\
+            .order("numero_sequencial")\
+            .execute()
+        
+        lista_demandas = res_cx_acoes.data or []
+    except Exception as e:
+        st.error(f"Erro ao carregar demandas da caixa de entrada: {e}")
+        lista_demandas = []
+
+    # Categorização das demandas por status
+    demandas_pendentes = [a for a in lista_demandas if a.get("status_acao") in ["Pendente", None]]
+    demandas_andamento = [a for a in lista_demandas if a.get("status_acao") == "Em Andamento"]
+    demandas_devolvidas = [a for a in lista_demandas if a.get("status_acao") == "Devolvida"]
+    demandas_concluidas = [a for a in lista_demandas if a.get("status_acao") == "Concluída"]
+
+    # Abas organizadoras
+    tab_pend, tab_and, tab_dev, tab_conc = st.tabs([
+        f"📥 Novas / Pendentes ({len(demandas_pendentes)})",
+        f"⏳ Em Andamento ({len(demandas_andamento)})",
+        f"↩️ Devolvidas ({len(demandas_devolvidas)})",
+        f"✅ Concluídas ({len(demandas_concluidas)})"
+    ])
+
+    # Função interna para renderizar a lista de demandas de cada aba
+    def renderizar_lista_demandas(demandas_lista, exibe_badge_nova=False):
+        if not demandas_lista:
+            st.info("Nenhuma demanda encontrada nesta categoria para a unidade selecionada.")
+            return
+
+        for acao_item in demandas_lista:
+            r_id = acao_item["risco_id"]
+            seq = acao_item["numero_sequencial"]
+            nome_acao = acao_item["acao"]
+            carater = acao_item.get("carater_acao", "Preventivo")
+            status_ac = acao_item.get("status_acao", "Pendente")
+            
+            dados_risco = acao_item.get("riscos") or {}
+            evento_risco = dados_risco.get("evento", "Não especificado")
+            
+            # Cálculo de Badges Visuais
+            txt_badge_prazo, tipo_badge_prazo = obter_badge_prazo(acao_item.get("previsao_data_conclusao"), status_ac)
+            
+            # Badge "🔵 Nova" se status for Pendente
+            badge_nova_txt = "🔵 Nova | " if (exibe_badge_nova and status_ac == "Pendente") else ""
+
+            # Título do Card
+            titulo_card = f"{badge_nova_txt}Risco #{r_id} (Ação {seq}) | {txt_badge_prazo} | {nome_acao}"
+
+            with st.expander(titulo_card):
+                c_det1, c_det2 = st.columns([2, 1])
+                
+                with c_det1:
+                    st.markdown(f"**Evento de Risco:** {evento_risco}")
+                    st.markdown(f"**Ação:** {nome_acao}")
+                    st.markdown(f"**Objetivo:** {acao_item.get('objetivo_acao', '-')}")
+                    st.markdown(f"**Como Executar:** {acao_item.get('como_sera_implementada', '-')}")
+                    
+                with c_det2:
+                    st.markdown(f"**Caráter:** `{carater}`")
+                    st.markdown(f"**Responsável:** {acao_item.get('nome_responsavel_implementacao', '-')}")
+                    st.markdown(f"**Previsão Início:** {formatar_data_br(acao_item.get('previsao_data_inicio'))}")
+                    st.markdown(f"**Previsão Conclusão:** {formatar_data_br(acao_item.get('previsao_data_conclusao'))}")
+                    
+                st.divider()
+                
+                # Busca a última movimentação da ação para exibir o avanço %
+                try:
+                    res_ult_mov = supabase.table("movimentacoes_acoes")\
+                        .select("percentual_conclusao, descricao_avanco, data_movimentacao")\
+                        .eq("risco_id", r_id)\
+                        .eq("numero_sequencial", seq)\
+                        .order("id", desc=True)\
+                        .limit(1)\
+                        .execute()
+                    
+                    if res_ult_mov.data:
+                        mov = res_ult_mov.data[0]
+                        pct = mov.get("percentual_conclusao", 0)
+                        st.write(f"**Avanço Atual:** `{pct}%`")
+                        st.progress(pct / 100.0)
+                        st.caption(f"Última atualização ({formatar_data_hora_br(mov.get('data_movimentacao'))}): {mov.get('descricao_avanco')}")
+                    else:
+                        st.write("**Avanço Atual:** `0%`")
+                        st.progress(0.0)
+                except Exception as e:
+                    st.caption("Não foi possível carregar a última movimentação.")
+
+                # Busca a última tramitação registrada
+                try:
+                    res_ult_tram = supabase.table("tramitacoes")\
+                        .select("*")\
+                        .eq("risco_id", r_id)\
+                        .order("id", desc=True)\
+                        .limit(1)\
+                        .execute()
+                    
+                    if res_ult_tram.data:
+                        tram = res_ult_tram.data[0]
+                        st.info(f"💬 **Última Tramitação ({formatar_data_hora_br(tram.get('data_tramitacao'))}):** Remetente: {tram.get('usuario_remetente')} ({tram.get('unidade_origem')}) ➔ Observação: *{tram.get('parecer_observacao')}*")
+                except Exception:
+                    pass
+
+    # Renders das abas
+    with tab_pend:
+        renderizar_lista_demandas(demandas_pendentes, exibe_badge_nova=True)
+        
+    with tab_and:
+        renderizar_lista_demandas(demandas_andamento)
+        
+    with tab_dev:
+        renderizar_lista_demandas(demandas_devolvidas)
+        
+    with tab_conc:
+        renderizar_lista_demandas(demandas_concluidas)
 
 # ---------------------------------------------------------
 # PÁGINA: PLANOS DE TRATAMENTO / AÇÕES DE MITIGAÇÃO
@@ -450,7 +623,6 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                 objetivo_input = st.text_area("Objetivo da Ação*", placeholder="O que se pretende alcançar com esta ação?")
                 como_input = st.text_area("Como será Implementada a Ação*", placeholder="Descreva o passo a passo e o procedimento operacional...")
 
-                # ETAPA 2: Informação fixa de status e progresso inicial
                 st.info("ℹ️ **Status Inicial Automatizado:** Esta ação será cadastrada com o status **Pendente** e **0%** de execução.")
 
                 st.caption("* Campos de preenchimento obrigatório.")
@@ -473,13 +645,13 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                             "como_sera_implementada": como_input,
                             "previsao_data_inicio": dt_inicio.strftime("%Y-%m-%d"),
                             "previsao_data_conclusao": dt_conclusao.strftime("%Y-%m-%d"),
-                            "status_acao": "Pendente"  # ETAPA 2: Status fixo automatizado
+                            "status_acao": "Pendente"
                         }
                         try:
                             # 1. Cria a ação de tratamento
                             supabase.table("acoes_tratamento").insert(dados_nova_acao).execute()
                             
-                            # 2. ETAPA 2: Cria o registro inicial em movimentacoes_acoes (0% de execução)
+                            # 2. Cria o registro inicial em movimentacoes_acoes (0% de execução)
                             dados_mov_inicial = {
                                 "risco_id": id_risco_sel,
                                 "numero_sequencial": prox_seq,
@@ -492,7 +664,7 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                             }
                             supabase.table("movimentacoes_acoes").insert(dados_mov_inicial).execute()
 
-                            # 3. ETAPA 2: Cria a tramitação automatizada para o Responsável pela Implementação
+                            # 3. Cria a tramitação automatizada para o Responsável pela Implementação
                             dados_tramitacao_acao = {
                                 "risco_id": id_risco_sel,
                                 "unidade_origem": unidade_origem_risco or unidade_resp_sel,
@@ -515,7 +687,7 @@ elif st.session_state.pagina_atual == "Cadastros":
     sub = st.session_state.sub_pagina_atual or "Unidades"
     
     # ---------------------------------------------------------
-    # SUB-MÓDULO: UNIDADES (AJUSTADO PARA TRATAMENTO DE EXCLUSÃO E RLS)
+    # SUB-MÓDULO: UNIDADES
     # ---------------------------------------------------------
     if sub == "Unidades":
         st.subheader("🏢 Cadastramento de Unidades / Setores Institucionais")
@@ -523,7 +695,6 @@ elif st.session_state.pagina_atual == "Cadastros":
         
         with tab_list_unid:
             try:
-                # Consulta ordenando pela sigla limpa
                 resposta_unid = supabase.table("unidades").select("*").order("sigla").execute()
                 dados_unid = resposta_unid.data
                 
@@ -568,17 +739,14 @@ elif st.session_state.pagina_atual == "Cadastros":
                                     st.warning(f"Tem certeza que deseja excluir a unidade '{sigla_item}'?")
                                     if st.button("Confirmar Exclusão", key=f"btn_del_unid_{sigla_item}"):
                                         try:
-                                            # Checagem de Riscos
                                             res_riscos = supabase.table("riscos").select("id").eq("unidade", sigla_item).execute()
                                             if res_riscos.data and len(res_riscos.data) > 0:
                                                 st.error(f"❌ Não é possível excluir '{sigla_item}'. Existem {len(res_riscos.data)} risco(s) vinculados.")
                                             else:
-                                                # Executa a exclusão com tratamento completo do retorno
                                                 res_del = supabase.table("unidades").delete().eq("sigla", sigla_item).execute()
                                                 
-                                                # Se a política de RLS bloquear, o Supabase não apaga nenhuma linha e retorna lista vazia
                                                 if hasattr(res_del, 'data') and len(res_del.data) == 0:
-                                                    st.error("⚠️ A exclusão foi bloqueada pelas políticas de segurança (RLS) do Supabase ou a sigla não foi localizada. Habilite a regra de 'DELETE' para a role 'anon/authenticated' no console do Supabase.")
+                                                    st.error("⚠️ A exclusão foi bloqueada pelas políticas de segurança (RLS) do Supabase.")
                                                 else:
                                                     st.toast(f"Unidade '{sigla_item}' excluída com sucesso!", icon="🗑️")
                                                     st.rerun()
@@ -924,7 +1092,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                 col_g1, col_g2, col_g3 = st.columns(3)
                 with col_g1:
                     resp_input = st.text_input("Gestor do Risco*", placeholder="Nome do servidor responsável")
-                    # ETAPA 2: Status fixo automatizado (sem selectbox)
                     st.info("ℹ️ **Status Inicial Automatizado:** `Identificado`")
                 with col_g2:
                     dt_identificacao = st.date_input("Data de Identificação*", datetime.now(), format="DD/MM/YYYY")
@@ -954,13 +1121,13 @@ elif st.session_state.pagina_atual == "Cadastros":
                             "gestor_risco": resp_input,
                             "data_identificacao": dt_identificacao.strftime("%Y-%m-%d"),
                             "periodicidade_revisao": periodicidade_sel,
-                            "situacao_status": "Identificado"  # ETAPA 2: Forçado como Identificado
+                            "situacao_status": "Identificado"
                         }
                         try:
                             # 1. Inserção do risco
                             res_novo_risco = supabase.table("riscos").insert(novo_risco_dados).execute()
                             
-                            # 2. ETAPA 2: Gravar automaticamente o registro inicial na tabela tramitacoes
+                            # 2. Gravar automaticamente o registro inicial na tabela tramitacoes
                             if res_novo_risco.data and len(res_novo_risco.data) > 0:
                                 novo_risco_id = res_novo_risco.data[0]["id"]
                                 dados_tramitacao_inicial = {
