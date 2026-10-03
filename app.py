@@ -383,14 +383,14 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
 
     # Categorização das demandas por status
     demandas_pendentes = [a for a in lista_demandas if a.get("status_acao") in ["Pendente", None]]
-    demandas_andamento = [a for a in lista_demandas if a.get("status_acao") == "Em Andamento"]
+    demandas_andamento = [a for a in lista_demandas if a.get("status_acao") == "Em andamento"]
     demandas_devolvidas = [a for a in lista_demandas if a.get("status_acao") == "Devolvida"]
     demandas_concluidas = [a for a in lista_demandas if a.get("status_acao") == "Concluída"]
 
     # Abas organizadoras
     tab_pend, tab_and, tab_dev, tab_conc = st.tabs([
         f"📥 Novas / Pendentes ({len(demandas_pendentes)})",
-        f"⏳ Em Andamento ({len(demandas_andamento)})",
+        f"⏳ Em andamento ({len(demandas_andamento)})",
         f"↩️ Devolvidas ({len(demandas_devolvidas)})",
         f"✅ Concluídas ({len(demandas_concluidas)})"
     ])
@@ -485,7 +485,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                         st.markdown("##### 1. Progresso e Status da Ação")
                         novo_pct = st.slider("Percentual de Execução Concluído", 0, 100, value=int(pct_atual), step=5, key=f"sld_pct_{r_id}_{seq}")
                         
-                        opcoes_status_wf = ["Pendente", "Em Andamento", "Devolvida", "Concluída"]
+                        opcoes_status_wf = ["Pendente", "Em andamento", "Devolvida", "Concluída"]
                         idx_st_wf = opcoes_status_wf.index(status_ac) if status_ac in opcoes_status_wf else 1
                         novo_status_ac = st.selectbox("Novo Status da Ação", opcoes_status_wf, index=idx_st_wf, key=f"sb_st_{r_id}_{seq}")
                         
