@@ -168,6 +168,26 @@ TIPOS_UNIDADE_OPCOES = [
     "Diretoria"
 ]
 
+# Função auxiliar para formatar strings YYYY-MM-DD para DD/MM/AAAA na exibição
+def formatar_data_br(data_str):
+    if not data_str:
+        return "-"
+    try:
+        dt = datetime.strptime(data_str[:10], "%Y-%m-%d")
+        return dt.strftime("%d/%m/%Y")
+    except Exception:
+        return data_str
+
+# Função auxiliar para formatar strings de data/hora ISO para DD/MM/AAAA HH:MM na exibição
+def formatar_data_hora_br(data_hora_str):
+    if not data_hora_str:
+        return "-"
+    try:
+        dt = datetime.strptime(data_hora_str, "%Y-%m-%d %H:%M")
+        return dt.strftime("%d/%m/%Y %H:%M")
+    except Exception:
+        return data_hora_str
+
 # ---------------------------------------------------------
 # BARRA LATERAL (LOGOTIPO SIGER E MENU EXPANSÍVEL)
 # ---------------------------------------------------------
@@ -218,7 +238,7 @@ with st.sidebar.expander("📝 Cadastros", expanded=False):
         navegar_para("Cadastros", "Identidade Visual")
     if st.button("📚 Documentos da Biblioteca", key="btn_cad_doc_bib", use_container_width=True):
         navegar_para("Cadastros", "Documentos da Biblioteca")
-    if st.button("✍️️ Texto da Tela Inicial", key="btn_cad_txt", use_container_width=True):
+    if st.button("✍ Texto da Tela Inicial", key="btn_cad_txt", use_container_width=True):
         navegar_para("Cadastros", "Texto da Tela Inicial")
 
 # 3. GRUPO: PLANOS DE TRATAMENTO
@@ -320,6 +340,10 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                     
                     badge_carater = "🟢" if carater == "Preventivo" else "🟡" if carater == "Corretivo" else "🔵"
                     
+                    # Formatação visual das datas no padrão DD/MM/AAAA
+                    dt_inicio_fmt = formatar_data_br(acao_item.get('previsao_data_inicio'))
+                    dt_conclusao_fmt = formatar_data_br(acao_item.get('previsao_data_conclusao'))
+                    
                     with st.expander(f"{badge_carater} Risco #{r_id} | Ação {seq}: {nome_acao}"):
                         st.markdown(f"**Risco:** {evento_txt}")
                         st.markdown(f"**Caráter da Ação:** {carater}")
@@ -327,7 +351,7 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                         st.markdown(f"**Unidade Responsável:** {acao_item['unidade_responsavel']}")
                         st.markdown(f"**Responsável pela Implementação:** {acao_item['nome_responsavel_implementacao']}")
                         st.markdown(f"**Como será Implementada:** {acao_item['como_sera_implementada']}")
-                        st.markdown(f"**Período de Execução:** {acao_item['previsao_data_inicio']} até {acao_item['previsao_data_conclusao']}")
+                        st.markdown(f"**Período de Execução:** {dt_inicio_fmt} até {dt_conclusao_fmt}")
                         
                         col_ac_edit, col_ac_del = st.columns([1, 1])
                         
@@ -347,8 +371,8 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                                     d_i = datetime.strptime(acao_item['previsao_data_inicio'], "%Y-%m-%d").date() if acao_item.get('previsao_data_inicio') else datetime.now().date()
                                     d_f = datetime.strptime(acao_item['previsao_data_conclusao'], "%Y-%m-%d").date() if acao_item.get('previsao_data_conclusao') else datetime.now().date()
                                     
-                                    edit_dt_i = st.date_input("Previsão Início", value=d_i)
-                                    edit_dt_f = st.date_input("Previsão Conclusão", value=d_f)
+                                    edit_dt_i = st.date_input("Previsão Início", value=d_i, format="DD/MM/YYYY")
+                                    edit_dt_f = st.date_input("Previsão Conclusão", value=d_f, format="DD/MM/YYYY")
                                     
                                     if st.form_submit_button("💾 Salvar Alterações"):
                                         if edit_dt_f < edit_dt_i:
@@ -419,8 +443,8 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                     unidade_resp_sel = st.selectbox("Unidade Responsável pela Ação*", options=opcoes_unid_siglas)
                 with col_a2:
                     nome_resp_input = st.text_input("Nome do Responsável pela Implementação*", placeholder="Ex: João da Silva (Coordenador de TI)")
-                    dt_inicio = st.date_input("Previsão da Data do Início*", datetime.now())
-                    dt_conclusao = st.date_input("Previsão da Data da Conclusão*", datetime.now())
+                    dt_inicio = st.date_input("Previsão da Data do Início*", datetime.now(), format="DD/MM/YYYY")
+                    dt_conclusao = st.date_input("Previsão da Data da Conclusão*", datetime.now(), format="DD/MM/YYYY")
 
                 objetivo_input = st.text_area("Objetivo da Ação*", placeholder="O que se pretende alcançar com esta ação?")
                 como_input = st.text_area("Como será Implementada a Ação*", placeholder="Descreva o passo a passo e o procedimento operacional...")
@@ -770,11 +794,13 @@ elif st.session_state.pagina_atual == "Cadastros":
                     for r_item in dados:
                         nivel = r_item.get('nivel_risco', 1)
                         cor_nivel = "🔴 (Crítico)" if nivel >= 15 else "🟡 (Médio)" if nivel >= 8 else "🟢 (Baixo)"
+                        dt_ident_fmt = formatar_data_br(r_item.get('data_identificacao'))
                         
                         with st.expander(f"🛡️ Risco #{r_item['id']} | {r_item['unidade']} | Nível {nivel} {cor_nivel}"):
                             st.markdown(f"**Risco:** {r_item.get('evento', '')}")
                             st.markdown(f"**Causa:** {r_item.get('causa', '')} | **Consequência:** {r_item.get('consequencia', '')}")
                             st.markdown(f"**Gestor:** {r_item.get('gestor_risco', '')} | **Situação:** {r_item.get('situacao_status', '')}")
+                            st.markdown(f"**Data de Identificação:** {dt_ident_fmt}")
                             
                             col_r_edit, col_r_del = st.columns([1, 1])
                             
@@ -870,7 +896,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                     resp_input = st.text_input("Gestor do Risco*", placeholder="Nome do servidor responsável")
                     situacao_sel = st.selectbox("Situação Inicial*", ['Identificado', 'Em Análise', 'Em Tratamento', 'Monitorado', 'Encerrado/Mitigado'])
                 with col_g2:
-                    dt_identificacao = st.date_input("Data de Identificação*", datetime.now())
+                    dt_identificacao = st.date_input("Data de Identificação*", datetime.now(), format="DD/MM/YYYY")
                 with col_g3:
                     periodicidade_sel = st.selectbox("Periodicidade de Revisão", ["Mensal", "Trimestral", "Semestral", "Anual"])
 
@@ -995,7 +1021,8 @@ elif st.session_state.pagina_atual == "Cadastros":
                 res_doc = supabase.table("biblioteca").select("*").order("id", desc=True).execute()
                 if res_doc.data:
                     for doc in res_doc.data:
-                        with st.expander(f"📄 {doc['titulo']} (Enviado em {doc.get('data_upload', '-')})"):
+                        dt_upload_fmt = formatar_data_hora_br(doc.get('data_upload'))
+                        with st.expander(f"📄 {doc['titulo']} (Enviado em {dt_upload_fmt})"):
                             st.write(f"**Descrição:** {doc.get('descricao', 'Sem descrição')}")
                             
                             col_doc1, col_doc2 = st.columns([1, 1])
@@ -1014,7 +1041,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         except Exception as e:
                                             st.error(f"Erro ao excluir arquivo: {e}")
                 else:
-                    st.info("Nenum documento cadastrado na biblioteca.")
+                    st.info("Nenhum documento cadastrado na biblioteca.")
             except Exception as e:
                 st.error(f"Erro ao carregar documentos: {e}")
 
@@ -1094,7 +1121,8 @@ elif st.session_state.pagina_atual == "Biblioteca":
         if res_bib.data:
             st.write(f"Total de documentos disponíveis: **{len(res_bib.data)}**")
             for doc in res_bib.data:
-                with st.expander(f"📄 {doc['titulo']} (Disponibilizado em {doc.get('data_upload', '-')})"):
+                dt_upload_fmt = formatar_data_hora_br(doc.get('data_upload'))
+                with st.expander(f"📄 {doc['titulo']} (Disponibilizado em {dt_upload_fmt})"):
                     st.write(doc.get('descricao', 'Sem descrição cadastrada.'))
                     st.link_button("📥 Acessar / Baixar PDF", doc['url_publica'])
         else:
