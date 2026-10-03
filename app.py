@@ -233,7 +233,7 @@ def navegar_para(pagina, sub_pagina=None):
 
 st.sidebar.subheader("Menu Principal")
 
-# ETAPA 3: Botões Principais no Topo
+# Botões Principais no Topo
 st.sidebar.markdown('<div class="btn-inicio-sidebar">', unsafe_allow_html=True)
 if st.sidebar.button("🏠 Início", use_container_width=True, key="btn_inicio_top"):
     navegar_para("Início")
@@ -341,11 +341,11 @@ if st.session_state.pagina_atual == "Início":
     st.info("👈 Utilize o menu lateral para navegar entre os módulos do sistema.")
 
 # ---------------------------------------------------------
-# PÁGINA ETAPA 3: CAIXA DE ENTRADA (INTERFACE BASE & FILTROS)
+# PÁGINA ETAPA 3 & 4: CAIXA DE ENTRADA E WORKFLOW DE EXECUÇÃO
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Caixa de Entrada":
     st.title("📥 Caixa de Entrada de Demandas")
-    st.caption("Acompanhe, gerencie e responda às ações e tramitações sob responsabilidade de sua unidade.")
+    st.caption("Acompanhe, gerencie, responda e tramite ações e revisões sob responsabilidade de sua unidade.")
     
     # 1. Filtro de Simulação de Unidade / Usuário Logado
     try:
@@ -370,7 +370,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
     # 2. Busca das ações pertencentes à unidade ativa
     try:
         res_cx_acoes = supabase.table("acoes_tratamento")\
-            .select("*, riscos(id, evento, unidade, gestor_risco)")\
+            .select("*, riscos(id, evento, unidade, gestor_risco, situacao_status)")\
             .eq("unidade_responsavel", unidade_ativa)\
             .order("risco_id")\
             .order("numero_sequencial")\
@@ -395,7 +395,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
         f"✅ Concluídas ({len(demandas_concluidas)})"
     ])
 
-    # Função interna para renderizar a lista de demandas de cada aba
+    # Função interna para renderizar a lista de demandas e o formulário do workflow (ETAPA 4)
     def renderizar_lista_demandas(demandas_lista, exibe_badge_nova=False):
         if not demandas_lista:
             st.info("Nenhuma demanda encontrada nesta categoria para a unidade selecionada.")
@@ -410,14 +410,13 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
             
             dados_risco = acao_item.get("riscos") or {}
             evento_risco = dados_risco.get("evento", "Não especificado")
+            gestor_risco = dados_risco.get("gestor_risco", "Gestor do Risco")
+            unidade_risco_origem = dados_risco.get("unidade", unidade_ativa)
             
             # Cálculo de Badges Visuais
             txt_badge_prazo, tipo_badge_prazo = obter_badge_prazo(acao_item.get("previsao_data_conclusao"), status_ac)
             
-            # Badge "🔵 Nova" se status for Pendente
             badge_nova_txt = "🔵 Nova | " if (exibe_badge_nova and status_ac == "Pendente") else ""
-
-            # Título do Card
             titulo_card = f"{badge_nova_txt}Risco #{r_id} (Ação {seq}) | {txt_badge_prazo} | {nome_acao}"
 
             with st.expander(titulo_card):
@@ -437,7 +436,8 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                     
                 st.divider()
                 
-                # Busca a última movimentação da ação para exibir o avanço %
+                # Busca a última movimentação da ação
+                pct_atual = 0
                 try:
                     res_ult_mov = supabase.table("movimentacoes_acoes")\
                         .select("percentual_conclusao, descricao_avanco, data_movimentacao")\
@@ -449,14 +449,14 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                     
                     if res_ult_mov.data:
                         mov = res_ult_mov.data[0]
-                        pct = mov.get("percentual_conclusao", 0)
-                        st.write(f"**Avanço Atual:** `{pct}%`")
-                        st.progress(pct / 100.0)
+                        pct_atual = mov.get("percentual_conclusao", 0)
+                        st.write(f"**Avanço Atual:** `{pct_atual}%`")
+                        st.progress(pct_atual / 100.0)
                         st.caption(f"Última atualização ({formatar_data_hora_br(mov.get('data_movimentacao'))}): {mov.get('descricao_avanco')}")
                     else:
                         st.write("**Avanço Atual:** `0%`")
                         st.progress(0.0)
-                except Exception as e:
+                except Exception:
                     st.caption("Não foi possível carregar a última movimentação.")
 
                 # Busca a última tramitação registrada
@@ -473,6 +473,81 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                         st.info(f"💬 **Última Tramitação ({formatar_data_hora_br(tram.get('data_tramitacao'))}):** Remetente: {tram.get('usuario_remetente')} ({tram.get('unidade_origem')}) ➔ Observação: *{tram.get('parecer_observacao')}*")
                 except Exception:
                     pass
+
+                # ---------------------------------------------------------
+                # ETAPA 4: POPOVER DE WORKFLOW (ATUAÇÃO E TRAMITAÇÃO)
+                # ---------------------------------------------------------
+                pop_atuar = st.popover("⚡ Responder / Atualizar Demanda")
+                with pop_atuar:
+                    st.markdown(f"### Atuação na Ação nº {seq} (Risco #{r_id})")
+                    
+                    with st.form(f"form_wf_atuacao_{r_id}_{seq}"):
+                        st.markdown("##### 1. Progresso e Status da Ação")
+                        novo_pct = st.slider("Percentual de Execução Concluído", 0, 100, value=int(pct_atual), step=5, key=f"sld_pct_{r_id}_{seq}")
+                        
+                        opcoes_status_wf = ["Pendente", "Em Andamento", "Devolvida", "Concluída"]
+                        idx_st_wf = opcoes_status_wf.index(status_ac) if status_ac in opcoes_status_wf else 1
+                        novo_status_ac = st.selectbox("Novo Status da Ação", opcoes_status_wf, index=idx_st_wf, key=f"sb_st_{r_id}_{seq}")
+                        
+                        st.markdown("##### 2. Descrição das Atividades Realizadas / Parecer Técnico")
+                        desc_avanco_wf = st.text_area(
+                            "Relato de Avanço / Evidências / Justificativa*", 
+                            placeholder="Descreva as medidas adotadas, prazos pactuados, links de evidências ou motivos de eventual devolução/atraso...",
+                            key=f"txt_av_{r_id}_{seq}"
+                        )
+                        
+                        st.markdown("##### 3. Tramitação da Demanda")
+                        col_t_wf1, col_t_wf2 = st.columns(2)
+                        with col_t_wf1:
+                            # Destino padrão pode ser a unidade de origem do Risco ou outra selecionada
+                            idx_dest = opcoes_unid.index(unidade_risco_origem) if unidade_risco_origem in opcoes_unid else 0
+                            unid_destino_wf = st.selectbox("Encaminhar/Tramitar Para Unidade*", opcoes_unid, index=idx_dest, key=f"sb_dest_{r_id}_{seq}")
+                        with col_t_wf2:
+                            resp_destino_wf = st.text_input("Nome do Destinatário / Responsável*", value=gestor_risco, key=f"txt_resp_dest_{r_id}_{seq}")
+                            
+                        remetente_wf = st.text_input("Seu Nome (Servidor Remetente)*", value=acao_item.get('nome_responsavel_implementacao', ''), key=f"txt_rem_{r_id}_{seq}")
+                        
+                        btn_enviar_wf = st.form_submit_button("🚀 Gravar Avanço e Tramitar Demanda")
+                        
+                        if btn_enviar_wf:
+                            if not desc_avanco_wf or not remetente_wf or not resp_destino_wf:
+                                st.warning("Por favor, preencha o relato do avanço, seu nome e o destinatário.")
+                            else:
+                                try:
+                                    # A. Atualiza a ação de tratamento (Status e Unidade Responsável caso tenha sido repassada)
+                                    supabase.table("acoes_tratamento").update({
+                                        "status_acao": novo_status_ac,
+                                        "unidade_responsavel": unid_destino_wf,
+                                        "nome_responsavel_implementacao": resp_destino_wf
+                                    }).eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
+                                    
+                                    # B. Insere a nova movimentação no histórico
+                                    dados_mov_wf = {
+                                        "risco_id": r_id,
+                                        "numero_sequencial": seq,
+                                        "status_anterior": status_ac,
+                                        "status_novo": novo_status_ac,
+                                        "descricao_avanco": desc_avanco_wf,
+                                        "percentual_conclusao": novo_pct,
+                                        "unidade_responsavel": unid_destino_wf,
+                                        "usuario_responsavel": resp_destino_wf
+                                    }
+                                    supabase.table("movimentacoes_acoes").insert(dados_mov_wf).execute()
+
+                                    # C. Insere o registro de tramitação
+                                    dados_tram_wf = {
+                                        "risco_id": r_id,
+                                        "unidade_origem": unidade_ativa,
+                                        "unidade_destino": unid_destino_wf,
+                                        "usuario_remetente": remetente_wf,
+                                        "parecer_observacao": desc_avanco_wf
+                                    }
+                                    supabase.table("tramitacoes").insert(dados_tram_wf).execute()
+
+                                    st.success("✅ Demanda atualizada e tramitada com sucesso!")
+                                    st.rerun()
+                                except Exception as e_wf:
+                                    st.error(f"Erro ao processar workflow: {e_wf}")
 
     # Renders das abas
     with tab_pend:
@@ -513,7 +588,6 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                     
                     badge_carater = "🟢" if carater == "Preventivo" else "🟡" if carater == "Corretivo" else "🔵"
                     
-                    # Formatação visual das datas no padrão DD/MM/AAAA
                     dt_inicio_fmt = formatar_data_br(acao_item.get('previsao_data_inicio'))
                     dt_conclusao_fmt = formatar_data_br(acao_item.get('previsao_data_conclusao'))
                     
@@ -648,10 +722,8 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                             "status_acao": "Pendente"
                         }
                         try:
-                            # 1. Cria a ação de tratamento
                             supabase.table("acoes_tratamento").insert(dados_nova_acao).execute()
                             
-                            # 2. Cria o registro inicial em movimentacoes_acoes (0% de execução)
                             dados_mov_inicial = {
                                 "risco_id": id_risco_sel,
                                 "numero_sequencial": prox_seq,
@@ -664,7 +736,6 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                             }
                             supabase.table("movimentacoes_acoes").insert(dados_mov_inicial).execute()
 
-                            # 3. Cria a tramitação automatizada para o Responsável pela Implementação
                             dados_tramitacao_acao = {
                                 "risco_id": id_risco_sel,
                                 "unidade_origem": unidade_origem_risco or unidade_resp_sel,
@@ -1124,10 +1195,8 @@ elif st.session_state.pagina_atual == "Cadastros":
                             "situacao_status": "Identificado"
                         }
                         try:
-                            # 1. Inserção do risco
                             res_novo_risco = supabase.table("riscos").insert(novo_risco_dados).execute()
                             
-                            # 2. Gravar automaticamente o registro inicial na tabela tramitacoes
                             if res_novo_risco.data and len(res_novo_risco.data) > 0:
                                 novo_risco_id = res_novo_risco.data[0]["id"]
                                 dados_tramitacao_inicial = {
