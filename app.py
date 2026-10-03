@@ -332,7 +332,7 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                         col_ac_edit, col_ac_del = st.columns([1, 1])
                         
                         with col_ac_edit:
-                            pop_edit_ac = st.popover("✏️ Editar Ação")
+                            pop_edit_ac = st.popover("✏️️ Editar Ação")
                             with pop_edit_ac:
                                 with st.form(f"form_edit_acao_{r_id}_{seq}"):
                                     edit_nome_ac = st.text_input("Ação", value=nome_acao)
@@ -461,7 +461,7 @@ elif st.session_state.pagina_atual == "Cadastros":
     sub = st.session_state.sub_pagina_atual or "Unidades"
     
     # ---------------------------------------------------------
-    # SUB-MÓDULO: UNIDADES (AJUSTADO PARA A ESTRUTURA REAL DO BANCO)
+    # SUB-MÓDULO: UNIDADES (AJUSTADO PARA TRATAMENTO DE EXCLUSÃO E RLS)
     # ---------------------------------------------------------
     if sub == "Unidades":
         st.subheader("🏢 Cadastramento de Unidades / Setores Institucionais")
@@ -469,14 +469,14 @@ elif st.session_state.pagina_atual == "Cadastros":
         
         with tab_list_unid:
             try:
-                # Consulta ajustada ordenando pela chave primária 'sigla'
+                # Consulta ordenando pela sigla limpa
                 resposta_unid = supabase.table("unidades").select("*").order("sigla").execute()
                 dados_unid = resposta_unid.data
                 
                 if dados_unid:
                     st.write(f"Total de unidades cadastradas: **{len(dados_unid)}**")
                     for item in dados_unid:
-                        sigla_item = item['sigla']
+                        sigla_item = str(item['sigla']).strip()
                         nome_item = item.get('nome_extenso', '')
                         tipo_exibicao = item.get('tipo_unidade', 'Não informado')
                         
@@ -504,7 +504,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                                     "nome_extenso": edit_nome,
                                                     "tipo_unidade": edit_tipo
                                                 }).eq("sigla", sigla_item).execute()
-                                                st.success("Unidade atualizada!")
+                                                st.toast("Unidade atualizada com sucesso!", icon="✅")
                                                 st.rerun()
                                             except Exception as e:
                                                 st.error(f"Erro ao atualizar: {e}")
@@ -514,13 +514,20 @@ elif st.session_state.pagina_atual == "Cadastros":
                                     st.warning(f"Tem certeza que deseja excluir a unidade '{sigla_item}'?")
                                     if st.button("Confirmar Exclusão", key=f"btn_del_unid_{sigla_item}"):
                                         try:
+                                            # Checagem de Riscos
                                             res_riscos = supabase.table("riscos").select("id").eq("unidade", sigla_item).execute()
                                             if res_riscos.data and len(res_riscos.data) > 0:
-                                                st.error(f"❌ Não é possível excluir a unidade '{sigla_item}' pois existem {len(res_riscos.data)} risco(s) associado(s) a ela.")
+                                                st.error(f"❌ Não é possível excluir '{sigla_item}'. Existem {len(res_riscos.data)} risco(s) vinculados.")
                                             else:
-                                                supabase.table("unidades").delete().eq("sigla", sigla_item).execute()
-                                                st.success("Unidade excluída com sucesso!")
-                                                st.rerun()
+                                                # Executa a exclusão com tratamento completo do retorno
+                                                res_del = supabase.table("unidades").delete().eq("sigla", sigla_item).execute()
+                                                
+                                                # Se a política de RLS bloquear, o Supabase não apaga nenhuma linha e retorna lista vazia
+                                                if hasattr(res_del, 'data') and len(res_del.data) == 0:
+                                                    st.error("⚠️ A exclusão foi bloqueada pelas políticas de segurança (RLS) do Supabase ou a sigla não foi localizada. Habilite a regra de 'DELETE' para a role 'anon/authenticated' no console do Supabase.")
+                                                else:
+                                                    st.toast(f"Unidade '{sigla_item}' excluída com sucesso!", icon="🗑️")
+                                                    st.rerun()
                                         except Exception as e:
                                             st.error(f"Erro ao tentar excluir: {e}")
                 else:
@@ -551,7 +558,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                         }
                         try:
                             supabase.table("unidades").insert(dados_nova_unidade).execute()
-                            st.success(f"✅ Unidade '{sigla}' ({tipo_unidade_sel}) registrada!")
+                            st.toast(f"✅ Unidade '{sigla}' registrada!", icon="🎉")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao salvar unidade: {e}")
@@ -1002,7 +1009,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             with col_doc1:
                                 st.link_button("📥 Visualizar / Baixar PDF", doc['url_publica'])
                             with col_doc2:
-                                pop_del_doc = st.popover("🗑️ Excluir Documento")
+                                pop_del_doc = st.popover("🗑️️ Excluir Documento")
                                 with pop_del_doc:
                                     st.warning("Deseja realmente remover este arquivo da biblioteca?")
                                     if st.button("Confirmar Exclusão", key=f"btn_del_doc_{doc['id']}"):
