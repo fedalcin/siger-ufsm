@@ -347,6 +347,7 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                     with st.expander(f"{badge_carater} Risco #{r_id} | Ação {seq}: {nome_acao}"):
                         st.markdown(f"**Risco:** {evento_txt}")
                         st.markdown(f"**Caráter da Ação:** {carater}")
+                        st.markdown(f"**Status da Ação:** `{acao_item.get('status_acao', 'Pendente')}`")
                         st.markdown(f"**Objetivo da Ação:** {acao_item['objetivo_acao']}")
                         st.markdown(f"**Unidade Responsável:** {acao_item['unidade_responsavel']}")
                         st.markdown(f"**Responsável pela Implementação:** {acao_item['nome_responsavel_implementacao']}")
@@ -417,7 +418,7 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
         if not res_riscos_db:
             st.warning("⚠️ É necessário ter pelo menos um Risco cadastrado no sistema para criar um Plano de Tratamento.")
         else:
-            mapa_riscos = {f"Risco #{r['id']} - {r['evento'] if r['evento'] else 'Sem Risco'}" : r['id'] for r in res_riscos_db}
+            mapa_riscos = {f"Risco #{r['id']} - {r['evento'] if r['evento'] else 'Sem Risco'}" : (r['id'], r['unidade']) for r in res_riscos_db}
             
             if res_unid_db:
                 opcoes_unid_siglas = [u['sigla'] for u in res_unid_db]
@@ -425,7 +426,7 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                 opcoes_unid_siglas = ["S/U"]
 
             risco_selecionado_label = st.selectbox("Selecione o Risco Mapeado*", options=list(mapa_riscos.keys()))
-            id_risco_sel = mapa_riscos[risco_selecionado_label]
+            id_risco_sel, unidade_origem_risco = mapa_riscos[risco_selecionado_label]
             
             try:
                 res_seq = supabase.table("acoes_tratamento").select("numero_sequencial").eq("risco_id", id_risco_sel).order("numero_sequencial", desc=True).limit(1).execute()
@@ -449,6 +450,9 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                 objetivo_input = st.text_area("Objetivo da Ação*", placeholder="O que se pretende alcançar com esta ação?")
                 como_input = st.text_area("Como será Implementada a Ação*", placeholder="Descreva o passo a passo e o procedimento operacional...")
 
+                # ETAPA 2: Informação fixa de status e progresso inicial
+                st.info("ℹ️ **Status Inicial Automatizado:** Esta ação será cadastrada com o status **Pendente** e **0%** de execução.")
+
                 st.caption("* Campos de preenchimento obrigatório.")
                 submitted_acao = st.form_submit_button("💾 Salvar Ação de Tratamento")
 
@@ -468,11 +472,37 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                             "nome_responsavel_implementacao": nome_resp_input,
                             "como_sera_implementada": como_input,
                             "previsao_data_inicio": dt_inicio.strftime("%Y-%m-%d"),
-                            "previsao_data_conclusao": dt_conclusao.strftime("%Y-%m-%d")
+                            "previsao_data_conclusao": dt_conclusao.strftime("%Y-%m-%d"),
+                            "status_acao": "Pendente"  # ETAPA 2: Status fixo automatizado
                         }
                         try:
+                            # 1. Cria a ação de tratamento
                             supabase.table("acoes_tratamento").insert(dados_nova_acao).execute()
-                            st.success(f"✅ Ação nº {prox_seq} para o Risco #{id_risco_sel} cadastrada com sucesso!")
+                            
+                            # 2. ETAPA 2: Cria o registro inicial em movimentacoes_acoes (0% de execução)
+                            dados_mov_inicial = {
+                                "risco_id": id_risco_sel,
+                                "numero_sequencial": prox_seq,
+                                "status_anterior": None,
+                                "status_novo": "Pendente",
+                                "descricao_avanco": "Ação cadastrada e aguardando início de implementação.",
+                                "percentual_conclusao": 0,
+                                "unidade_responsavel": unidade_resp_sel,
+                                "usuario_responsavel": nome_resp_input
+                            }
+                            supabase.table("movimentacoes_acoes").insert(dados_mov_inicial).execute()
+
+                            # 3. ETAPA 2: Cria a tramitação automatizada para o Responsável pela Implementação
+                            dados_tramitacao_acao = {
+                                "risco_id": id_risco_sel,
+                                "unidade_origem": unidade_origem_risco or unidade_resp_sel,
+                                "unidade_destino": unidade_resp_sel,
+                                "usuario_remetente": "Sistema / Cadastro",
+                                "parecer_observacao": f"Ação nº {prox_seq} registrada e atribuída a {nome_resp_input} para implementação."
+                            }
+                            supabase.table("tramitacoes").insert(dados_tramitacao_acao).execute()
+
+                            st.success(f"✅ Ação nº {prox_seq} cadastrada, movimentação (0%) inicializada e tramitada com sucesso!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao salvar ação no banco de dados: {e}")
@@ -816,7 +846,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         e_imp = st.slider("Impacto", 1, 5, value=r_item.get('impacto', 1))
                                         e_resp = st.text_input("Gestor do Risco", value=r_item.get('gestor_risco', ''))
                                         
-                                        options_status = ['Identificado', 'Em Análise', 'Em Tratamento', 'Monitorado', 'Encerrado/Mitigado']
+                                        options_status = ['Identificado', 'Em análise', 'Em tratamento', 'Monitorado', 'Encerrado', 'Cancelado']
                                         curr_status = r_item.get('situacao_status', 'Identificado')
                                         idx_st = options_status.index(curr_status) if curr_status in options_status else 0
                                         e_sit = st.selectbox("Situação", options_status, index=idx_st)
@@ -890,11 +920,12 @@ elif st.session_state.pagina_atual == "Cadastros":
                 with col_a2:
                     imp_val = st.slider("Impacto (1 a 5)", 1, 5, 3)
 
-                st.markdown("##### 4. Governança, Controle e Prazos")
+                st.markdown("##### 4. Governança e Prazos")
                 col_g1, col_g2, col_g3 = st.columns(3)
                 with col_g1:
                     resp_input = st.text_input("Gestor do Risco*", placeholder="Nome do servidor responsável")
-                    situacao_sel = st.selectbox("Situação Inicial*", ['Identificado', 'Em Análise', 'Em Tratamento', 'Monitorado', 'Encerrado/Mitigado'])
+                    # ETAPA 2: Status fixo automatizado (sem selectbox)
+                    st.info("ℹ️ **Status Inicial Automatizado:** `Identificado`")
                 with col_g2:
                     dt_identificacao = st.date_input("Data de Identificação*", datetime.now(), format="DD/MM/YYYY")
                 with col_g3:
@@ -908,8 +939,10 @@ elif st.session_state.pagina_atual == "Cadastros":
                         st.warning("Preencha os campos obrigatórios (Risco e Gestor do Risco).")
                     else:
                         nivel_calc = prob_val * imp_val
+                        unidade_sigla = mapa_unidades[unid_label]
+                        
                         novo_risco_dados = {
-                            "unidade": mapa_unidades[unid_label],
+                            "unidade": unidade_sigla,
                             "objetivo_estrategico": mapa_oe[oe_label],
                             "categoria_risco": mapa_cat[cat_label],
                             "evento": evento_input,
@@ -921,11 +954,25 @@ elif st.session_state.pagina_atual == "Cadastros":
                             "gestor_risco": resp_input,
                             "data_identificacao": dt_identificacao.strftime("%Y-%m-%d"),
                             "periodicidade_revisao": periodicidade_sel,
-                            "situacao_status": situacao_sel
+                            "situacao_status": "Identificado"  # ETAPA 2: Forçado como Identificado
                         }
                         try:
-                            supabase.table("riscos").insert(novo_risco_dados).execute()
-                            st.success("✅ Risco registrado com sucesso!")
+                            # 1. Inserção do risco
+                            res_novo_risco = supabase.table("riscos").insert(novo_risco_dados).execute()
+                            
+                            # 2. ETAPA 2: Gravar automaticamente o registro inicial na tabela tramitacoes
+                            if res_novo_risco.data and len(res_novo_risco.data) > 0:
+                                novo_risco_id = res_novo_risco.data[0]["id"]
+                                dados_tramitacao_inicial = {
+                                    "risco_id": novo_risco_id,
+                                    "unidade_origem": unidade_sigla,
+                                    "unidade_destino": unidade_sigla,
+                                    "usuario_remetente": resp_input,
+                                    "parecer_observacao": "Registro inicial e identificação do risco no sistema."
+                                }
+                                supabase.table("tramitacoes").insert(dados_tramitacao_inicial).execute()
+
+                            st.success("✅ Risco registrado e tramitação inicial gerada com sucesso!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao salvar o risco no banco de dados: {e}")
