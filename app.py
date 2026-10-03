@@ -46,7 +46,7 @@ elif url_logo_siger:
 elif os.path.exists("logo.png"):
     favicon_app = "logo.png"
 else:
-    favicon_app = "🛡️"
+    favicon_app = "🛡️️"
 
 # ---------------------------------------------------------
 # CONFIGURAÇÃO DE PÁGINA E ESTILOS CSS
@@ -158,7 +158,7 @@ st.markdown("""
         line-height: 1.6;
     }
 
-    /* ESTILOS DA TIMELINE (ETAPA 6) */
+    /* ESTILOS DA TIMELINE */
     .timeline-item {
         border-left: 3px solid #002147;
         padding-left: 15px;
@@ -360,7 +360,7 @@ st.sidebar.markdown('</div>', unsafe_allow_html=True)
 st.sidebar.divider()
 
 # 1. GRUPO: ADMINISTRAÇÃO
-with st.sidebar.expander("⚙️️ Administração", expanded=False):
+with st.sidebar.expander("⚙ Administração", expanded=False):
     if st.button("👥 Usuários e Permissões", key="btn_adm_usr", use_container_width=True):
         navegar_para("Administração do Sistema", "Usuários")
     if st.button("🔧 Configurações Gerais", key="btn_adm_cfg", use_container_width=True):
@@ -923,7 +923,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                                 st.error(f"❌ Não é possível excluir '{sigla_item}'. Existem {len(res_riscos.data)} risco(s) vinculados.")
                                             else:
                                                 supabase.table("unidades").delete().eq("sigla", sigla_item).execute()
-                                                st.toast(f"Unidade '{sigla_item}' excluída com sucesso!", icon="🗑️️")
+                                                st.toast(f"Unidade '{sigla_item}' excluída com sucesso!", icon="🗑")
                                                 st.rerun()
                                         except Exception as e:
                                             st.error(f"Erro ao tentar excluir: {e}")
@@ -1441,7 +1441,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         except Exception as e:
                                             st.error(f"Erro ao excluir arquivo: {e}")
                 else:
-                    st.info("Nenhum documento cadastrado na biblioteca.")
+                    st.info("Nenum documento cadastrado na biblioteca.")
             except Exception as e:
                 st.error(f"Erro ao carregar documentos: {e}")
 
@@ -1501,6 +1501,129 @@ elif st.session_state.pagina_atual == "Cadastros":
                     st.rerun()
                 except Exception as e:
                     st.error(f"Erro ao salvar texto: {e}")
+
+# ---------------------------------------------------------
+# PÁGINA: MONITORAMENTO (ACOMPANHAMENTO DE RISCOS)
+# ---------------------------------------------------------
+elif st.session_state.pagina_atual == "Monitoramento":
+    st.title("📌 Monitoramento e Acompanhamento de Riscos")
+    
+    try:
+        res_riscos = supabase.table("riscos").select("*").order("id", desc=True).execute()
+        lista_riscos = res_riscos.data or []
+    except Exception as e:
+        st.error(f"Erro ao carregar riscos: {e}")
+        lista_riscos = []
+
+    if not lista_riscos:
+        st.info("Nenhum risco cadastrado para monitoramento.")
+    else:
+        mapa_riscos_mon = {f"Risco #{r['id']} | {r['unidade']} - {r['evento'][:50]}...": r for r in lista_riscos}
+        risco_sel_label = st.selectbox("Selecione o Risco para Acompanhamento 360°:", list(mapa_riscos_mon.keys()))
+        risco_obj = mapa_riscos_mon[risco_sel_label]
+        r_id = risco_obj["id"]
+
+        st.divider()
+
+        t_visao, t_acoes, t_timeline = st.tabs([
+            "🔍 Visão Geral e Indicadores", 
+            "📋 Ações de Tratamento Vinculadas", 
+            "🕒 Timeline / Linha do Tempo Visual"
+        ])
+
+        with t_visao:
+            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+            nivel = risco_obj.get("nivel_risco", 1)
+            cor_nivel = "🔴 Crítico" if nivel >= 15 else "🟡 Médio" if nivel >= 8 else "🟢 Baixo"
+            
+            col_m1.metric("Nível de Risco", f"{nivel}", cor_nivel)
+            col_m2.metric("Probabilidade", f"{risco_obj.get('probabilidade', 1)} / 5")
+            col_m3.metric("Impacto", f"{risco_obj.get('impacto', 1)} / 5")
+            col_m4.metric("Situação Atual", risco_obj.get("situacao_status", "Identificado"))
+
+            st.markdown("---")
+            st.markdown(f"**Evento:** {risco_obj.get('evento')}")
+            st.markdown(f"**Causa:** {risco_obj.get('causa', '-')}")
+            st.markdown(f"**Consequência:** {risco_obj.get('consequencia', '-')}")
+            st.markdown(f"**Unidade:** {risco_obj.get('unidade')} | **Gestor:** {risco_obj.get('gestor_risco')}")
+
+        with t_acoes:
+            try:
+                res_ac = supabase.table("acoes_tratamento").select("*").eq("risco_id", r_id).order("numero_sequencial").execute()
+                lista_ac = res_ac.data or []
+                
+                if lista_ac:
+                    for ac in lista_ac:
+                        seq = ac["numero_sequencial"]
+                        st_ac = ac.get("status_acao", "Pendente")
+                        bad_prazo, _ = obter_badge_prazo(ac.get("previsao_data_conclusao"), st_ac)
+                        
+                        with st.expander(f"Ação #{seq}: {ac['acao']} ({st_ac}) | {bad_prazo}"):
+                            st.write(f"**Objetivo:** {ac.get('objetivo_acao')}")
+                            st.write(f"**Responsável:** {ac.get('nome_responsavel_implementacao')} ({ac.get('unidade_responsavel')})")
+                            st.write(f"**Como Executar:** {ac.get('como_sera_implementada')}")
+                            st.write(f"**Período:** {formatar_data_br(ac.get('previsao_data_inicio'))} até {formatar_data_br(ac.get('previsao_data_conclusao'))}")
+                else:
+                    st.info("Nenhuma ação cadastrada para este risco.")
+            except Exception as e:
+                st.error(f"Erro ao carregar ações: {e}")
+
+        with t_timeline:
+            renderizar_timeline_risco(r_id)
+
+# ---------------------------------------------------------
+# PÁGINA: DASHBOARDS
+# ---------------------------------------------------------
+elif st.session_state.pagina_atual == "Dashboards":
+    st.title("📊 Painel Geral de Governança e Riscos")
+    st.divider()
+
+    try:
+        res_r = supabase.table("riscos").select("*").execute()
+        riscos_data = res_r.data or []
+        
+        res_a = supabase.table("acoes_tratamento").select("*").execute()
+        acoes_data = res_a.data or []
+    except Exception as e:
+        st.error(f"Erro ao carregar indicadores: {e}")
+        riscos_data, acoes_data = [], []
+
+    tot_riscos = len(riscos_data)
+    tot_acoes = len(acoes_data)
+    
+    criticos = sum(1 for r in riscos_data if r.get("nivel_risco", 0) >= 15)
+    medios = sum(1 for r in riscos_data if 8 <= r.get("nivel_risco", 0) < 15)
+    baixos = sum(1 for r in riscos_data if r.get("nivel_risco", 0) < 8)
+
+    c_kpi1, c_kpi2, c_kpi3, c_kpi4 = st.columns(4)
+    c_kpi1.metric("Total de Riscos Mapeados", tot_riscos)
+    c_kpi2.metric("Riscos Críticos 🔴", criticos)
+    c_kpi3.metric("Riscos Médios 🟡", medios)
+    c_kpi4.metric("Total de Ações Registradas", tot_acoes)
+
+    st.markdown("---")
+
+    col_g1, col_g2 = st.columns(2)
+
+    with col_g1:
+        st.subheader("📌 Riscos por Status / Situação")
+        if riscos_data:
+            df_r = pd.DataFrame(riscos_data)
+            df_status = df_r["situacao_status"].value_counts().reset_index()
+            df_status.columns = ["Situação", "Quantidade"]
+            st.dataframe(df_status, use_container_width=True)
+        else:
+            st.info("Sem dados de riscos.")
+
+    with col_g2:
+        st.subheader("🛡️ Ações de Tratamento por Status")
+        if acoes_data:
+            df_a = pd.DataFrame(acoes_data)
+            df_ac_st = df_a["status_acao"].value_counts().reset_index()
+            df_ac_st.columns = ["Status da Ação", "Quantidade"]
+            st.dataframe(df_ac_st, use_container_width=True)
+        else:
+            st.info("Sem dados de ações.")
 
 # ---------------------------------------------------------
 # PÁGINA: BIBLIOTECA
