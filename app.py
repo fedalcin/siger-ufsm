@@ -8,15 +8,19 @@ import bcrypt
 # ---------------------------------------------------------
 # IMPORTAÇÃO DO MÓDULO DE CÁLCULOS SIGER
 # ---------------------------------------------------------
-from calculos_siger import (
-    IET_METRICAS,
-    calcular_icp,
-    calcular_iet,
-    calcular_itr,
-    carregar_dados_siger,
-    classificar_iar,
-    obter_cor_indicador,
-)
+
+try:
+    from calculos_siger import (
+        IET_METRICAS,
+        calcular_icp,
+        calcular_iet,
+        calcular_itr,
+        carregar_dados_siger,
+        classificar_iar,
+        obter_cor_indicador,
+    )
+except Exception as e:
+    st.error(f"Erro ao importar calculos_siger.py: {e}")
 
 # ---------------------------------------------------------
 # CONEXÃO COM SUPABASE
