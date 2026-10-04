@@ -6,6 +6,19 @@ import os
 import bcrypt
 
 # ---------------------------------------------------------
+# IMPORTAÇÃO DO MÓDULO DE CÁLCULOS SIGER
+# ---------------------------------------------------------
+from calculos_siger import (
+    IET_METRICAS,
+    calcular_icp,
+    calcular_iet,
+    calcular_itr,
+    carregar_dados_siger,
+    classificar_iar,
+    obter_cor_indicador,
+)
+
+# ---------------------------------------------------------
 # CONEXÃO COM SUPABASE
 # ---------------------------------------------------------
 @st.cache_resource
@@ -1505,56 +1518,89 @@ elif st.session_state.pagina_atual == "Monitoramento":
 # ---------------------------------------------------------
 # PÁGINA: DASHBOARDS
 # ---------------------------------------------------------
+
 elif st.session_state.pagina_atual == "Dashboards":
-    st.title("📊 Painel Geral de Governança e Riscos")
+    st.title("📊 Painel de Indicadores SIGER")
+    st.caption("Índices de Execução, Cumprimento de Prazos, Tratamento de Riscos e Atenção Rápida")
     st.divider()
-
-    try:
-        res_r = supabase.table("riscos").select("*").execute()
-        riscos_data = res_r.data or []
-        
-        res_a = supabase.table("acoes_tratamento").select("*").execute()
-        acoes_data = res_a.data or []
-    except Exception as e:
-        st.error(f"Erro ao carregar indicadores: {e}")
-        riscos_data, acoes_data = [], []
-
-    tot_riscos = len(riscos_data)
-    tot_acoes = len(acoes_data)
     
-    criticos = sum(1 for r in riscos_data if (r.get("probabilidade", 1) * r.get("impacto", 1)) >= 15)
-    medios = sum(1 for r in riscos_data if 6 <= (r.get("probabilidade", 1) * r.get("impacto", 1)) < 15)
-    baixos = sum(1 for r in riscos_data if (r.get("probabilidade", 1) * r.get("impacto", 1)) < 6)
+    # Carregar dados diretamente do Supabase/SIGER
+    try:
+        df_planos, df_riscos = carregar_dados_siger()
+    except Exception as e:
+        st.error(f"Erro ao carregar dados dos indicadores: {e}")
+        df_planos, df_riscos = pd.DataFrame(), pd.DataFrame()
+    
+    if df_planos.empty and df_riscos.empty:
+        st.warning("Nenhum dado encontrado no banco para gerar os indicadores SIGER.")
+    else:
+        # 1. Filtros na Barra Lateral
+        st.sidebar.markdown("---")
+        st.sidebar.subheader("Filtros do Dashboard")
+        
+        # Filtro por Eixo
+        eixos_disponiveis = ["Todos"] + (list(df_planos["eixo"].unique()) if "eixo" in df_planos.columns else [])
+        eixo_sel = st.sidebar.selectbox("Filtrar por Eixo", eixos_disponiveis)
+        
+        # Filtro por Status
+        status_disponiveis = ["Todos"] + (list(df_planos["status"].unique()) if "status" in df_planos.columns else [])
+        status_sel = st.sidebar.selectbox("Filtrar por Status", status_disponiveis)
+        
+        # Aplicar Filtros nos Planos
+        df_f = df_planos.copy()
+        if not df_f.empty:
+            if eixo_sel != "Todos" and "eixo" in df_f.columns:
+                df_f = df_f[df_f["eixo"] == eixo_sel]
+            if status_sel != "Todos" and "status" in df_f.columns:
+                df_f = df_f[df_f["status"] == status_sel]
+            
+        # 2. Cálculo dos Indicadores SIGER
+        iet_val, iet_desc = calcular_iet(df_f)
+        icp_val, icp_desc = calcular_icp(df_f)
+        itr_val, itr_desc = calcular_itr(df_riscos)
+        iar_val, iar_cat, iar_desc = classificar_iar(iet_val, icp_val, itr_val)
+        
+        # 3. Cards com os Resultados
+        c_kpi1, c_kpi2, c_kpi3, c_kpi4 = st.columns(4)
+        
+        with c_kpi1:
+            st.metric(label="IET (Execução)", value=f"{iet_val:.1f}%")
+            st.caption(f"**Situação:** {iet_desc}")
+            
+        with c_kpi2:
+            st.metric(label="ICP (Prazos)", value=f"{icp_val:.1f}%")
+            st.caption(f"**Situação:** {icp_desc}")
+            
+        with c_kpi3:
+            st.metric(label="ITR (Riscos)", value=f"{itr_val:.1f}%")
+            st.caption(f"**Situação:** {itr_desc}")
+            
+        with c_kpi4:
+            st.metric(label="IAR (Atenção)", value=f"{iar_val:.1f}")
+            st.caption(f"**Nível:** {iar_cat}")
 
-    c_kpi1, c_kpi2, c_kpi3, c_kpi4 = st.columns(4)
-    c_kpi1.metric("Total de Riscos Mapeados", tot_riscos)
-    c_kpi2.metric("Riscos Críticos 🔴", criticos)
-    c_kpi3.metric("Riscos Médios 🟡", medios)
-    c_kpi4.metric("Total de Ações Registradas", tot_acoes)
-
-    st.markdown("---")
-
-    col_g1, col_g2 = st.columns(2)
-
-    with col_g1:
-        st.subheader("📌 Riscos por Status / Situação")
-        if riscos_data:
-            df_r = pd.DataFrame(riscos_data)
-            df_status = df_r["situacao_status"].value_counts().reset_index()
-            df_status.columns = ["Situação", "Quantidade"]
-            st.dataframe(df_status, use_container_width=True)
-        else:
-            st.info("Sem dados de riscos.")
-
-    with col_g2:
-        st.subheader("🛡️ Ações de Tratamento por Status")
-        if acoes_data:
-            df_a = pd.DataFrame(acoes_data)
-            df_ac_st = df_a["status_acao"].value_counts().reset_index()
-            df_ac_st.columns = ["Status da Ação", "Quantidade"]
-            st.dataframe(df_ac_st, use_container_width=True)
-        else:
-            st.info("Sem dados de ações.")
+        st.markdown("---")
+        
+        # 4. Tabela Resumo por Eixo
+        if not df_planos.empty and "eixo" in df_planos.columns:
+            st.subheader("📌 Desempenho por Eixo Estratégico")
+            
+            eixos = df_planos["eixo"].unique()
+            dados_eixos = []
+            
+            for e in eixos:
+                sub_df = df_planos[df_planos["eixo"] == e]
+                v_iet, _ = calcular_iet(sub_df)
+                v_icp, _ = calcular_icp(sub_df)
+                dados_eixos.append({
+                    "Eixo": e,
+                    "Total de Planos": len(sub_df),
+                    "IET (%)": round(v_iet, 1),
+                    "ICP (%)": round(v_icp, 1)
+                })
+                
+            df_resumo = pd.DataFrame(dados_eixos)
+            st.dataframe(df_resumo, use_container_width=True)
 
 # ---------------------------------------------------------
 # PÁGINA: BIBLIOTECA
