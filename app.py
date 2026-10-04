@@ -201,6 +201,49 @@ TIPOS_UNIDADE_OPCOES = [
 ]
 
 # ---------------------------------------------------------
+# CONSTANTES E REGRAS DE CÁLCULO DA ETAPA 2 (MATRIZ DE RISCO)
+# ---------------------------------------------------------
+LABELS_PROBABILIDADE = {
+    1: "1 - Raro",
+    2: "2 - Pouco Provável",
+    3: "3 - Provável",
+    4: "4 - Muito Provável",
+    5: "5 - Quase Certo"
+}
+
+LABELS_IMPACTO = {
+    1: "1 - Insignificante",
+    2: "2 - Pequeno",
+    3: "3 - Moderado",
+    4: "4 - Grande",
+    5: "5 - Catastrófico"
+}
+
+def calcular_nivel_e_classificacao(probabilidade: int, impacto: int):
+    """
+    Calcula o Nível de Risco (Probabilidade x Impacto) e define a Classificação Térmica
+    Regras da Etapa 2:
+      - 1 a 5: Baixo (Verde)
+      - 6 a 12: Médio (Amarelo)
+      - 15 a 25: Crítico (Vermelho)
+    """
+    nivel = probabilidade * impacto
+    if nivel >= 15:
+        classificacao = "Crítico"
+        badge = f"🔴 {nivel} ({classificacao})"
+        cor_hex = "#ff4b4b"
+    elif nivel >= 6:
+        classificacao = "Médio"
+        badge = f"🟡 {nivel} ({classificacao})"
+        cor_hex = "#ffa800"
+    else:
+        classificacao = "Baixo"
+        badge = f"🟢 {nivel} ({classificacao})"
+        cor_hex = "#00c853"
+        
+    return nivel, classificacao, badge, cor_hex
+
+# ---------------------------------------------------------
 # AUTENTICAÇÃO E SESSÃO DO USUÁRIO
 # ---------------------------------------------------------
 if "usuario_logado" not in st.session_state:
@@ -878,7 +921,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
 # PÁGINA: PLANOS DE TRATAMENTO / AÇÕES DE MITIGAÇÃO
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Planos de Tratamento":
-    st.title("🛡️️ Planos de Tratamento e Mitigação de Riscos")
+    st.title("🛡 Planos de Tratamento e Mitigação de Riscos")
     
     tab_list_acoes, tab_nova_acao = st.tabs(["🔍 Ações Cadastradas", "➕ Cadastrar Nova Ação de Mitigação"])
     
@@ -1173,14 +1216,17 @@ elif st.session_state.pagina_atual == "Cadastros":
                     st.write(f"Total de riscos registrados: **{len(dados)}**")
                     
                     for r_item in dados:
-                        nivel = r_item.get('nivel_risco', 1)
-                        cor_nivel = "🔴 (Crítico)" if nivel >= 15 else "🟡 (Médio)" if nivel >= 8 else "🟢 (Baixo)"
+                        p_val = r_item.get('probabilidade', 1)
+                        i_val = r_item.get('impacto', 1)
+                        _, _, badge_risco, _ = calcular_nivel_e_classificacao(p_val, i_val)
+                        
                         dt_ident_fmt = formatar_data_br(r_item.get('data_identificacao'))
                         st_risco = r_item.get('situacao_status', 'Identificado')
                         
-                        with st.expander(f"🛡️ Risco #{r_item['id']} ({st_risco}) | {r_item['unidade']} | Nível {nivel} {cor_nivel}"):
+                        with st.expander(f"🛡️ Risco #{r_item['id']} ({st_risco}) | {r_item['unidade']} | {badge_risco}"):
                             st.markdown(f"**Risco:** {r_item.get('evento', '')}")
                             st.markdown(f"**Causa:** {r_item.get('causa', '')} | **Consequência:** {r_item.get('consequencia', '')}")
+                            st.markdown(f"**Probabilidade:** {LABELS_PROBABILIDADE.get(p_val, p_val)} | **Impacto:** {LABELS_IMPACTO.get(i_val, i_val)}")
                             st.markdown(f"**Gestor:** {r_item.get('gestor_risco', '')} | **Situação Atual:** `{st_risco}`")
                             st.markdown(f"**Data de Identificação:** {dt_ident_fmt}")
                             
@@ -1193,8 +1239,31 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         e_evento = st.text_area("Risco", value=r_item.get('evento', ''))
                                         e_causa = st.text_area("Causa", value=r_item.get('causa', ''))
                                         e_cons = st.text_area("Consequência", value=r_item.get('consequencia', ''))
-                                        e_prob = st.slider("Probabilidade", 1, 5, value=r_item.get('probabilidade', 1))
-                                        e_imp = st.slider("Impacto", 1, 5, value=r_item.get('impacto', 1))
+                                        
+                                        st.markdown("---")
+                                        st.markdown("##### 🧮 Reavaliação do Risco (Etapa 2)")
+                                        e_prob = st.slider(
+                                            "Probabilidade", 
+                                            1, 5, 
+                                            value=p_val, 
+                                            format="%d",
+                                            help="1: Raro | 2: Pouco Provável | 3: Provável | 4: Muito Provável | 5: Quase Certo"
+                                        )
+                                        st.caption(f"Probabilidade Selecionada: **{LABELS_PROBABILIDADE[e_prob]}**")
+
+                                        e_imp = st.slider(
+                                            "Impacto", 
+                                            1, 5, 
+                                            value=i_val, 
+                                            format="%d",
+                                            help="1: Insignificante | 2: Pequeno | 3: Moderado | 4: Grande | 5: Catastrófico"
+                                        )
+                                        st.caption(f"Impacto Selecionado: **{LABELS_IMPACTO[e_imp]}**")
+
+                                        e_nv_calc, e_class_calc, e_badge_calc, _ = calcular_nivel_e_classificacao(e_prob, e_imp)
+                                        st.info(f"Nível Recalculado: **{e_badge_calc}**")
+                                        st.markdown("---")
+
                                         e_resp = st.text_input("Gestor do Risco", value=r_item.get('gestor_risco', ''))
                                         
                                         options_status = ['Identificado', 'Em análise', 'Em tratamento', 'Monitorado', 'Encerrado', 'Cancelado']
@@ -1203,19 +1272,18 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         e_sit = st.selectbox("Situação", options_status, index=idx_st)
                                         
                                         if st.form_submit_button("💾 Salvar Alterações"):
-                                            novo_nivel = e_prob * e_imp
                                             supabase.table("riscos").update({
                                                 "evento": e_evento,
                                                 "causa": e_causa,
                                                 "consequencia": e_cons,
                                                 "probabilidade": e_prob,
                                                 "impacto": e_imp,
-                                                "nivel_risco": novo_nivel,
+                                                "nivel_risco": e_nv_calc,
                                                 "gestor_risco": e_resp,
                                                 "situacao_status": e_sit
                                             }).eq("id", r_item['id']).execute()
                                             
-                                            st.success("Risco atualizado!")
+                                            st.success("Risco e Matriz atualizados com sucesso!")
                                             st.rerun()
 
                             with col_r_del:
@@ -1284,21 +1352,32 @@ elif st.session_state.pagina_atual == "Cadastros":
                     oe_label = st.selectbox("Objetivo Estratégico Relacionado*", options=list(mapa_oe.keys()))
                     cat_label = st.selectbox("Categoria do Risco*", options=list(mapa_cat.keys()))
 
-                st.markdown("##### 2. Identificação e Análise do Risco")
-                evento_input = st.text_area("Risco*", placeholder="Descreva o risco")
+                st.markdown("##### 2. Identificação do Risco")
+                evento_input = st.text_area("Risco*", placeholder="Descreva o evento de risco")
                 
                 col_i1, col_i2 = st.columns(2)
                 with col_i1:
                     causa_input = st.text_area("Causa(s)*", placeholder="Quais fatores geram este risco?")
                 with col_i2:
-                    consequencia_input = st.text_area("Consequência(s)*", placeholder="Quais os impactos?")
+                    consequencia_input = st.text_area("Consequência(s)*", placeholder="Quais os impactos institucionais?")
 
-                st.markdown("##### 3. Avaliação Qualitativa")
+                st.markdown("##### 3. Avaliação Qualitativa e Matriz de Riscos (Regras Etapa 2)")
                 col_a1, col_a2 = st.columns(2)
                 with col_a1:
-                    prob_val = st.slider("Probabilidade (1 a 5)", 1, 5, 3)
+                    prob_val = st.slider("Probabilidade (P)*", 1, 5, 3)
+                    st.caption(f"Nível Selecionado: **{LABELS_PROBABILIDADE[prob_val]}**")
                 with col_a2:
-                    imp_val = st.slider("Impacto (1 a 5)", 1, 5, 3)
+                    imp_val = st.slider("Impacto (I)*", 1, 5, 3)
+                    st.caption(f"Nível Selecionado: **{LABELS_IMPACTO[imp_val]}**")
+
+                nivel_calc, class_calc, badge_calc, _ = calcular_nivel_e_classificacao(prob_val, imp_val)
+                
+                st.markdown(f"""
+                > **Cálculo Automático (Etapa 2):**
+                > - **Fórmula:** $Nível = Probabilidade (P) \\times Impacto (I)$
+                > - **Resultado do Nível:** **{nivel_calc}**
+                > - **Classificação Térmica:** **{badge_calc}**
+                """)
 
                 st.markdown("##### 4. Governança e Prazos")
                 col_g1, col_g2, col_g3 = st.columns(3)
@@ -1309,13 +1388,12 @@ elif st.session_state.pagina_atual == "Cadastros":
                 with col_g3:
                     periodicidade_sel = st.selectbox("Periodicidade de Revisão", ["Mensal", "Trimestral", "Semestral", "Anual"])
 
-                submitted_risco = st.form_submit_button("💾 Salvar Risco")
+                submitted_risco = st.form_submit_button("💾 Salvar Risco Mapeado")
                 
                 if submitted_risco:
                     if not evento_input or not resp_input:
-                        st.warning("Preencha os campos obrigatórios.")
+                        st.warning("Preencha todos os campos obrigatórios (*).")
                     else:
-                        nivel_calc = prob_val * imp_val
                         unidade_sigla = mapa_unidades[unid_label]
                         
                         novo_risco_dados = {
@@ -1343,11 +1421,11 @@ elif st.session_state.pagina_atual == "Cadastros":
                                     "unidade_origem": unidade_sigla,
                                     "unidade_destino": unidade_sigla,
                                     "usuario_remetente": resp_input,
-                                    "parecer_observacao": "Registro inicial e identificação do risco no sistema."
+                                    "parecer_observacao": f"Registro inicial e avaliação do risco. Matriz: {badge_calc}."
                                 }
                                 supabase.table("tramitacoes").insert(dados_tramitacao_inicial).execute()
 
-                            st.success("✅ Risco registrado com sucesso!")
+                            st.success(f"✅ Risco registrado com sucesso! Classificação: {badge_calc}")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao salvar o risco no banco de dados: {e}")
@@ -1382,16 +1460,19 @@ elif st.session_state.pagina_atual == "Monitoramento":
         ])
 
         with t_visao:
+            p_val = risco_obj.get("probabilidade", 1)
+            i_val = risco_obj.get("impacto", 1)
+            nv_val, class_val, badge_val, cor_hex = calcular_nivel_e_classificacao(p_val, i_val)
+
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-            nivel = risco_obj.get("nivel_risco", 1)
-            cor_nivel = "🔴 Crítico" if nivel >= 15 else "🟡 Médio" if nivel >= 8 else "🟢 Baixo"
             
-            col_m1.metric("Nível de Risco", f"{nivel}", cor_nivel)
-            col_m2.metric("Probabilidade", f"{risco_obj.get('probabilidade', 1)} / 5")
-            col_m3.metric("Impacto", f"{risco_obj.get('impacto', 1)} / 5")
+            col_m1.metric("Nível de Risco (Matriz Etapa 2)", f"{nv_val}", f"{class_val}")
+            col_m2.metric("Probabilidade", f"{p_val} / 5", LABELS_PROBABILIDADE.get(p_val, ""))
+            col_m3.metric("Impacto", f"{i_val} / 5", LABELS_IMPACTO.get(i_val, ""))
             col_m4.metric("Situação Atual", risco_obj.get("situacao_status", "Identificado"))
 
             st.markdown("---")
+            st.markdown(f"**Matriz de Avaliação:** {badge_val}")
             st.markdown(f"**Evento:** {risco_obj.get('evento')}")
             st.markdown(f"**Causa:** {risco_obj.get('causa', '-')}")
             st.markdown(f"**Consequência:** {risco_obj.get('consequencia', '-')}")
@@ -1441,9 +1522,9 @@ elif st.session_state.pagina_atual == "Dashboards":
     tot_riscos = len(riscos_data)
     tot_acoes = len(acoes_data)
     
-    criticos = sum(1 for r in riscos_data if r.get("nivel_risco", 0) >= 15)
-    medios = sum(1 for r in riscos_data if 8 <= r.get("nivel_risco", 0) < 15)
-    baixos = sum(1 for r in riscos_data if r.get("nivel_risco", 0) < 8)
+    criticos = sum(1 for r in riscos_data if (r.get("probabilidade", 1) * r.get("impacto", 1)) >= 15)
+    medios = sum(1 for r in riscos_data if 6 <= (r.get("probabilidade", 1) * r.get("impacto", 1)) < 15)
+    baixos = sum(1 for r in riscos_data if (r.get("probabilidade", 1) * r.get("impacto", 1)) < 6)
 
     c_kpi1, c_kpi2, c_kpi3, c_kpi4 = st.columns(4)
     c_kpi1.metric("Total de Riscos Mapeados", tot_riscos)
