@@ -1,60 +1,9 @@
 import streamlit as st
 from supabase import create_client, Client
 import pandas as pd
-import plotly.express as px
-import plotly.graph_objects as go
 from datetime import datetime, date
 import os
 import bcrypt
-
-# ---------------------------------------------------------
-# IMPORTAÇÃO DOS CÁLCULOS DE RISCO
-# ---------------------------------------------------------
-try:
-    from calculos_siger import (
-        calcular_nivel_risco,
-        classificar_nivel_risco,
-        obter_cor_nivel_risco,
-        calcular_estatisticas_risco,
-        gerar_matriz_risco_df
-    )
-except ImportError:
-    # Funções de fallback caso o módulo calculos_siger.py não esteja acessível
-    def calcular_nivel_risco(probabilidade: int, impacto: int) -> int:
-        return probabilidade * impacto
-
-    def classificar_nivel_risco(nivel: int) -> str:
-        if nivel >= 15:
-            return "Crítico"
-        elif nivel >= 8:
-            return "Médio"
-        return "Baixo"
-
-    def obter_cor_nivel_risco(nivel: int) -> str:
-        if nivel >= 15:
-            return "🔴 (Crítico)"
-        elif nivel >= 8:
-            return "🟡 (Médio)"
-        return "🟢 (Baixo)"
-
-    def calcular_estatisticas_risco(df_riscos: pd.DataFrame) -> dict:
-        if df_riscos.empty:
-            return {"total": 0, "criticos": 0, "medios": 0, "baixos": 0}
-        total = len(df_riscos)
-        criticos = len(df_riscos[df_riscos["nivel_risco"] >= 15]) if "nivel_risco" in df_riscos else 0
-        medios = len(df_riscos[(df_riscos["nivel_risco"] >= 8) & (df_riscos["nivel_risco"] < 15)]) if "nivel_risco" in df_riscos else 0
-        baixos = len(df_riscos[df_riscos["nivel_risco"] < 8]) if "nivel_risco" in df_riscos else 0
-        return {"total": total, "criticos": criticos, "medios": medios, "baixos": baixos}
-
-    def gerar_matriz_risco_df(df_riscos: pd.DataFrame) -> pd.DataFrame:
-        matriz = pd.DataFrame(0, index=range(5, 0, -1), columns=range(1, 6))
-        if not df_riscos.empty and "probabilidade" in df_riscos and "impacto" in df_riscos:
-            for _, r in df_riscos.iterrows():
-                p = int(r.get("probabilidade", 1))
-                i = int(r.get("impacto", 1))
-                if 1 <= p <= 5 and 1 <= i <= 5:
-                    matriz.loc[p, i] += 1
-        return matriz
 
 # ---------------------------------------------------------
 # CONEXÃO COM SUPABASE
@@ -739,7 +688,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
     tab_pend, tab_and, tab_dev, tab_conc = st.tabs([
         f"📥 Novas / Pendentes ({len(demandas_pendentes)})",
         f"⏳ Em Andamento ({len(demandas_andamento)})",
-        f"↩️️ Devolvidas ({len(demandas_devolvidas)})",
+        f"↩️ Devolvidas ({len(demandas_devolvidas)})",
         f"✅ Concluídas ({len(demandas_concluidas)})"
     ])
 
@@ -929,7 +878,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
 # PÁGINA: PLANOS DE TRATAMENTO / AÇÕES DE MITIGAÇÃO
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Planos de Tratamento":
-    st.title("🛡 Planos de Tratamento e Mitigação de Riscos")
+    st.title("🛡️️ Planos de Tratamento e Mitigação de Riscos")
     
     tab_list_acoes, tab_nova_acao = st.tabs(["🔍 Ações Cadastradas", "➕ Cadastrar Nova Ação de Mitigação"])
     
@@ -1031,7 +980,7 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                 res_riscos_db, res_unid_db = [], []
                 
             if not res_riscos_db:
-                st.warning("⚠️️ É necessário ter pelo menos um Risco cadastrado no sistema para criar um Plano de Tratamento.")
+                st.warning("⚠️ É necessário ter pelo menos um Risco cadastrado no sistema para criar um Plano de Tratamento.")
             else:
                 mapa_riscos = {f"Risco #{r['id']} - {r['evento'] if r['evento'] else 'Sem Risco'}" : (r['id'], r['unidade']) for r in res_riscos_db}
                 
@@ -1224,8 +1173,8 @@ elif st.session_state.pagina_atual == "Cadastros":
                     st.write(f"Total de riscos registrados: **{len(dados)}**")
                     
                     for r_item in dados:
-                        nivel = r_item.get('nivel_risco') or calcular_nivel_risco(r_item.get('probabilidade', 1), r_item.get('impacto', 1))
-                        cor_nivel = obter_cor_nivel_risco(nivel)
+                        nivel = r_item.get('nivel_risco', 1)
+                        cor_nivel = "🔴 (Crítico)" if nivel >= 15 else "🟡 (Médio)" if nivel >= 8 else "🟢 (Baixo)"
                         dt_ident_fmt = formatar_data_br(r_item.get('data_identificacao'))
                         st_risco = r_item.get('situacao_status', 'Identificado')
                         
@@ -1254,7 +1203,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         e_sit = st.selectbox("Situação", options_status, index=idx_st)
                                         
                                         if st.form_submit_button("💾 Salvar Alterações"):
-                                            novo_nivel = calcular_nivel_risco(e_prob, e_imp)
+                                            novo_nivel = e_prob * e_imp
                                             supabase.table("riscos").update({
                                                 "evento": e_evento,
                                                 "causa": e_causa,
@@ -1366,7 +1315,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                     if not evento_input or not resp_input:
                         st.warning("Preencha os campos obrigatórios.")
                     else:
-                        nivel_calc = calcular_nivel_risco(prob_val, imp_val)
+                        nivel_calc = prob_val * imp_val
                         unidade_sigla = mapa_unidades[unid_label]
                         
                         novo_risco_dados = {
@@ -1434,8 +1383,8 @@ elif st.session_state.pagina_atual == "Monitoramento":
 
         with t_visao:
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-            nivel = risco_obj.get("nivel_risco") or calcular_nivel_risco(risco_obj.get('probabilidade', 1), risco_obj.get('impacto', 1))
-            cor_nivel = obter_cor_nivel_risco(nivel)
+            nivel = risco_obj.get("nivel_risco", 1)
+            cor_nivel = "🔴 Crítico" if nivel >= 15 else "🟡 Médio" if nivel >= 8 else "🟢 Baixo"
             
             col_m1.metric("Nível de Risco", f"{nivel}", cor_nivel)
             col_m2.metric("Probabilidade", f"{risco_obj.get('probabilidade', 1)} / 5")
@@ -1473,129 +1422,56 @@ elif st.session_state.pagina_atual == "Monitoramento":
             renderizar_timeline_risco(r_id)
 
 # ---------------------------------------------------------
-# PÁGINA: DASHBOARDS (REFORMULADA COM CALCULOS_SIGER)
+# PÁGINA: DASHBOARDS
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Dashboards":
     st.title("📊 Painel Geral de Governança e Riscos")
-    st.caption("Visão executiva e analítica da matriz de riscos e planos de tratamento institucionais.")
     st.divider()
 
     try:
         res_r = supabase.table("riscos").select("*").execute()
-        riscos_raw = res_r.data or []
-        df_riscos = pd.DataFrame(riscos_raw) if riscos_raw else pd.DataFrame()
-
-        res_a = supabase.table("acoes_tratamento").select("*").execute()
-        acoes_raw = res_a.data or []
-        df_acoes = pd.DataFrame(acoes_raw) if acoes_raw else pd.DataFrame()
-    except Exception as e:
-        st.error(f"Erro ao carregar dados do banco: {e}")
-        df_riscos, df_acoes = pd.DataFrame(), pd.DataFrame()
-
-    # Recalcula nivel_risco dinamicamente se estiver zerado/ausente
-    if not df_riscos.empty:
-        if "nivel_risco" not in df_riscos.columns:
-            df_riscos["nivel_risco"] = df_riscos.apply(
-                lambda r: calcular_nivel_risco(r.get("probabilidade", 1), r.get("impacto", 1)), axis=1
-            )
-        else:
-            df_riscos["nivel_risco"] = df_riscos.apply(
-                lambda r: r["nivel_risco"] if pd.notnull(r["nivel_risco"]) and r["nivel_risco"] > 0
-                else calcular_nivel_risco(r.get("probabilidade", 1), r.get("impacto", 1)), axis=1
-            )
-        df_riscos["classificacao"] = df_riscos["nivel_risco"].apply(classificar_nivel_risco)
-
-    stats = calcular_estatisticas_risco(df_riscos)
-    tot_acoes = len(df_acoes) if not df_acoes.empty else 0
-
-    # Cartões de Métricas Principais
-    col_kpi1, col_kpi2, col_kpi3, col_kpi4, col_kpi5 = st.columns(5)
-    col_kpi1.metric("Riscos Mapeados", stats.get("total", 0))
-    col_kpi2.metric("Riscos Críticos 🔴", stats.get("criticos", 0))
-    col_kpi3.metric("Riscos Médios 🟡", stats.get("medios", 0))
-    col_kpi4.metric("Riscos Baixos 🟢", stats.get("baixos", 0))
-    col_kpi5.metric("Ações Registradas", tot_acoes)
-
-    st.markdown("---")
-
-    # Matriz de Riscos 5x5 e Gráficos Principais
-    c_m1, c_m2 = st.columns([1.2, 1])
-
-    with c_m1:
-        st.subheader("🔥 Matriz de Riscos 5x5 (Probabilidade x Impacto)")
-        df_matriz = gerar_matriz_risco_df(df_riscos)
+        riscos_data = res_r.data or []
         
-        # Heatmap interativo via Plotly
-        fig_matriz = px.imshow(
-            df_matriz,
-            labels=dict(x="Impacto", y="Probabilidade", color="Qtd Riscos"),
-            x=[1, 2, 3, 4, 5],
-            y=[5, 4, 3, 2, 1],
-            color_continuous_scale=["#28a745", "#ffc107", "#dc3545"],
-            text_auto=True
-        )
-        fig_matriz.update_layout(
-            xaxis_title="Impacto (1 a 5)",
-            yaxis_title="Probabilidade (1 a 5)",
-            height=380,
-            margin=dict(l=20, r=20, t=30, b=20)
-        )
-        st.plotly_chart(fig_matriz, use_container_width=True)
+        res_a = supabase.table("acoes_tratamento").select("*").execute()
+        acoes_data = res_a.data or []
+    except Exception as e:
+        st.error(f"Erro ao carregar indicadores: {e}")
+        riscos_data, acoes_data = [], []
 
-    with c_m2:
-        st.subheader("📊 Distribuição por Nível de Risco")
-        if not df_riscos.empty and "classificacao" in df_riscos.columns:
-            df_class = df_riscos["classificacao"].value_counts().reset_index()
-            df_class.columns = ["Nível", "Quantidade"]
-            mapa_cores_class = {"Crítico": "#dc3545", "Médio": "#ffc107", "Baixo": "#28a745"}
-            fig_pizza = px.pie(
-                df_class, 
-                names="Nível", 
-                values="Quantidade", 
-                color="Nível",
-                color_discrete_map=mapa_cores_class,
-                hole=0.4
-            )
-            fig_pizza.update_layout(height=380, margin=dict(l=20, r=20, t=30, b=20))
-            st.plotly_chart(fig_pizza, use_container_width=True)
-        else:
-            st.info("Nenhum dado cadastrado para exibição.")
+    tot_riscos = len(riscos_data)
+    tot_acoes = len(acoes_data)
+    
+    criticos = sum(1 for r in riscos_data if r.get("nivel_risco", 0) >= 15)
+    medios = sum(1 for r in riscos_data if 8 <= r.get("nivel_risco", 0) < 15)
+    baixos = sum(1 for r in riscos_data if r.get("nivel_risco", 0) < 8)
+
+    c_kpi1, c_kpi2, c_kpi3, c_kpi4 = st.columns(4)
+    c_kpi1.metric("Total de Riscos Mapeados", tot_riscos)
+    c_kpi2.metric("Riscos Críticos 🔴", criticos)
+    c_kpi3.metric("Riscos Médios 🟡", medios)
+    c_kpi4.metric("Total de Ações Registradas", tot_acoes)
 
     st.markdown("---")
 
     col_g1, col_g2 = st.columns(2)
 
     with col_g1:
-        st.subheader("📌 Riscos por Unidade e Status")
-        if not df_riscos.empty:
-            df_unid_st = df_riscos.groupby(["unidade", "situacao_status"]).size().reset_index(name="Quantidade")
-            fig_unid = px.bar(
-                df_unid_st, 
-                x="unidade", 
-                y="Quantidade", 
-                color="situacao_status",
-                barmode="stack",
-                labels={"unidade": "Unidade", "situacao_status": "Status"}
-            )
-            fig_unid.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=20))
-            st.plotly_chart(fig_unid, use_container_width=True)
+        st.subheader("📌 Riscos por Status / Situação")
+        if riscos_data:
+            df_r = pd.DataFrame(riscos_data)
+            df_status = df_r["situacao_status"].value_counts().reset_index()
+            df_status.columns = ["Situação", "Quantidade"]
+            st.dataframe(df_status, use_container_width=True)
         else:
             st.info("Sem dados de riscos.")
 
     with col_g2:
-        st.subheader("🛡️️ Ações de Tratamento por Status")
-        if not df_acoes.empty:
-            df_ac_st = df_acoes["status_acao"].value_counts().reset_index()
+        st.subheader("🛡️ Ações de Tratamento por Status")
+        if acoes_data:
+            df_a = pd.DataFrame(acoes_data)
+            df_ac_st = df_a["status_acao"].value_counts().reset_index()
             df_ac_st.columns = ["Status da Ação", "Quantidade"]
-            fig_acoes = px.bar(
-                df_ac_st, 
-                x="Status da Ação", 
-                y="Quantidade", 
-                color="Status da Ação",
-                text="Quantidade"
-            )
-            fig_acoes.update_layout(height=350, showlegend=False, margin=dict(l=20, r=20, t=30, b=20))
-            st.plotly_chart(fig_acoes, use_container_width=True)
+            st.dataframe(df_ac_st, use_container_width=True)
         else:
             st.info("Sem dados de ações.")
 
