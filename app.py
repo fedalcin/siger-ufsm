@@ -11,7 +11,6 @@ import bcrypt
 
 try:
     from calculos_siger import (
-        IET_METRICAS,
         calcular_icp,
         calcular_iet,
         calcular_itr,
