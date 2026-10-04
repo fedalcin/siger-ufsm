@@ -8,15 +8,14 @@ import bcrypt
 # ---------------------------------------------------------
 # IMPORTAÇÃO DO MÓDULO DE CÁLCULOS SIGER
 # ---------------------------------------------------------
-try:
-    from calculos_siger import (
-        calcular_icp,
-        calcular_iet,
-        calcular_itr,
-        classificar_iar,
-    )
-except Exception as e:
-    st.error(f"Erro de Importação no calculos_siger.py: {e}")
+from calculos_siger import (
+    IET_METRICAS,
+    calcular_icp,
+    calcular_iet,
+    calcular_itr,
+    classificar_iar,
+    obter_cor_indicador,
+)
 
 # ---------------------------------------------------------
 # CONEXÃO COM SUPABASE
@@ -1524,7 +1523,7 @@ elif st.session_state.pagina_atual == "Dashboards":
     st.caption("Índices de Execução, Cumprimento de Prazos, Tratamento de Riscos e Atenção Rápida")
     st.divider()
     
-    # Busca dados diretamente das tabelas do Supabase
+    # Busca dados do Supabase
     try:
         res_p = supabase.table("planos_acao").select("*").execute()
         res_r = supabase.table("riscos").select("*").execute()
@@ -1554,19 +1553,13 @@ elif st.session_state.pagina_atual == "Dashboards":
             if status_sel != "Todos" and "status" in df_f.columns:
                 df_f = df_f[df_f["status"] == status_sel]
             
-        # 2. Cálculo dos Indicadores
-        try:
-            iet_val, iet_desc = calcular_iet(df_f)
-            icp_val, icp_desc = calcular_icp(df_f)
-            itr_val, itr_desc = calcular_itr(df_riscos)
-            iar_val, iar_cat, iar_desc = classificar_iar(iet_val, icp_val, itr_val)
-        except Exception as err_calc:
-            st.error(f"Erro na execução das funções do calculos_siger.py: {err_calc}")
-            iet_val = icp_val = itr_val = iar_val = 0.0
-            iet_desc = icp_desc = itr_desc = iar_desc = "Erro no cálculo"
-            iar_cat = "N/A"
+        # 2. Execução dos Cálculos via Módulo Mestre (calculos_siger.py)
+        iet_val, iet_desc = calcular_iet(df_f)
+        icp_val, icp_desc = calcular_icp(df_f)
+        itr_val, itr_desc = calcular_itr(df_riscos)
+        iar_val, iar_cat, iar_desc = classificar_iar(iet_val, icp_val, itr_val)
         
-        # 3. Cards de Exibição
+        # 3. Exibição dos Cards
         c_kpi1, c_kpi2, c_kpi3, c_kpi4 = st.columns(4)
         
         with c_kpi1:
@@ -1587,18 +1580,15 @@ elif st.session_state.pagina_atual == "Dashboards":
 
         st.markdown("---")
         
-        # 4. Tabela Resumo
+        # 4. Tabela Resumo por Eixo
         if not df_planos.empty and "eixo" in df_planos.columns:
             st.subheader("📌 Desempenho por Eixo Estratégico")
             
             dados_eixos = []
             for e in df_planos["eixo"].unique():
                 sub_df = df_planos[df_planos["eixo"] == e]
-                try:
-                    v_iet, _ = calcular_iet(sub_df)
-                    v_icp, _ = calcular_icp(sub_df)
-                except Exception:
-                    v_iet, v_icp = 0.0, 0.0
+                v_iet, _ = calcular_iet(sub_df)
+                v_icp, _ = calcular_icp(sub_df)
                 dados_eixos.append({
                     "Eixo": e,
                     "Total de Planos": len(sub_df),
