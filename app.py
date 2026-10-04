@@ -1,21 +1,60 @@
 import streamlit as st
 from supabase import create_client, Client
 import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
 from datetime import datetime, date
 import os
 import bcrypt
 
 # ---------------------------------------------------------
-# IMPORTAÇÃO DO MÓDULO DE CÁLCULOS SIGER
+# IMPORTAÇÃO DOS CÁLCULOS DE RISCO
 # ---------------------------------------------------------
-from calculos_siger import (
-    IET_METRICAS,
-    calcular_icp,
-    calcular_iet,
-    calcular_itr,
-    classificar_iar,
-    obter_cor_indicador,
-)
+try:
+    from calculos_siger import (
+        calcular_nivel_risco,
+        classificar_nivel_risco,
+        obter_cor_nivel_risco,
+        calcular_estatisticas_risco,
+        gerar_matriz_risco_df
+    )
+except ImportError:
+    # Funções de fallback caso o módulo calculos_siger.py não esteja acessível
+    def calcular_nivel_risco(probabilidade: int, impacto: int) -> int:
+        return probabilidade * impacto
+
+    def classificar_nivel_risco(nivel: int) -> str:
+        if nivel >= 15:
+            return "Crítico"
+        elif nivel >= 8:
+            return "Médio"
+        return "Baixo"
+
+    def obter_cor_nivel_risco(nivel: int) -> str:
+        if nivel >= 15:
+            return "🔴 (Crítico)"
+        elif nivel >= 8:
+            return "🟡 (Médio)"
+        return "🟢 (Baixo)"
+
+    def calcular_estatisticas_risco(df_riscos: pd.DataFrame) -> dict:
+        if df_riscos.empty:
+            return {"total": 0, "criticos": 0, "medios": 0, "baixos": 0}
+        total = len(df_riscos)
+        criticos = len(df_riscos[df_riscos["nivel_risco"] >= 15]) if "nivel_risco" in df_riscos else 0
+        medios = len(df_riscos[(df_riscos["nivel_risco"] >= 8) & (df_riscos["nivel_risco"] < 15)]) if "nivel_risco" in df_riscos else 0
+        baixos = len(df_riscos[df_riscos["nivel_risco"] < 8]) if "nivel_risco" in df_riscos else 0
+        return {"total": total, "criticos": criticos, "medios": medios, "baixos": baixos}
+
+    def gerar_matriz_risco_df(df_riscos: pd.DataFrame) -> pd.DataFrame:
+        matriz = pd.DataFrame(0, index=range(5, 0, -1), columns=range(1, 6))
+        if not df_riscos.empty and "probabilidade" in df_riscos and "impacto" in df_riscos:
+            for _, r in df_riscos.iterrows():
+                p = int(r.get("probabilidade", 1))
+                i = int(r.get("impacto", 1))
+                if 1 <= p <= 5 and 1 <= i <= 5:
+                    matriz.loc[p, i] += 1
+        return matriz
 
 # ---------------------------------------------------------
 # CONEXÃO COM SUPABASE
@@ -211,49 +250,6 @@ TIPOS_UNIDADE_OPCOES = [
     "Pró-Reitoria",
     "Diretoria"
 ]
-
-# ---------------------------------------------------------
-# CONSTANTES E REGRAS DE CÁLCULO DA ETAPA 2 (MATRIZ DE RISCO)
-# ---------------------------------------------------------
-LABELS_PROBABILIDADE = {
-    1: "1 - Raro",
-    2: "2 - Pouco Provável",
-    3: "3 - Provável",
-    4: "4 - Muito Provável",
-    5: "5 - Quase Certo"
-}
-
-LABELS_IMPACTO = {
-    1: "1 - Insignificante",
-    2: "2 - Pequeno",
-    3: "3 - Moderado",
-    4: "4 - Grande",
-    5: "5 - Catastrófico"
-}
-
-def calcular_nivel_e_classificacao(probabilidade: int, impacto: int):
-    """
-    Calcula o Nível de Risco (Probabilidade x Impacto) e define a Classificação Térmica
-    Regras da Etapa 2:
-      - 1 a 5: Baixo (Verde)
-      - 6 a 12: Médio (Amarelo)
-      - 15 a 25: Crítico (Vermelho)
-    """
-    nivel = probabilidade * impacto
-    if nivel >= 15:
-        classificacao = "Crítico"
-        badge = f"🔴 {nivel} ({classificacao})"
-        cor_hex = "#ff4b4b"
-    elif nivel >= 6:
-        classificacao = "Médio"
-        badge = f"🟡 {nivel} ({classificacao})"
-        cor_hex = "#ffa800"
-    else:
-        classificacao = "Baixo"
-        badge = f"🟢 {nivel} ({classificacao})"
-        cor_hex = "#00c853"
-        
-    return nivel, classificacao, badge, cor_hex
 
 # ---------------------------------------------------------
 # AUTENTICAÇÃO E SESSÃO DO USUÁRIO
@@ -743,7 +739,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
     tab_pend, tab_and, tab_dev, tab_conc = st.tabs([
         f"📥 Novas / Pendentes ({len(demandas_pendentes)})",
         f"⏳ Em Andamento ({len(demandas_andamento)})",
-        f"↩️ Devolvidas ({len(demandas_devolvidas)})",
+        f"↩️️ Devolvidas ({len(demandas_devolvidas)})",
         f"✅ Concluídas ({len(demandas_concluidas)})"
     ])
 
@@ -1035,7 +1031,7 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                 res_riscos_db, res_unid_db = [], []
                 
             if not res_riscos_db:
-                st.warning("⚠️ É necessário ter pelo menos um Risco cadastrado no sistema para criar um Plano de Tratamento.")
+                st.warning("⚠️️ É necessário ter pelo menos um Risco cadastrado no sistema para criar um Plano de Tratamento.")
             else:
                 mapa_riscos = {f"Risco #{r['id']} - {r['evento'] if r['evento'] else 'Sem Risco'}" : (r['id'], r['unidade']) for r in res_riscos_db}
                 
@@ -1228,17 +1224,14 @@ elif st.session_state.pagina_atual == "Cadastros":
                     st.write(f"Total de riscos registrados: **{len(dados)}**")
                     
                     for r_item in dados:
-                        p_val = r_item.get('probabilidade', 1)
-                        i_val = r_item.get('impacto', 1)
-                        _, _, badge_risco, _ = calcular_nivel_e_classificacao(p_val, i_val)
-                        
+                        nivel = r_item.get('nivel_risco') or calcular_nivel_risco(r_item.get('probabilidade', 1), r_item.get('impacto', 1))
+                        cor_nivel = obter_cor_nivel_risco(nivel)
                         dt_ident_fmt = formatar_data_br(r_item.get('data_identificacao'))
                         st_risco = r_item.get('situacao_status', 'Identificado')
                         
-                        with st.expander(f"🛡️ Risco #{r_item['id']} ({st_risco}) | {r_item['unidade']} | {badge_risco}"):
+                        with st.expander(f"🛡️ Risco #{r_item['id']} ({st_risco}) | {r_item['unidade']} | Nível {nivel} {cor_nivel}"):
                             st.markdown(f"**Risco:** {r_item.get('evento', '')}")
                             st.markdown(f"**Causa:** {r_item.get('causa', '')} | **Consequência:** {r_item.get('consequencia', '')}")
-                            st.markdown(f"**Probabilidade:** {LABELS_PROBABILIDADE.get(p_val, p_val)} | **Impacto:** {LABELS_IMPACTO.get(i_val, i_val)}")
                             st.markdown(f"**Gestor:** {r_item.get('gestor_risco', '')} | **Situação Atual:** `{st_risco}`")
                             st.markdown(f"**Data de Identificação:** {dt_ident_fmt}")
                             
@@ -1251,31 +1244,8 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         e_evento = st.text_area("Risco", value=r_item.get('evento', ''))
                                         e_causa = st.text_area("Causa", value=r_item.get('causa', ''))
                                         e_cons = st.text_area("Consequência", value=r_item.get('consequencia', ''))
-                                        
-                                        st.markdown("---")
-                                        st.markdown("##### 🧮 Reavaliação do Risco (Etapa 2)")
-                                        e_prob = st.slider(
-                                            "Probabilidade", 
-                                            1, 5, 
-                                            value=p_val, 
-                                            format="%d",
-                                            help="1: Raro | 2: Pouco Provável | 3: Provável | 4: Muito Provável | 5: Quase Certo"
-                                        )
-                                        st.caption(f"Probabilidade Selecionada: **{LABELS_PROBABILIDADE[e_prob]}**")
-
-                                        e_imp = st.slider(
-                                            "Impacto", 
-                                            1, 5, 
-                                            value=i_val, 
-                                            format="%d",
-                                            help="1: Insignificante | 2: Pequeno | 3: Moderado | 4: Grande | 5: Catastrófico"
-                                        )
-                                        st.caption(f"Impacto Selecionado: **{LABELS_IMPACTO[e_imp]}**")
-
-                                        e_nv_calc, e_class_calc, e_badge_calc, _ = calcular_nivel_e_classificacao(e_prob, e_imp)
-                                        st.info(f"Nível Recalculado: **{e_badge_calc}**")
-                                        st.markdown("---")
-
+                                        e_prob = st.slider("Probabilidade", 1, 5, value=r_item.get('probabilidade', 1))
+                                        e_imp = st.slider("Impacto", 1, 5, value=r_item.get('impacto', 1))
                                         e_resp = st.text_input("Gestor do Risco", value=r_item.get('gestor_risco', ''))
                                         
                                         options_status = ['Identificado', 'Em análise', 'Em tratamento', 'Monitorado', 'Encerrado', 'Cancelado']
@@ -1284,18 +1254,19 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         e_sit = st.selectbox("Situação", options_status, index=idx_st)
                                         
                                         if st.form_submit_button("💾 Salvar Alterações"):
+                                            novo_nivel = calcular_nivel_risco(e_prob, e_imp)
                                             supabase.table("riscos").update({
                                                 "evento": e_evento,
                                                 "causa": e_causa,
                                                 "consequencia": e_cons,
                                                 "probabilidade": e_prob,
                                                 "impacto": e_imp,
-                                                "nivel_risco": e_nv_calc,
+                                                "nivel_risco": novo_nivel,
                                                 "gestor_risco": e_resp,
                                                 "situacao_status": e_sit
                                             }).eq("id", r_item['id']).execute()
                                             
-                                            st.success("Risco e Matriz atualizados com sucesso!")
+                                            st.success("Risco atualizado!")
                                             st.rerun()
 
                             with col_r_del:
@@ -1364,32 +1335,21 @@ elif st.session_state.pagina_atual == "Cadastros":
                     oe_label = st.selectbox("Objetivo Estratégico Relacionado*", options=list(mapa_oe.keys()))
                     cat_label = st.selectbox("Categoria do Risco*", options=list(mapa_cat.keys()))
 
-                st.markdown("##### 2. Identificação do Risco")
-                evento_input = st.text_area("Risco*", placeholder="Descreva o evento de risco")
+                st.markdown("##### 2. Identificação e Análise do Risco")
+                evento_input = st.text_area("Risco*", placeholder="Descreva o risco")
                 
                 col_i1, col_i2 = st.columns(2)
                 with col_i1:
                     causa_input = st.text_area("Causa(s)*", placeholder="Quais fatores geram este risco?")
                 with col_i2:
-                    consequencia_input = st.text_area("Consequência(s)*", placeholder="Quais os impactos institucionais?")
+                    consequencia_input = st.text_area("Consequência(s)*", placeholder="Quais os impactos?")
 
-                st.markdown("##### 3. Avaliação Qualitativa e Matriz de Riscos (Regras Etapa 2)")
+                st.markdown("##### 3. Avaliação Qualitativa")
                 col_a1, col_a2 = st.columns(2)
                 with col_a1:
-                    prob_val = st.slider("Probabilidade (P)*", 1, 5, 3)
-                    st.caption(f"Nível Selecionado: **{LABELS_PROBABILIDADE[prob_val]}**")
+                    prob_val = st.slider("Probabilidade (1 a 5)", 1, 5, 3)
                 with col_a2:
-                    imp_val = st.slider("Impacto (I)*", 1, 5, 3)
-                    st.caption(f"Nível Selecionado: **{LABELS_IMPACTO[imp_val]}**")
-
-                nivel_calc, class_calc, badge_calc, _ = calcular_nivel_e_classificacao(prob_val, imp_val)
-                
-                st.markdown(f"""
-                > **Cálculo Automático (Etapa 2):**
-                > - **Fórmula:** $Nível = Probabilidade (P) \\times Impacto (I)$
-                > - **Resultado do Nível:** **{nivel_calc}**
-                > - **Classificação Térmica:** **{badge_calc}**
-                """)
+                    imp_val = st.slider("Impacto (1 a 5)", 1, 5, 3)
 
                 st.markdown("##### 4. Governança e Prazos")
                 col_g1, col_g2, col_g3 = st.columns(3)
@@ -1400,12 +1360,13 @@ elif st.session_state.pagina_atual == "Cadastros":
                 with col_g3:
                     periodicidade_sel = st.selectbox("Periodicidade de Revisão", ["Mensal", "Trimestral", "Semestral", "Anual"])
 
-                submitted_risco = st.form_submit_button("💾 Salvar Risco Mapeado")
+                submitted_risco = st.form_submit_button("💾 Salvar Risco")
                 
                 if submitted_risco:
                     if not evento_input or not resp_input:
-                        st.warning("Preencha todos os campos obrigatórios (*).")
+                        st.warning("Preencha os campos obrigatórios.")
                     else:
+                        nivel_calc = calcular_nivel_risco(prob_val, imp_val)
                         unidade_sigla = mapa_unidades[unid_label]
                         
                         novo_risco_dados = {
@@ -1433,11 +1394,11 @@ elif st.session_state.pagina_atual == "Cadastros":
                                     "unidade_origem": unidade_sigla,
                                     "unidade_destino": unidade_sigla,
                                     "usuario_remetente": resp_input,
-                                    "parecer_observacao": f"Registro inicial e avaliação do risco. Matriz: {badge_calc}."
+                                    "parecer_observacao": "Registro inicial e identificação do risco no sistema."
                                 }
                                 supabase.table("tramitacoes").insert(dados_tramitacao_inicial).execute()
 
-                            st.success(f"✅ Risco registrado com sucesso! Classificação: {badge_calc}")
+                            st.success("✅ Risco registrado com sucesso!")
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao salvar o risco no banco de dados: {e}")
@@ -1472,19 +1433,16 @@ elif st.session_state.pagina_atual == "Monitoramento":
         ])
 
         with t_visao:
-            p_val = risco_obj.get("probabilidade", 1)
-            i_val = risco_obj.get("impacto", 1)
-            nv_val, class_val, badge_val, cor_hex = calcular_nivel_e_classificacao(p_val, i_val)
-
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+            nivel = risco_obj.get("nivel_risco") or calcular_nivel_risco(risco_obj.get('probabilidade', 1), risco_obj.get('impacto', 1))
+            cor_nivel = obter_cor_nivel_risco(nivel)
             
-            col_m1.metric("Nível de Risco (Matriz Etapa 2)", f"{nv_val}", f"{class_val}")
-            col_m2.metric("Probabilidade", f"{p_val} / 5", LABELS_PROBABILIDADE.get(p_val, ""))
-            col_m3.metric("Impacto", f"{i_val} / 5", LABELS_IMPACTO.get(i_val, ""))
+            col_m1.metric("Nível de Risco", f"{nivel}", cor_nivel)
+            col_m2.metric("Probabilidade", f"{risco_obj.get('probabilidade', 1)} / 5")
+            col_m3.metric("Impacto", f"{risco_obj.get('impacto', 1)} / 5")
             col_m4.metric("Situação Atual", risco_obj.get("situacao_status", "Identificado"))
 
             st.markdown("---")
-            st.markdown(f"**Matriz de Avaliação:** {badge_val}")
             st.markdown(f"**Evento:** {risco_obj.get('evento')}")
             st.markdown(f"**Causa:** {risco_obj.get('causa', '-')}")
             st.markdown(f"**Consequência:** {risco_obj.get('consequencia', '-')}")
@@ -1515,88 +1473,131 @@ elif st.session_state.pagina_atual == "Monitoramento":
             renderizar_timeline_risco(r_id)
 
 # ---------------------------------------------------------
-# PÁGINA: DASHBOARDS
+# PÁGINA: DASHBOARDS (REFORMULADA COM CALCULOS_SIGER)
 # ---------------------------------------------------------
-
 elif st.session_state.pagina_atual == "Dashboards":
-    st.title("📊 Painel de Indicadores SIGER")
-    st.caption("Índices de Execução, Cumprimento de Prazos, Tratamento de Riscos e Atenção Rápida")
+    st.title("📊 Painel Geral de Governança e Riscos")
+    st.caption("Visão executiva e analítica da matriz de riscos e planos de tratamento institucionais.")
     st.divider()
-    
-    # Busca dados do Supabase
+
     try:
-        res_p = supabase.table("planos_acao").select("*").execute()
         res_r = supabase.table("riscos").select("*").execute()
-        df_planos = pd.DataFrame(res_p.data or [])
-        df_riscos = pd.DataFrame(res_r.data or [])
+        riscos_raw = res_r.data or []
+        df_riscos = pd.DataFrame(riscos_raw) if riscos_raw else pd.DataFrame()
+
+        res_a = supabase.table("acoes_tratamento").select("*").execute()
+        acoes_raw = res_a.data or []
+        df_acoes = pd.DataFrame(acoes_raw) if acoes_raw else pd.DataFrame()
     except Exception as e:
         st.error(f"Erro ao carregar dados do banco: {e}")
-        df_planos, df_riscos = pd.DataFrame(), pd.DataFrame()
-    
-    if df_planos.empty and df_riscos.empty:
-        st.warning("Nenhum dado encontrado no banco para gerar os indicadores SIGER.")
-    else:
-        # 1. Filtros na Barra Lateral
-        st.sidebar.markdown("---")
-        st.sidebar.subheader("Filtros do Dashboard")
-        
-        eixos_disponiveis = ["Todos"] + (list(df_planos["eixo"].unique()) if "eixo" in df_planos.columns else [])
-        eixo_sel = st.sidebar.selectbox("Filtrar por Eixo", eixos_disponiveis)
-        
-        status_disponiveis = ["Todos"] + (list(df_planos["status"].unique()) if "status" in df_planos.columns else [])
-        status_sel = st.sidebar.selectbox("Filtrar por Status", status_disponiveis)
-        
-        df_f = df_planos.copy()
-        if not df_f.empty:
-            if eixo_sel != "Todos" and "eixo" in df_f.columns:
-                df_f = df_f[df_f["eixo"] == eixo_sel]
-            if status_sel != "Todos" and "status" in df_f.columns:
-                df_f = df_f[df_f["status"] == status_sel]
-            
-        # 2. Execução dos Cálculos via Módulo Mestre (calculos_siger.py)
-        iet_val, iet_desc = calcular_iet(df_f)
-        icp_val, icp_desc = calcular_icp(df_f)
-        itr_val, itr_desc = calcular_itr(df_riscos)
-        iar_val, iar_cat, iar_desc = classificar_iar(iet_val, icp_val, itr_val)
-        
-        # 3. Exibição dos Cards
-        c_kpi1, c_kpi2, c_kpi3, c_kpi4 = st.columns(4)
-        
-        with c_kpi1:
-            st.metric(label="IET (Execução)", value=f"{iet_val:.1f}%")
-            st.caption(f"**Situação:** {iet_desc}")
-            
-        with c_kpi2:
-            st.metric(label="ICP (Prazos)", value=f"{icp_val:.1f}%")
-            st.caption(f"**Situação:** {icp_desc}")
-            
-        with c_kpi3:
-            st.metric(label="ITR (Riscos)", value=f"{itr_val:.1f}%")
-            st.caption(f"**Situação:** {itr_desc}")
-            
-        with c_kpi4:
-            st.metric(label="IAR (Atenção)", value=f"{iar_val:.1f}")
-            st.caption(f"**Nível:** {iar_cat}")
+        df_riscos, df_acoes = pd.DataFrame(), pd.DataFrame()
 
-        st.markdown("---")
+    # Recalcula nivel_risco dinamicamente se estiver zerado/ausente
+    if not df_riscos.empty:
+        if "nivel_risco" not in df_riscos.columns:
+            df_riscos["nivel_risco"] = df_riscos.apply(
+                lambda r: calcular_nivel_risco(r.get("probabilidade", 1), r.get("impacto", 1)), axis=1
+            )
+        else:
+            df_riscos["nivel_risco"] = df_riscos.apply(
+                lambda r: r["nivel_risco"] if pd.notnull(r["nivel_risco"]) and r["nivel_risco"] > 0
+                else calcular_nivel_risco(r.get("probabilidade", 1), r.get("impacto", 1)), axis=1
+            )
+        df_riscos["classificacao"] = df_riscos["nivel_risco"].apply(classificar_nivel_risco)
+
+    stats = calcular_estatisticas_risco(df_riscos)
+    tot_acoes = len(df_acoes) if not df_acoes.empty else 0
+
+    # Cartões de Métricas Principais
+    col_kpi1, col_kpi2, col_kpi3, col_kpi4, col_kpi5 = st.columns(5)
+    col_kpi1.metric("Riscos Mapeados", stats.get("total", 0))
+    col_kpi2.metric("Riscos Críticos 🔴", stats.get("criticos", 0))
+    col_kpi3.metric("Riscos Médios 🟡", stats.get("medios", 0))
+    col_kpi4.metric("Riscos Baixos 🟢", stats.get("baixos", 0))
+    col_kpi5.metric("Ações Registradas", tot_acoes)
+
+    st.markdown("---")
+
+    # Matriz de Riscos 5x5 e Gráficos Principais
+    c_m1, c_m2 = st.columns([1.2, 1])
+
+    with c_m1:
+        st.subheader("🔥 Matriz de Riscos 5x5 (Probabilidade x Impacto)")
+        df_matriz = gerar_matriz_risco_df(df_riscos)
         
-        # 4. Tabela Resumo por Eixo
-        if not df_planos.empty and "eixo" in df_planos.columns:
-            st.subheader("📌 Desempenho por Eixo Estratégico")
-            
-            dados_eixos = []
-            for e in df_planos["eixo"].unique():
-                sub_df = df_planos[df_planos["eixo"] == e]
-                v_iet, _ = calcular_iet(sub_df)
-                v_icp, _ = calcular_icp(sub_df)
-                dados_eixos.append({
-                    "Eixo": e,
-                    "Total de Planos": len(sub_df),
-                    "IET (%)": round(v_iet, 1),
-                    "ICP (%)": round(v_icp, 1)
-                })
-                
-            st.dataframe(pd.DataFrame(dados_eixos), width="stretch")
+        # Heatmap interativo via Plotly
+        fig_matriz = px.imshow(
+            df_matriz,
+            labels=dict(x="Impacto", y="Probabilidade", color="Qtd Riscos"),
+            x=[1, 2, 3, 4, 5],
+            y=[5, 4, 3, 2, 1],
+            color_continuous_scale=["#28a745", "#ffc107", "#dc3545"],
+            text_auto=True
+        )
+        fig_matriz.update_layout(
+            xaxis_title="Impacto (1 a 5)",
+            yaxis_title="Probabilidade (1 a 5)",
+            height=380,
+            margin=dict(l=20, r=20, t=30, b=20)
+        )
+        st.plotly_chart(fig_matriz, use_container_width=True)
+
+    with c_m2:
+        st.subheader("📊 Distribuição por Nível de Risco")
+        if not df_riscos.empty and "classificacao" in df_riscos.columns:
+            df_class = df_riscos["classificacao"].value_counts().reset_index()
+            df_class.columns = ["Nível", "Quantidade"]
+            mapa_cores_class = {"Crítico": "#dc3545", "Médio": "#ffc107", "Baixo": "#28a745"}
+            fig_pizza = px.pie(
+                df_class, 
+                names="Nível", 
+                values="Quantidade", 
+                color="Nível",
+                color_discrete_map=mapa_cores_class,
+                hole=0.4
+            )
+            fig_pizza.update_layout(height=380, margin=dict(l=20, r=20, t=30, b=20))
+            st.plotly_chart(fig_pizza, use_container_width=True)
+        else:
+            st.info("Nenhum dado cadastrado para exibição.")
+
+    st.markdown("---")
+
+    col_g1, col_g2 = st.columns(2)
+
+    with col_g1:
+        st.subheader("📌 Riscos por Unidade e Status")
+        if not df_riscos.empty:
+            df_unid_st = df_riscos.groupby(["unidade", "situacao_status"]).size().reset_index(name="Quantidade")
+            fig_unid = px.bar(
+                df_unid_st, 
+                x="unidade", 
+                y="Quantidade", 
+                color="situacao_status",
+                barmode="stack",
+                labels={"unidade": "Unidade", "situacao_status": "Status"}
+            )
+            fig_unid.update_layout(height=350, margin=dict(l=20, r=20, t=30, b=20))
+            st.plotly_chart(fig_unid, use_container_width=True)
+        else:
+            st.info("Sem dados de riscos.")
+
+    with col_g2:
+        st.subheader("🛡️️ Ações de Tratamento por Status")
+        if not df_acoes.empty:
+            df_ac_st = df_acoes["status_acao"].value_counts().reset_index()
+            df_ac_st.columns = ["Status da Ação", "Quantidade"]
+            fig_acoes = px.bar(
+                df_ac_st, 
+                x="Status da Ação", 
+                y="Quantidade", 
+                color="Status da Ação",
+                text="Quantidade"
+            )
+            fig_acoes.update_layout(height=350, showlegend=False, margin=dict(l=20, r=20, t=30, b=20))
+            st.plotly_chart(fig_acoes, use_container_width=True)
+        else:
+            st.info("Sem dados de ações.")
 
 # ---------------------------------------------------------
 # PÁGINA: BIBLIOTECA
