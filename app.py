@@ -8,7 +8,6 @@ import bcrypt
 # ---------------------------------------------------------
 # IMPORTAÇÃO DO MÓDULO DE CÁLCULOS SIGER
 # ---------------------------------------------------------
-
 try:
     from calculos_siger import (
         calcular_icp,
@@ -17,7 +16,7 @@ try:
         classificar_iar,
     )
 except Exception as e:
-    st.error(f"Erro ao importar calculos_siger.py: {e}")
+    st.error(f"Erro de Importação no calculos_siger.py: {e}")
 
 # ---------------------------------------------------------
 # CONEXÃO COM SUPABASE
@@ -1556,10 +1555,16 @@ elif st.session_state.pagina_atual == "Dashboards":
                 df_f = df_f[df_f["status"] == status_sel]
             
         # 2. Cálculo dos Indicadores
-        iet_val, iet_desc = calcular_iet(df_f)
-        icp_val, icp_desc = calcular_icp(df_f)
-        itr_val, itr_desc = calcular_itr(df_riscos)
-        iar_val, iar_cat, iar_desc = classificar_iar(iet_val, icp_val, itr_val)
+        try:
+            iet_val, iet_desc = calcular_iet(df_f)
+            icp_val, icp_desc = calcular_icp(df_f)
+            itr_val, itr_desc = calcular_itr(df_riscos)
+            iar_val, iar_cat, iar_desc = classificar_iar(iet_val, icp_val, itr_val)
+        except Exception as err_calc:
+            st.error(f"Erro na execução das funções do calculos_siger.py: {err_calc}")
+            iet_val = icp_val = itr_val = iar_val = 0.0
+            iet_desc = icp_desc = itr_desc = iar_desc = "Erro no cálculo"
+            iar_cat = "N/A"
         
         # 3. Cards de Exibição
         c_kpi1, c_kpi2, c_kpi3, c_kpi4 = st.columns(4)
@@ -1589,8 +1594,11 @@ elif st.session_state.pagina_atual == "Dashboards":
             dados_eixos = []
             for e in df_planos["eixo"].unique():
                 sub_df = df_planos[df_planos["eixo"] == e]
-                v_iet, _ = calcular_iet(sub_df)
-                v_icp, _ = calcular_icp(sub_df)
+                try:
+                    v_iet, _ = calcular_iet(sub_df)
+                    v_icp, _ = calcular_icp(sub_df)
+                except Exception:
+                    v_iet, v_icp = 0.0, 0.0
                 dados_eixos.append({
                     "Eixo": e,
                     "Total de Planos": len(sub_df),
@@ -1598,7 +1606,7 @@ elif st.session_state.pagina_atual == "Dashboards":
                     "ICP (%)": round(v_icp, 1)
                 })
                 
-            st.dataframe(pd.DataFrame(dados_eixos), use_container_width=True)
+            st.dataframe(pd.DataFrame(dados_eixos), width="stretch")
 
 # ---------------------------------------------------------
 # PÁGINA: BIBLIOTECA
