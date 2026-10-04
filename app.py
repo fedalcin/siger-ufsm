@@ -14,9 +14,7 @@ try:
         calcular_icp,
         calcular_iet,
         calcular_itr,
-        carregar_dados_siger,
         classificar_iar,
-        obter_cor_indicador,
     )
 except Exception as e:
     st.error(f"Erro ao importar calculos_siger.py: {e}")
@@ -1527,11 +1525,14 @@ elif st.session_state.pagina_atual == "Dashboards":
     st.caption("Índices de Execução, Cumprimento de Prazos, Tratamento de Riscos e Atenção Rápida")
     st.divider()
     
-    # Carregar dados diretamente do Supabase/SIGER
+    # Busca dados diretamente das tabelas do Supabase
     try:
-        df_planos, df_riscos = carregar_dados_siger()
+        res_p = supabase.table("planos_acao").select("*").execute()
+        res_r = supabase.table("riscos").select("*").execute()
+        df_planos = pd.DataFrame(res_p.data or [])
+        df_riscos = pd.DataFrame(res_r.data or [])
     except Exception as e:
-        st.error(f"Erro ao carregar dados dos indicadores: {e}")
+        st.error(f"Erro ao carregar dados do banco: {e}")
         df_planos, df_riscos = pd.DataFrame(), pd.DataFrame()
     
     if df_planos.empty and df_riscos.empty:
@@ -1541,15 +1542,12 @@ elif st.session_state.pagina_atual == "Dashboards":
         st.sidebar.markdown("---")
         st.sidebar.subheader("Filtros do Dashboard")
         
-        # Filtro por Eixo
         eixos_disponiveis = ["Todos"] + (list(df_planos["eixo"].unique()) if "eixo" in df_planos.columns else [])
         eixo_sel = st.sidebar.selectbox("Filtrar por Eixo", eixos_disponiveis)
         
-        # Filtro por Status
         status_disponiveis = ["Todos"] + (list(df_planos["status"].unique()) if "status" in df_planos.columns else [])
         status_sel = st.sidebar.selectbox("Filtrar por Status", status_disponiveis)
         
-        # Aplicar Filtros nos Planos
         df_f = df_planos.copy()
         if not df_f.empty:
             if eixo_sel != "Todos" and "eixo" in df_f.columns:
@@ -1557,13 +1555,13 @@ elif st.session_state.pagina_atual == "Dashboards":
             if status_sel != "Todos" and "status" in df_f.columns:
                 df_f = df_f[df_f["status"] == status_sel]
             
-        # 2. Cálculo dos Indicadores SIGER
+        # 2. Cálculo dos Indicadores
         iet_val, iet_desc = calcular_iet(df_f)
         icp_val, icp_desc = calcular_icp(df_f)
         itr_val, itr_desc = calcular_itr(df_riscos)
         iar_val, iar_cat, iar_desc = classificar_iar(iet_val, icp_val, itr_val)
         
-        # 3. Cards com os Resultados
+        # 3. Cards de Exibição
         c_kpi1, c_kpi2, c_kpi3, c_kpi4 = st.columns(4)
         
         with c_kpi1:
@@ -1584,14 +1582,12 @@ elif st.session_state.pagina_atual == "Dashboards":
 
         st.markdown("---")
         
-        # 4. Tabela Resumo por Eixo
+        # 4. Tabela Resumo
         if not df_planos.empty and "eixo" in df_planos.columns:
             st.subheader("📌 Desempenho por Eixo Estratégico")
             
-            eixos = df_planos["eixo"].unique()
             dados_eixos = []
-            
-            for e in eixos:
+            for e in df_planos["eixo"].unique():
                 sub_df = df_planos[df_planos["eixo"] == e]
                 v_iet, _ = calcular_iet(sub_df)
                 v_icp, _ = calcular_icp(sub_df)
@@ -1602,8 +1598,7 @@ elif st.session_state.pagina_atual == "Dashboards":
                     "ICP (%)": round(v_icp, 1)
                 })
                 
-            df_resumo = pd.DataFrame(dados_eixos)
-            st.dataframe(df_resumo, use_container_width=True)
+            st.dataframe(pd.DataFrame(dados_eixos), use_container_width=True)
 
 # ---------------------------------------------------------
 # PÁGINA: BIBLIOTECA
