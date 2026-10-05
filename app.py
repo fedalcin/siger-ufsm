@@ -200,6 +200,9 @@ TIPOS_UNIDADE_OPCOES = [
     "Diretoria"
 ]
 
+STATUS_ACAO_OPCOES = ["Pendente", "Em andamento", "Devolvida", "Concluída"]
+STATUS_RISCO_OPCOES = ['Identificado', 'Em análise', 'Em tratamento', 'Monitorado', 'Encerrado', 'Cancelado']
+
 # ---------------------------------------------------------
 # AUTENTICAÇÃO E SESSÃO DO USUÁRIO
 # ---------------------------------------------------------
@@ -388,7 +391,7 @@ def renderizar_timeline_risco(risco_id):
         eventos.append({
             "tipo": "movimentacao",
             "data": m.get("data_movimentacao"),
-            "titulo": f"Ação nº {m.get('numero_sequencial')} | Avanço ({m.get('percentual_conclusao')}%)",
+            "titulo": f"Ação nº {m.get('numero_sequencial')} | Avanço ({m.get('percentual_conclusao') or m.get('percentual_execucao') or 0}%)",
             "sub": f"Status: {st_anterior} ➔ {m.get('status_novo')} | Responsável: {m.get('usuario_responsavel')}",
             "corpo": m.get("descricao_avanco")
         })
@@ -470,7 +473,7 @@ with st.sidebar.expander("📝 Cadastros", expanded=False):
             navegar_para("Cadastros", "Objetivos Estratégicos")
         if st.button("🏷️ Categorias de Risco", key="btn_cad_cat", use_container_width=True):
             navegar_para("Cadastros", "Categorias de Risco")
-        if st.button("🖼️ Identidade Visual", key="btn_cad_id_vis", use_container_width=True):
+        if st.button("🖼️️ Identidade Visual", key="btn_cad_id_vis", use_container_width=True):
             navegar_para("Cadastros", "Identidade Visual")
         if st.button("📚 Documentos da Biblioteca", key="btn_cad_doc_bib", use_container_width=True):
             navegar_para("Cadastros", "Documentos da Biblioteca")
@@ -572,7 +575,7 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and is_admin:
                                     e_perfil = st.selectbox("Perfil de Acesso", list(mapa_perfis.keys()), index=idx_p)
                                     
                                     # Unidades
-                                    res_un = supabase.table("unidades").select("sigla").execute().data or []
+                                    res_un = supabase.table("unidades").select("sigla").order("sigla").execute().data or []
                                     opts_un = ["Nenhuma / Todas"] + [un["sigla"] for un in res_un]
                                     idx_u_sig = opts_un.index(u_item.get("unidade_sigla")) if u_item.get("unidade_sigla") in opts_un else 0
                                     e_unid = st.selectbox("Unidade Responsável", opts_un, index=idx_u_sig)
@@ -609,7 +612,7 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and is_admin:
                     mapa_perfis = {p["nome"]: p["id"] for p in res_p}
                     new_perfil = st.selectbox("Perfil de Acesso*", list(mapa_perfis.keys()))
                     
-                    res_un = supabase.table("unidades").select("sigla").execute().data or []
+                    res_un = supabase.table("unidades").select("sigla").order("sigla").execute().data or []
                     opts_un = ["Nenhuma / Todas"] + [un["sigla"] for un in res_un]
                     new_unid = st.selectbox("Unidade Responsável", opts_un)
                     
@@ -732,7 +735,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                     
                 st.divider()
                 
-                pct_atual = 0
+                pct_atual = acao_item.get("percentual_execucao", 0) or 0
                 try:
                     res_ult_mov = supabase.table("movimentacoes_acoes")\
                         .select("percentual_conclusao, descricao_avanco, data_movimentacao")\
@@ -744,13 +747,13 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                     
                     if res_ult_mov.data:
                         mov = res_ult_mov.data[0]
-                        pct_atual = mov.get("percentual_conclusao", 0)
+                        pct_atual = mov.get("percentual_conclusao", pct_atual)
                         st.write(f"**Avanço Atual:** `{pct_atual}%`")
                         st.progress(pct_atual / 100.0)
                         st.caption(f"Última atualização ({formatar_data_hora_br(mov.get('data_movimentacao'))}): {mov.get('descricao_avanco')}")
                     else:
-                        st.write("**Avanço Atual:** `0%`")
-                        st.progress(0.0)
+                        st.write(f"**Avanço Atual:** `{pct_atual}%`")
+                        st.progress(float(pct_atual) / 100.0)
                 except Exception:
                     st.caption("Não foi possível carregar a última movimentação.")
 
@@ -766,9 +769,8 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                 st.markdown("##### 1. Progresso e Status da Ação")
                                 novo_pct = st.slider("Percentual de Execução Concluído", 0, 100, value=int(pct_atual), step=5, key=f"sld_pct_{r_id}_{seq}")
                                 
-                                opcoes_status_wf = ["Pendente", "Em andamento", "Devolvida", "Concluída"]
-                                idx_st_wf = opcoes_status_wf.index(status_ac) if status_ac in opcoes_status_wf else 1
-                                novo_status_ac = st.selectbox("Novo Status da Ação", opcoes_status_wf, index=idx_st_wf, key=f"sb_st_{r_id}_{seq}")
+                                idx_st_wf = STATUS_ACAO_OPCOES.index(status_ac) if status_ac in STATUS_ACAO_OPCOES else 1
+                                novo_status_ac = st.selectbox("Novo Status da Ação", STATUS_ACAO_OPCOES, index=idx_st_wf, key=f"sb_st_{r_id}_{seq}")
                                 
                                 st.markdown("##### 2. Descrição das Atividades Realizadas / Parecer Técnico")
                                 desc_avanco_wf = st.text_area(
@@ -796,6 +798,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                         try:
                                             supabase.table("acoes_tratamento").update({
                                                 "status_acao": novo_status_ac,
+                                                "percentual_execucao": novo_pct,
                                                 "unidade_responsavel": unid_destino_wf,
                                                 "nome_responsavel_implementacao": resp_destino_wf
                                             }).eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
@@ -844,7 +847,10 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                         st.warning("Preencha o responsável e a justificativa para encerrar.")
                                     else:
                                         try:
-                                            supabase.table("riscos").update({"situacao_status": "Encerrado"}).eq("id", r_id).execute()
+                                            supabase.table("riscos").update({
+                                                "situacao_status": "Encerrado",
+                                                "justificativa_encerramento": justificativa_enc
+                                            }).eq("id", r_id).execute()
                                             
                                             dados_tram_enc = {
                                                 "risco_id": r_id,
@@ -878,7 +884,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
 # PÁGINA: PLANOS DE TRATAMENTO / AÇÕES DE MITIGAÇÃO
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Planos de Tratamento":
-    st.title("🛡️️ Planos de Tratamento e Mitigação de Riscos")
+    st.title("🛡 Planos de Tratamento e Mitigação de Riscos")
     
     tab_list_acoes, tab_nova_acao = st.tabs(["🔍 Ações Cadastradas", "➕ Cadastrar Nova Ação de Mitigação"])
     
@@ -1031,7 +1037,8 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                                 "como_sera_implementada": como_input,
                                 "previsao_data_inicio": dt_inicio.strftime("%Y-%m-%d"),
                                 "previsao_data_conclusao": dt_conclusao.strftime("%Y-%m-%d"),
-                                "status_acao": "Pendente"
+                                "status_acao": "Pendente",
+                                "percentual_execucao": 0
                             }
                             try:
                                 supabase.table("acoes_tratamento").insert(dados_nova_acao).execute()
@@ -1197,10 +1204,9 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         e_imp = st.slider("Impacto", 1, 5, value=r_item.get('impacto', 1))
                                         e_resp = st.text_input("Gestor do Risco", value=r_item.get('gestor_risco', ''))
                                         
-                                        options_status = ['Identificado', 'Em análise', 'Em tratamento', 'Monitorado', 'Encerrado', 'Cancelado']
                                         curr_status = r_item.get('situacao_status', 'Identificado')
-                                        idx_st = options_status.index(curr_status) if curr_status in options_status else 0
-                                        e_sit = st.selectbox("Situação", options_status, index=idx_st)
+                                        idx_st = STATUS_RISCO_OPCOES.index(curr_status) if curr_status in STATUS_RISCO_OPCOES else 0
+                                        e_sit = st.selectbox("Situação", STATUS_RISCO_OPCOES, index=idx_st)
                                         
                                         if st.form_submit_button("💾 Salvar Alterações"):
                                             novo_nivel = e_prob * e_imp
@@ -1243,7 +1249,10 @@ elif st.session_state.pagina_atual == "Cadastros":
                                                     st.warning("Preencha todos os campos obrigatórios.")
                                                 else:
                                                     try:
-                                                        supabase.table("riscos").update({"situacao_status": "Encerrado"}).eq("id", r_item['id']).execute()
+                                                        supabase.table("riscos").update({
+                                                            "situacao_status": "Encerrado",
+                                                            "justificativa_encerramento": justificativa_enc_cad
+                                                        }).eq("id", r_item['id']).execute()
                                                         
                                                         dados_tram_enc = {
                                                             "risco_id": r_item['id'],
@@ -1396,6 +1405,8 @@ elif st.session_state.pagina_atual == "Monitoramento":
             st.markdown(f"**Causa:** {risco_obj.get('causa', '-')}")
             st.markdown(f"**Consequência:** {risco_obj.get('consequencia', '-')}")
             st.markdown(f"**Unidade:** {risco_obj.get('unidade')} | **Gestor:** {risco_obj.get('gestor_risco')}")
+            if risco_obj.get("justificativa_encerramento"):
+                st.markdown(f"**Justificativa de Encerramento:** {risco_obj.get('justificativa_encerramento')}")
 
         with t_acoes:
             try:
@@ -1492,7 +1503,7 @@ elif st.session_state.pagina_atual == "Biblioteca":
                     st.write(doc.get('descricao', 'Sem descrição cadastrada.'))
                     st.link_button("📥 Acessar / Baixar PDF", doc['url_publica'])
         else:
-            st.info("Nenhum documento disponível no momento.")
+            st.info("Nenum documento disponível no momento.")
     except Exception as e:
         st.error(f"Erro ao carregar a biblioteca: {e}")
 
