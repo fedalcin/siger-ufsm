@@ -5,6 +5,17 @@ from datetime import datetime, date
 import os
 import bcrypt
 
+# Importação dos cálculos gerenciais e operacionais do SIGER
+from calculos_siger import (
+    calcular_situacao_revisao_risco,
+    calcular_situacao_prazo_acao,
+    calcular_iet,
+    calcular_icp,
+    calcular_itr,
+    calcular_iar_risco,
+    calcular_exposicao_agregada
+)
+
 # ---------------------------------------------------------
 # CONEXÃO COM SUPABASE
 # ---------------------------------------------------------
@@ -648,7 +659,6 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
     if not opcoes_unid:
         opcoes_unid = ["S/U"]
 
-    # Se usuário for restrito à sua unidade, seleciona ela por padrão
     unidade_usuario = usr_atual.get("unidade")
     idx_unid_def = opcoes_unid.index(unidade_usuario) if unidade_usuario in opcoes_unid else 0
 
@@ -1446,7 +1456,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             with col_b_act1:
                                 st.link_button("📥 Abrir / Download PDF", d_url)
                             with col_b_act2:
-                                pop_del_doc = st.popover("🗑️ Excluir Documento")
+                                pop_del_doc = st.popover("🗑️️ Excluir Documento")
                                 with pop_del_doc:
                                     st.warning(f"Deseja remover o documento '{d_titulo}'?")
                                     if st.button("Confirmar Exclusão", key=f"btn_del_doc_{doc_id}"):
@@ -1721,7 +1731,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar o risco no banco de dados: {e}")
 
 # ---------------------------------------------------------
-# PÁGINA: MONITORAMENTO
+# PÁGINA: MONITORAMENTO (PASSO 2 INTEGRADO)
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Monitoramento":
     st.title("📌 Monitoramento e Acompanhamento de Riscos")
@@ -1741,6 +1751,40 @@ elif st.session_state.pagina_atual == "Monitoramento":
         risco_obj = mapa_riscos_mon[risco_sel_label]
         r_id = risco_obj["id"]
 
+        # Carregar ações associadas ao risco selecionado para os cálculos
+        try:
+            res_ac_mon = supabase.table("acoes_tratamento").select("*").eq("risco_id", r_id).execute()
+            df_ac_mon = pd.DataFrame(res_ac_mon.data or [])
+        except Exception:
+            df_ac_mon = pd.DataFrame()
+
+        # Cálculo de Indicadores Específicos do Risco via calculos_siger.py
+        sit_revisao = calcular_situacao_revisao_risco(risco_obj.get("data_proxima_revisao"))
+        
+        tot_acoes_r = len(df_ac_mon)
+        if not df_ac_mon.empty:
+            acoes_atrasadas_r = sum(
+                1 for _, row in df_ac_mon.iterrows()
+                if calcular_situacao_prazo_acao(row.get("status_acao"), row.get("previsao_data_conclusao")) == "⚠️ Atrasada"
+            )
+            iet_r = calcular_iet(df_ac_mon)
+            icp_r = calcular_icp(df_ac_mon)
+            pct_conc_r = round(float((df_ac_mon["status_acao"] == "Concluída").sum() / tot_acoes_r * 100), 2) if tot_acoes_r > 0 else 0.0
+            itr_r = calcular_itr(iet_r, pct_conc_r, icp_r)
+        else:
+            acoes_atrasadas_r = 0
+            iet_r = 0.0
+            icp_r = 100.0
+            pct_conc_r = 0.0
+            itr_r = 0.0
+
+        iar_info = calcular_iar_risco(
+            nivel_risco=risco_obj.get("nivel_risco", 1),
+            acoes_atrasadas=acoes_atrasadas_r,
+            total_acoes=tot_acoes_r,
+            situacao_revisao=sit_revisao
+        )
+
         st.divider()
 
         t_visao, t_acoes, t_timeline = st.tabs([
@@ -1750,6 +1794,17 @@ elif st.session_state.pagina_atual == "Monitoramento":
         ])
 
         with t_visao:
+            st.markdown("#### 📊 Métricas e Índices do Risco (IAR, ITR, IET, ICP)")
+            
+            c_iar1, c_iar2, c_iar3, c_iar4, c_iar5 = st.columns(5)
+            c_iar1.metric("Índice de Atenção (IAR)", f"{iar_info['iar_score']} pts", iar_info['classificacao'])
+            c_iar2.metric("Tratamento (ITR)", f"{itr_r}%")
+            c_iar3.metric("Execução (IET)", f"{iet_r}%")
+            c_iar4.metric("Cumprimento Prazo (ICP)", f"{icp_r}%")
+            c_iar5.metric("Situação da Revisão", sit_revisao)
+
+            st.markdown("---")
+
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
             nivel = risco_obj.get("nivel_risco", 1)
             cor_nivel = "🔴 Crítico" if nivel >= 15 else "🟡 Médio" if nivel >= 8 else "🟢 Baixo"
@@ -1766,58 +1821,78 @@ elif st.session_state.pagina_atual == "Monitoramento":
             st.markdown(f"**Unidade:** {risco_obj.get('unidade')} | **Gestor:** {risco_obj.get('gestor_risco')}")
 
         with t_acoes:
-            try:
-                res_ac = supabase.table("acoes_tratamento").select("*").eq("risco_id", r_id).order("numero_sequencial").execute()
-                lista_ac = res_ac.data or []
-                
-                if lista_ac:
-                    for ac in lista_ac:
-                        seq = ac["numero_sequencial"]
-                        st_ac = ac.get("status_acao", "Pendente")
-                        bad_prazo, _ = obter_badge_prazo(ac.get("previsao_data_conclusao"), st_ac)
-                        
-                        with st.expander(f"Ação #{seq}: {ac['acao']} ({st_ac}) | {bad_prazo}"):
-                            st.write(f"**Objetivo:** {ac.get('objetivo_acao')}")
-                            st.write(f"**Responsável:** {ac.get('nome_responsavel_implementacao')} ({ac.get('unidade_responsavel')})")
-                            st.write(f"**Como Executar:** {ac.get('como_sera_implementada')}")
-                            st.write(f"**Período:** {formatar_data_br(ac.get('previsao_data_inicio'))} até {formatar_data_br(ac.get('previsao_data_conclusao'))}")
-                else:
-                    st.info("Nenhuma ação cadastrada para este risco.")
-            except Exception as e:
-                st.error(f"Erro ao carregar ações: {e}")
+            if not df_ac_mon.empty:
+                for _, ac in df_ac_mon.iterrows():
+                    seq = ac["numero_sequencial"]
+                    st_ac = ac.get("status_acao", "Pendente")
+                    sit_prazo_ac = calcular_situacao_prazo_acao(st_ac, ac.get("previsao_data_conclusao"))
+                    bad_prazo, _ = obter_badge_prazo(ac.get("previsao_data_conclusao"), st_ac)
+                    
+                    with st.expander(f"Ação #{seq}: {ac['acao']} ({st_ac}) | Status Prazo: {sit_prazo_ac} ({bad_prazo})"):
+                        st.write(f"**Objetivo:** {ac.get('objetivo_acao')}")
+                        st.write(f"**Responsável:** {ac.get('nome_responsavel_implementacao')} ({ac.get('unidade_responsavel')})")
+                        st.write(f"**Como Executar:** {ac.get('como_sera_implementada')}")
+                        st.write(f"**Período:** {formatar_data_br(ac.get('previsao_data_inicio'))} até {formatar_data_br(ac.get('previsao_data_conclusao'))}")
+            else:
+                st.info("Nenhuma ação cadastrada para este risco.")
 
         with t_timeline:
             renderizar_timeline_risco(r_id)
 
 # ---------------------------------------------------------
-# PÁGINA: DASHBOARDS
+# PÁGINA: DASHBOARDS (PASSO 3 INTEGRADO)
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Dashboards":
-    st.title("📊 Painel Geral de Governança e Riscos")
+    st.title("📊 Painel Geral de Governança, Riscos e Indicadores")
     st.divider()
 
     try:
         res_r = supabase.table("riscos").select("*").execute()
-        riscos_data = res_r.data or []
+        df_riscos_all = pd.DataFrame(res_r.data or [])
         
         res_a = supabase.table("acoes_tratamento").select("*").execute()
-        acoes_data = res_a.data or []
+        df_acoes_all = pd.DataFrame(res_a.data or [])
     except Exception as e:
-        st.error(f"Erro ao carregar indicadores: {e}")
-        riscos_data, acoes_data = [], []
+        st.error(f"Erro ao carregar dados dos dashboards: {e}")
+        df_riscos_all, df_acoes_all = pd.DataFrame(), pd.DataFrame()
 
-    tot_riscos = len(riscos_data)
-    tot_acoes = len(acoes_data)
+    tot_riscos = len(df_riscos_all)
+    tot_acoes = len(df_acoes_all)
     
-    criticos = sum(1 for r in riscos_data if r.get("nivel_risco", 0) >= 15)
-    medios = sum(1 for r in riscos_data if 8 <= r.get("nivel_risco", 0) < 15)
-    baixos = sum(1 for r in riscos_data if r.get("nivel_risco", 0) < 8)
+    criticos = sum(1 for _, r in df_riscos_all.iterrows() if r.get("nivel_risco", 0) >= 15) if not df_riscos_all.empty else 0
+    medios = sum(1 for _, r in df_riscos_all.iterrows() if 8 <= r.get("nivel_risco", 0) < 15) if not df_riscos_all.empty else 0
 
-    c_kpi1, c_kpi2, c_kpi3, c_kpi4 = st.columns(4)
-    c_kpi1.metric("Total de Riscos Mapeados", tot_riscos)
+    # Indicadores Globais via calculos_siger.py
+    iet_global = calcular_iet(df_acoes_all)
+    icp_global = calcular_icp(df_acoes_all)
+    
+    if not df_acoes_all.empty:
+        total_validas = len(df_acoes_all[df_acoes_all["status_acao"] != "Cancelada"]) if "status_acao" in df_acoes_all.columns else len(df_acoes_all)
+        total_concluidas = (df_acoes_all["status_acao"] == "Concluída").sum() if "status_acao" in df_acoes_all.columns else 0
+        pct_conc_global = round(float((total_concluidas / total_validas) * 100), 2) if total_validas > 0 else 0.0
+    else:
+        pct_conc_global = 0.0
+
+    itr_global = calcular_itr(iet_global, pct_conc_global, icp_global)
+
+    # Cartões de KPIs Principais
+    c_kpi1, c_kpi2, c_kpi3, c_kpi4, c_kpi5 = st.columns(5)
+    c_kpi1.metric("Total de Riscos", tot_riscos)
     c_kpi2.metric("Riscos Críticos 🔴", criticos)
-    c_kpi3.metric("Riscos Médios 🟡", medios)
-    c_kpi4.metric("Total de Ações Registradas", tot_acoes)
+    c_kpi3.metric("IET Global", f"{iet_global}%")
+    c_kpi4.metric("ICP Global", f"{icp_global}%")
+    c_kpi5.metric("ITR Global", f"{itr_global}%")
+
+    st.markdown("---")
+
+    # Exposição Operacional Agregada
+    st.subheader("🏢 Exposição Operacional Agregada por Unidade")
+    if not df_riscos_all.empty:
+        df_exp_unid = calcular_exposicao_agregada(df_riscos_all, agrupar_por="unidade")
+        df_exp_unid.columns = ["Unidade", "Total Riscos", "Soma Nível Risco", "Média Nível Risco", "Riscos Críticos"]
+        st.dataframe(df_exp_unid, use_container_width=True)
+    else:
+        st.info("Sem dados para calcular exposição agregada.")
 
     st.markdown("---")
 
@@ -1825,19 +1900,18 @@ elif st.session_state.pagina_atual == "Dashboards":
 
     with col_g1:
         st.subheader("📌 Riscos por Status / Situação")
-        if riscos_data:
-            df_r = pd.DataFrame(riscos_data)
-            df_status = df_r["situacao_status"].value_counts().reset_index()
+        if not df_riscos_all.empty:
+            df_status = df_riscos_all["situacao_status"].value_counts().reset_index()
             df_status.columns = ["Situação", "Quantidade"]
             st.dataframe(df_status, use_container_width=True)
         else:
             st.info("Sem dados de riscos.")
 
     with col_g2:
-        st.subheader("🛡️ Ações de Tratamento por Status")
-        if acoes_data:
-            df_a = pd.DataFrame(acoes_data)
-            df_ac_st = df_a["status_acao"].value_counts().reset_index()
+        st.subheader("🛡️️ Ações de Tratamento por Status")
+        if not df_acoes_all.empty:
+            col_st_ac = "status_acao" if "status_acao" in df_acoes_all.columns else "status"
+            df_ac_st = df_acoes_all[col_st_ac].value_counts().reset_index()
             df_ac_st.columns = ["Status da Ação", "Quantidade"]
             st.dataframe(df_ac_st, use_container_width=True)
         else:
