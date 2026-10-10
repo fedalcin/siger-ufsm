@@ -4,6 +4,106 @@ import pandas as pd
 from datetime import datetime, date
 import os
 import bcrypt
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from cryptography.fernet import Fernet
+import base64
+
+# ---------------------------------------------------------
+# MÓDULO DE CRIPTOGRAFIA E NOTIFICAÇÕES POR E-MAIL (SMTP)
+# ---------------------------------------------------------
+def _obter_chave_fernet():
+    key_base = st.secrets["SUPABASE_KEY"][:32].zfill(32)
+    return base64.urlsafe_b64encode(key_base.encode())
+
+def criptografar_texto(texto):
+    if not texto: return ""
+    f = Fernet(_obter_chave_fernet())
+    return f.encrypt(texto.encode()).decode()
+
+def descriptografar_texto(texto_cripto):
+    if not texto_cripto: return ""
+    try:
+        f = Fernet(_obter_chave_fernet())
+        return f.decrypt(texto_cripto.encode()).decode()
+    except Exception:
+        return texto_cripto
+
+def obter_configuracoes_smtp():
+    smtp_conf = {}
+    try:
+        res = supabase.table("configuracoes").select("chave, valor").like("chave", "smtp_%").execute()
+        if res.data:
+            mapa = {i["chave"]: i["valor"] for i in res.data}
+            smtp_conf["server"] = mapa.get("smtp_server")
+            smtp_conf["port"] = mapa.get("smtp_port", 587)
+            smtp_conf["email"] = mapa.get("smtp_email")
+            
+            senha_cripto = mapa.get("smtp_password", "")
+            smtp_conf["password"] = descriptografar_texto(senha_cripto)
+    except Exception as e:
+        print(f"Erro ao buscar SMTP do banco: {e}")
+
+    if not smtp_conf.get("server") or not smtp_conf.get("email"):
+        secrets_smtp = st.secrets.get("smtp", {})
+        smtp_conf["server"] = secrets_smtp.get("server")
+        smtp_conf["port"] = secrets_smtp.get("port", 587)
+        smtp_conf["email"] = secrets_smtp.get("email")
+        smtp_conf["password"] = secrets_smtp.get("password")
+
+    return smtp_conf
+
+def obter_emails_unidade_ou_usuario(unidade_sigla=None, nome_usuario=None):
+    emails = []
+    try:
+        if nome_usuario:
+            res_usr = supabase.table("usuarios").select("email").ilike("nome", f"%{nome_usuario.strip()}%").eq("ativo", True).execute()
+            if res_usr.data:
+                emails.extend([u["email"] for u in res_usr.data if u.get("email")])
+
+        if unidade_sigla and unidade_sigla != "S/U":
+            res_unid = supabase.table("usuarios").select("email").eq("unidade_sigla", unidade_sigla).eq("ativo", True).execute()
+            if res_unid.data:
+                emails.extend([u["email"] for u in res_unid.data if u.get("email")])
+    except Exception as e:
+        print(f"Erro ao buscar e-mails: {e}")
+        
+    return list(set(emails))
+
+def enviar_email_notificacao_siger(destinatarios_list, assunto, mensagem_html):
+    if not destinatarios_list:
+        return False
+    try:
+        smtp_conf = obter_configuracoes_smtp()
+        smtp_server = smtp_conf.get("server")
+        smtp_port = smtp_conf.get("port", 587)
+        smtp_user = smtp_conf.get("email")
+        smtp_password = smtp_conf.get("password")
+
+        if not smtp_server or not smtp_user or not smtp_password:
+            return False
+
+        emails_validos = list(set([e.strip().lower() for e in destinatarios_list if e and "@" in e]))
+        if not emails_validos:
+            return False
+
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = assunto
+        msg["From"] = f"SIGER - Notificações <{smtp_user}>"
+        msg["To"] = ", ".join(emails_validos)
+
+        msg.attach(MIMEText(mensagem_html, "html"))
+
+        with smtplib.SMTP(smtp_server, int(smtp_port)) as server:
+            server.starttls()
+            server.login(smtp_user, smtp_password)
+            server.sendmail(smtp_user, emails_validos, msg.as_string())
+            
+        return True
+    except Exception as e:
+        print(f"⚠️ Falha ao enviar e-mail de notificação: {e}")
+        return False
 
 # Importação dos cálculos gerenciais e operacionais do SIGER
 from calculos_siger import (
@@ -746,7 +846,57 @@ if st.session_state.pagina_atual == "Início":
 elif st.session_state.pagina_atual == "Administração do Sistema" and is_admin:
     sub = st.session_state.sub_pagina_atual or "Usuários"
     
-    if sub == "Usuários":
+    if sub == "Configurações":
+        st.title("🔧 Configurações Gerais do Sistema")
+        st.subheader("📧 Servidor de E-mail para Envio de Notificações (SMTP)")
+        st.caption("Cadastre as credenciais do servidor de e-mail institucional para envio automatizado de alertas aos usuários.")
+
+        cfg_smtp = {}
+        try:
+            res_cfg = supabase.table("configuracoes").select("chave, valor").like("chave", "smtp_%").execute()
+            if res_cfg.data:
+                cfg_smtp = {item["chave"]: item["valor"] for item in res_cfg.data}
+        except Exception as e:
+            st.error(f"Erro ao carregar configurações de e-mail: {e}")
+
+        with st.form("form_config_smtp"):
+            c_s1, c_s2 = st.columns(2)
+            with c_s1:
+                smtp_servidor = st.text_input("Servidor SMTP*", value=cfg_smtp.get("smtp_server", "smtp.gmail.com"), placeholder="smtp.instituicao.edu.br")
+                smtp_porta = st.number_input("Porta SMTP*", value=int(cfg_smtp.get("smtp_port", 587)), step=1)
+            with c_s2:
+                smtp_email = st.text_input("E-mail Remetente*", value=cfg_smtp.get("smtp_email", ""), placeholder="siger-notificacoes@instituicao.edu.br")
+                
+                senha_salva_cripto = cfg_smtp.get("smtp_password", "")
+                senha_descriptografada = descriptografar_texto(senha_salva_cripto)
+                
+                smtp_senha = st.text_input("Senha do E-mail / App Password*", value=senha_descriptografada, type="password")
+
+            st.caption("🔒 *A senha é mantida de forma criptografada na tabela de configurações.*")
+            btn_salvar_smtp = st.form_submit_button("💾 Salvar Credenciais SMTP")
+
+        if btn_salvar_smtp:
+            if not smtp_servidor or not smtp_email or not smtp_senha:
+                st.warning("Preencha todos os campos obrigatórios da configuração SMTP.")
+            else:
+                try:
+                    senha_criptografada = criptografar_texto(smtp_senha)
+                    configs_para_salvar = [
+                        {"chave": "smtp_server", "valor": smtp_servidor.strip()},
+                        {"chave": "smtp_port", "valor": str(smtp_porta)},
+                        {"chave": "smtp_email", "valor": smtp_email.strip()},
+                        {"chave": "smtp_password", "valor": senha_criptografada}
+                    ]
+                    for item in configs_para_salvar:
+                        supabase.table("configuracoes").upsert(item, on_conflict="chave").execute()
+                        
+                    st.success("✅ Servidor de e-mail registrado e pronto para envio de notificações!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao salvar credenciais: {e}")
+
+    elif sub == "Usuários":
+
         st.title("👥 Gestão de Usuários e Permissões")
         tab_users_list, tab_user_new = st.tabs(["🔍 Usuários Cadastrados", "➕ Cadastrar Novo Usuário"])
         
@@ -1024,7 +1174,24 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
 
                                             recalcular_e_atualizar_status_risco(r_id)
 
-                                            st.success("✅ Demanda atualizada, tramitada e status do risco recalculado!")
+                                            # --- ENVIO DO E-MAIL DE TRAMITAÇÃO ---
+                                            emails_dest = obter_emails_unidade_ou_usuario(unidade_sigla=unid_destino_wf, nome_usuario=resp_destino_wf)
+                                            if emails_dest:
+                                                assunto_e = f"💬 [SIGER] Tramitação de Demanda - Risco #{r_id} (Ação {seq})"
+                                                corpo_html = f"""
+                                                <h3>Tramitação de Demanda no SIGER</h3>
+                                                <p>Olá,</p>
+                                                <p>A ação nº <b>{seq}</b> do Risco <b>#{r_id}</b> foi tramitada por <b>{remetente_wf}</b> ({unidade_ativa}) para a sua unidade (<b>{unid_destino_wf}</b>).</p>
+                                                <ul>
+                                                    <li><b>Status:</b> {novo_status_ac} ({novo_pct}%)</li>
+                                                    <li><b>Responsável Destino:</b> {resp_destino_wf}</li>
+                                                    <li><b>Relato/Parecer:</b> {desc_avanco_wf}</li>
+                                                </ul>
+                                                <p>Acesse a Caixa de Entrada do SIGER para visualizar.</p>
+                                                """
+                                                enviar_email_notificacao_siger(emails_dest, assunto_e, corpo_html)
+
+                                            st.success("✅ Demanda atualizada, tramitada e notificação por e-mail enviada!")
                                             st.rerun()
                                         except Exception as e_wf:
                                             st.error(f"Erro ao processar workflow: {e_wf}")
@@ -1266,7 +1433,24 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
 
                                 supabase.table("riscos").update({"situacao_status": "Em tratamento"}).eq("id", id_risco_sel).execute()
 
-                                st.success(f"✅ Ação nº {prox_seq} cadastrada!")
+                                # --- ENVIO DO E-MAIL DE NOVA AÇÃO ---
+                                emails_dest = obter_emails_unidade_ou_usuario(unidade_sigla=unidade_resp_sel, nome_usuario=nome_resp_input)
+                                if emails_dest:
+                                    assunto_e = f"🛡️ [SIGER] Nova Ação de Mitigação Atribuída - Risco #{id_risco_sel} (Ação {prox_seq})"
+                                    corpo_html = f"""
+                                    <h3>Nova Ação de Mitigação Atribuída</h3>
+                                    <p>Olá,</p>
+                                    <p>Uma nova ação foi vinculada ao Risco <b>#{id_risco_sel}</b> e atribuída para a sua unidade (<b>{unidade_resp_sel}</b>).</p>
+                                    <ul>
+                                        <li><b>Ação:</b> {acao_input}</li>
+                                        <li><b>Responsável:</b> {nome_resp_input}</li>
+                                        <li><b>Prazo Conclusão:</b> {dt_conclusao.strftime('%d/%m/%Y')}</li>
+                                    </ul>
+                                    <p>Acesse o SIGER para acompanhar a demanda.</p>
+                                    """
+                                    enviar_email_notificacao_siger(emails_dest, assunto_e, corpo_html)
+
+                                st.success(f"✅ Ação nº {prox_seq} cadastrada e notificação por e-mail enviada!")
                                 st.rerun()
                             except Exception as e:
                                 st.error(f"Erro ao salvar ação no banco de dados: {e}")
