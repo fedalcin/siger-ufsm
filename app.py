@@ -373,8 +373,18 @@ def gerar_barra_progresso_ascii(pct):
     vazios = 10 - blocos
     return f"{'█' * blocos}{'░' * vazios} {pct_val}%"
 
+# ---------------------------------------------------------
+# RECALCULADOR DE STATUS AUTOMÁTICO (REGRA DE TRANSIÇÃO)
+# ---------------------------------------------------------
 def recalcular_e_atualizar_status_risco(risco_id):
     try:
+        # Verifica o status atual do risco (se já foi encerrado manualmente ou cancelado, mantém)
+        res_r_atual = supabase.table("riscos").select("situacao_status").eq("id", risco_id).execute()
+        if res_r_atual.data:
+            st_atual_banco = res_r_atual.data[0].get("situacao_status")
+            if st_atual_banco in ["Encerrado", "Cancelado"]:
+                return
+
         res_acoes = supabase.table("acoes_tratamento").select("status_acao").eq("risco_id", risco_id).execute()
         acoes = res_acoes.data or []
         
@@ -387,6 +397,7 @@ def recalcular_e_atualizar_status_risco(risco_id):
 
         novo_status_risco = None
 
+        # REGRA: Concluir todas as ações move o risco para "Monitorado" (jamais "Encerrado")
         if concluidas == total_acoes:
             novo_status_risco = "Monitorado"
         elif em_andamento > 0 or concluidas > 0:
@@ -395,7 +406,7 @@ def recalcular_e_atualizar_status_risco(risco_id):
         if novo_status_risco:
             supabase.table("riscos").update({"situacao_status": novo_status_risco}).eq("id", risco_id).execute()
     except Exception as e:
-        st.error(f"Erro ao recalcular status automático do risco: {e}")
+        st.error(f"Erro ao recalcular status do risco: {e}")
 
 # ---------------------------------------------------------
 # RENDERIZADOR DA MATRIZ DE RISCO 5X5 INDIVIDUAL
@@ -502,64 +513,110 @@ def renderizar_matriz_risco_5x5_consolidada(df_riscos_filtrados):
     st.markdown(html_code, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# COMPONENTE VISUAL DE TIMELINE / LINHA DO TEMPO
+# COMPONENTE VISUAL DE TIMELINE / LINHA DO TEMPO 360° UNIFICADA
 # ---------------------------------------------------------
 def renderizar_timeline_risco(risco_id):
-    st.markdown("### 🕒 Linha do Tempo e Rastreabilidade")
+    st.markdown("### 🕒 Linha do Tempo e Rastreabilidade 360°")
     
-    try:
-        res_tram = supabase.table("tramitacoes")\
-            .select("*")\
-            .eq("risco_id", risco_id)\
-            .order("id", desc=True)\
-            .execute()
-        lista_tram = res_tram.data or []
-    except Exception:
-        lista_tram = []
-
-    try:
-        res_mov = supabase.table("movimentacoes_acoes")\
-            .select("*")\
-            .eq("risco_id", risco_id)\
-            .order("id", desc=True)\
-            .execute()
-        lista_mov = res_mov.data or []
-    except Exception:
-        lista_mov = []
-
     eventos = []
-    for t in lista_tram:
-        eventos.append({
-            "tipo": "tramitacao",
-            "data": t.get("data_tramitacao"),
-            "titulo": f"Tramitação: {t.get('unidade_origem')} ➔ {t.get('unidade_destino')}",
-            "sub": f"Remetente: {t.get('usuario_remetente')}",
-            "corpo": t.get("parecer_observacao")
-        })
 
-    for m in lista_mov:
-        st_anterior = m.get('status_anterior') or 'Início'
-        eventos.append({
-            "tipo": "movimentacao",
-            "data": m.get("data_movimentacao"),
-            "titulo": f"Ação nº {m.get('numero_sequencial')} | Avanço ({m.get('percentual_conclusao')}%)",
-            "sub": f"Status: {st_anterior} ➔ {m.get('status_novo')} | Responsável: {m.get('usuario_responsavel')}",
-            "corpo": m.get("descricao_avanco")
-        })
+    # 1. Evento de Criação do Risco
+    try:
+        res_r = supabase.table("riscos").select("data_identificacao, gestor_risco, unidade, evento, justificativa_encerramento, usuario_encerramento, data_encerramento").eq("id", risco_id).execute()
+        if res_r.data:
+            r_data = res_r.data[0]
+            dt_ident = r_data.get("data_identificacao")
+            eventos.append({
+                "tipo": "criacao",
+                "data": f"{dt_ident}T00:00:00" if dt_ident else None,
+                "titulo": f"🛡️ Criação / Registro do Risco #{risco_id}",
+                "sub": f"Unidade: {r_data.get('unidade')} | Gestor: {r_data.get('gestor_risco')}",
+                "corpo": f"Risco registrado no sistema: {r_data.get('evento')}"
+            })
 
-    eventos.sort(key=lambda x: x["data"] or "", reverse=True)
+            # Evento de Encerramento (se houver)
+            if r_data.get("data_encerramento"):
+                eventos.append({
+                    "tipo": "encerramento",
+                    "data": r_data.get("data_encerramento"),
+                    "titulo": f"🔒 Encerramento Formal do Risco #{risco_id}",
+                    "sub": f"Responsável: {r_data.get('usuario_encerramento') or 'Não informado'}",
+                    "corpo": f"**Justificativa:** {r_data.get('justificativa_encerramento') or 'Sem justificativa registrada.'}"
+                })
+    except Exception:
+        pass
+
+    # 2. Histórico de Reavaliações do Risco
+    try:
+        res_eval = supabase.table("avaliacoes_risco").select("*").eq("risco_id", risco_id).execute()
+        for ev in (res_eval.data or []):
+            dt_ev = ev.get("created_at") or ev.get("data_avaliacao")
+            eventos.append({
+                "tipo": "reavaliacao",
+                "data": dt_ev,
+                "titulo": f"🎯 Reavaliação de Risco (Nível {ev.get('nivel_risco')})",
+                "sub": f"Probabilidade: {ev.get('probabilidade')} | Impacto: {ev.get('impacto')} | Avaliador: {ev.get('usuario_avaliador') or 'Sistema'}",
+                "corpo": f"**Tipo:** {ev.get('tipo_avaliacao', 'Periódica')} | **Justificativa:** {ev.get('justificativa') or ev.get('observacao') or 'Sem observações'}"
+            })
+    except Exception:
+        pass
+
+    # 3. Tramitações Institucionais
+    try:
+        res_tram = supabase.table("tramitacoes").select("*").eq("risco_id", risco_id).execute()
+        for t in (res_tram.data or []):
+            eventos.append({
+                "tipo": "tramitacao",
+                "data": t.get("data_tramitacao"),
+                "titulo": f"💬 Tramitação: {t.get('unidade_origem')} ➔ {t.get('unidade_destino')}",
+                "sub": f"Remetente: {t.get('usuario_remetente')}",
+                "corpo": t.get("parecer_observacao") or "Sem parecer cadastrado."
+            })
+    except Exception:
+        pass
+
+    # 4. Movimentações e Alterações de Ações
+    try:
+        res_mov = supabase.table("movimentacoes_acoes").select("*").eq("risco_id", risco_id).execute()
+        for m in (res_mov.data or []):
+            st_ant = m.get('status_anterior') or 'Início'
+            pct = m.get('percentual_conclusao') if m.get('percentual_conclusao') is not None else 0
+            eventos.append({
+                "tipo": "movimentacao",
+                "data": m.get("data_movimentacao"),
+                "titulo": f"⚡ Ação nº {m.get('numero_sequencial')} | Avanço ({pct}%)",
+                "sub": f"Status: {st_ant} ➔ {m.get('status_novo')} | Responsável: {m.get('usuario_responsavel')}",
+                "corpo": m.get("descricao_avanco") or "Avanço registrado."
+            })
+    except Exception:
+        pass
+
+    # Tratamento contra datas nulas/inválidas antes de ordenar
+    for e in eventos:
+        if not e["data"]:
+            e["data"] = "1970-01-01T00:00:00"
+
+    eventos.sort(key=lambda x: x["data"], reverse=True)
 
     if not eventos:
-        st.info("Nenhum registro de movimentação ou tramitação até o momento.")
+        st.info("Nenhum registro de movimentação ou histórico para este risco.")
         return
 
+    icones_map = {
+        "criacao": "📌",
+        "reavaliacao": "🎯",
+        "tramitacao": "💬",
+        "movimentacao": "⚡",
+        "encerramento": "🔒"
+    }
+
     for ev in eventos:
-        dt_fmt = formatar_data_hora_br(ev["data"])
-        icone = "💬" if ev["tipo"] == "tramitacao" else "⚡"
+        dt_fmt = formatar_data_hora_br(ev["data"]) if ev["data"] != "1970-01-01T00:00:00" else "Data não registrada"
+        ic = icones_map.get(ev["tipo"], "🔹")
         
         st.markdown(f"""
             <div class="timeline-item">
-                <div class="timeline-header">{icone} {ev['titulo']}</div>
+                <div class="timeline-header">{ic} {ev['titulo']}</div>
                 <div class="timeline-date">🗓️ {dt_fmt} | {ev['sub']}</div>
                 <div class="timeline-body">{ev['corpo']}</div>
             </div>
@@ -977,32 +1034,38 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                         with pop_encerrar:
                             st.markdown(f"### Encerramento Formal do Risco #{r_id}")
                             st.warning("⚠️ O encerramento formal finaliza o acompanhamento deste risco.")
-                            
+            
                             with st.form(f"form_encerrar_risco_{r_id}_{seq}"):
                                 resp_encerramento = st.text_input("Responsável pelo Encerramento*", value=usr_atual["nome"], key=f"txt_resp_enc_{r_id}_{seq}")
                                 justificativa_enc = st.text_area("Justificativa e Parecer Final*", placeholder="Descreva os motivos...", key=f"txt_just_enc_{r_id}_{seq}")
-                                
+                
                                 if st.form_submit_button("🏁 Confirmar Encerramento Formal"):
-                                    if not justificativa_enc or not resp_encerramento:
+                                    if not justificativa_enc.strip() or not resp_encerramento.strip():
                                         st.warning("Preencha o responsável e a justificativa para encerrar.")
                                     else:
                                         try:
-                                            supabase.table("riscos").update({"situacao_status": "Encerrado"}).eq("id", r_id).execute()
-                                            
+                                            dt_agora_iso = datetime.now().isoformat()
+                                            supabase.table("riscos").update({
+                                                "situacao_status": "Encerrado",
+                                                "data_encerramento": dt_agora_iso,
+                                                "usuario_encerramento": resp_encerramento.strip(),
+                                                "justificativa_encerramento": justificativa_enc.strip()
+                                            }).eq("id", r_id).execute()
+                            
                                             dados_tram_enc = {
                                                 "risco_id": r_id,
                                                 "unidade_origem": unidade_ativa,
                                                 "unidade_destino": unidade_ativa,
-                                                "usuario_remetente": resp_encerramento,
-                                                "parecer_observacao": f"🔒 ENCERRAMENTO FORMAL DO RISCO: {justificativa_enc}"
+                                                "usuario_remetente": resp_encerramento.strip(),
+                                                "parecer_observacao": f"🔒 ENCERRAMENTO FORMAL DO RISCO: {justificativa_enc.strip()}"
                                             }
                                             supabase.table("tramitacoes").insert(dados_tram_enc).execute()
 
-                                            st.success("✅ Risco encerrado formalmente com sucesso!")
+                                            st.success("✅ Risco encerrado formalmente com justificativa e responsável registrados!")
                                             st.rerun()
                                         except Exception as e_enc:
                                             st.error(f"Erro ao encerrar risco: {e_enc}")
-
+             
                 with col_btn_wf3:
                     pop_hist = st.popover("🕒 Linha do Tempo")
                     with pop_hist:
@@ -1740,7 +1803,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                                             st.rerun()
                                         except Exception as e:
                                             st.error(f"Erro ao excluir: {e}")
-
                             with col_r_enc:
                                 if st_risco != "Encerrado":
                                     pop_enc_cad = st.popover("🔒 Encerrar Formalmente")
@@ -1748,24 +1810,30 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         with st.form(f"form_encerrar_cad_r_{r_item['id']}"):
                                             resp_enc_cad = st.text_input("Gestor/Responsável*", value=usr_atual["nome"])
                                             justificativa_enc_cad = st.text_area("Justificativa*", placeholder="Informe o parecer...")
-                                            
+                
                                             if st.form_submit_button("🏁 Confirmar Encerramento"):
-                                                if not justificativa_enc_cad or not resp_enc_cad:
+                                                if not justificativa_enc_cad.strip() or not resp_enc_cad.strip():
                                                     st.warning("Preencha todos os campos obrigatórios.")
                                                 else:
                                                     try:
-                                                        supabase.table("riscos").update({"situacao_status": "Encerrado"}).eq("id", r_item['id']).execute()
-                                                        
+                                                        dt_agora_iso = datetime.now().isoformat()
+                                                        supabase.table("riscos").update({
+                                                            "situacao_status": "Encerrado",
+                                                            "data_encerramento": dt_agora_iso,
+                                                            "usuario_encerramento": resp_enc_cad.strip(),
+                                                            "justificativa_encerramento": justificativa_enc_cad.strip()
+                                                        }).eq("id", r_item['id']).execute()
+                            
                                                         dados_tram_enc = {
                                                             "risco_id": r_item['id'],
                                                             "unidade_origem": r_item.get('unidade', 'S/U'),
                                                             "unidade_destino": r_item.get('unidade', 'S/U'),
-                                                            "usuario_remetente": resp_enc_cad,
-                                                            "parecer_observacao": f"🔒 ENCERRAMENTO FORMAL DO RISCO: {justificativa_enc_cad}"
+                                                            "usuario_remetente": resp_enc_cad.strip(),
+                                                            "parecer_observacao": f"🔒 ENCERRAMENTO FORMAL DO RISCO: {justificativa_enc_cad.strip()}"
                                                         }
                                                         supabase.table("tramitacoes").insert(dados_tram_enc).execute()
 
-                                                        st.success("✅ Risco encerrado formalmente!")
+                                                        st.success("✅ Risco encerrado formalmente com justificativa e responsável registrados!")
                                                         st.rerun()
                                                     except Exception as e_enc:
                                                         st.error(f"Erro ao encerrar risco: {e_enc}")
