@@ -1,4 +1,3 @@
-```python
 import streamlit as st
 from supabase import create_client, Client
 import pandas as pd
@@ -225,7 +224,6 @@ st.markdown("""
         outline: 4px solid #002147 !important;
         outline-offset: -4px;
         box-shadow: inset 0 0 10px rgba(0,0,0,0.6);
-        animation: pulse 1.8s infinite;
     }
     .risk-pin {
         background-color: #ffffff;
@@ -493,7 +491,7 @@ def renderizar_timeline_risco(risco_id):
     eventos.sort(key=lambda x: x["data"] or "", reverse=True)
 
     if not eventos:
-        st.info("Nenum registro de movimentação ou tramitação até o momento.")
+        st.info("Nenhum registro de movimentação ou tramitação até o momento.")
         return
 
     for ev in eventos:
@@ -1807,7 +1805,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar o risco no banco de dados: {e}")
 
 # ---------------------------------------------------------
-# PÁGINA: MONITORAMENTO E ACOMPANHAMENTO 360° (REFORMULADA - ETAPA 3)
+# PÁGINA: MONITORAMENTO E ACOMPANHAMENTO 360° (ETAPA 3 REFORMULADA)
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Monitoramento":
     st.title("📌 Monitoramento e Acompanhamento 360°")
@@ -1874,9 +1872,7 @@ elif st.session_state.pagina_atual == "Monitoramento":
 
         st.divider()
 
-        # -----------------------------------------------------
-        # REQUISITO 1 & 2: CABEÇALHO 360° E CARDS DE INDICADORES
-        # -----------------------------------------------------
+        # CABEÇALHO 360° E CARDS DE INDICADORES
         col_hdr1, col_hdr2 = st.columns([2.5, 1.5])
         with col_hdr1:
             st.markdown(f"### 🛡️ Risco #{r_id}: {risco_obj.get('evento')}")
@@ -1907,9 +1903,7 @@ elif st.session_state.pagina_atual == "Monitoramento":
 
         st.divider()
 
-        # -----------------------------------------------------
-        # REQUISITO 3 & 4: MATRIZ 5X5, HISTÓRICO E ALERTAS
-        # -----------------------------------------------------
+        # MATRIZ 5X5, HISTÓRICO E ALERTAS
         col_sec1, col_sec2 = st.columns([1.2, 1.3])
 
         with col_sec1:
@@ -1961,9 +1955,7 @@ elif st.session_state.pagina_atual == "Monitoramento":
 
         st.divider()
 
-        # -----------------------------------------------------
-        # REQUISITO 5: TABELA E BARRA DE PROGRESSO DAS AÇÕES
-        # -----------------------------------------------------
+        # TABELA E BARRA DE PROGRESSO DAS AÇÕES
         st.markdown("### 🛡️ Planos de Ação e Progresso das Mitigações")
         
         if not df_ac_mon.empty:
@@ -2103,4 +2095,3 @@ else:
     if st.session_state.sub_pagina_atual:
         st.subheader(f"Área: {st.session_state.sub_pagina_atual}")
     st.info("Você não possui permissão para acessar esta área ou o módulo está em estruturação.")
-```
