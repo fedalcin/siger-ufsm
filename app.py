@@ -2251,14 +2251,18 @@ elif st.session_state.pagina_atual == "Dashboards":
                     situacao_revisao=sit_rev_r
                 )
 
+                # Busca o valor do IAR com fallback seguro de chaves
+                iar_valor = iar_dados.get("iar") or iar_dados.get("iar_score") or iar_dados.get("score") or 0.0
+                prioridade_txt = iar_dados.get("prioridade") or iar_dados.get("nivel_prioridade") or "Normal"
+
                 top_riscos_lista.append({
                     "ID": r_id_f,
                     "Risco": r_item.get("evento", "Sem evento"),
                     "Unidade": r_item.get("unidade"),
                     "Nível": n_val,
                     "Ações (Tot/Atr)": f"{tot_ac_r} / {atrasadas_ac_r}",
-                    "IAR (Pontuação)": iar_dados["iar"],
-                    "Prioridade": iar_dados["prioridade"],
+                    "IAR (Pontuação)": iar_valor,
+                    "Prioridade": prioridade_txt,
                     "Status": r_item.get("situacao_status")
                 })
 
