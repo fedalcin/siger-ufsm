@@ -1,3 +1,4 @@
+```python
 import streamlit as st
 from supabase import create_client, Client
 import pandas as pd
@@ -202,6 +203,40 @@ st.markdown("""
         padding: 8px 12px;
         border-radius: 4px;
     }
+
+    /* ESTILOS DA MATRIZ DE RISCO 5X5 */
+    .risk-matrix-table {
+        width: 100%;
+        border-collapse: collapse;
+        text-align: center;
+        font-size: 0.82rem;
+    }
+    .risk-matrix-table td, .risk-matrix-table th {
+        border: 2px solid #ffffff;
+        padding: 10px 4px;
+        height: 52px;
+        vertical-align: middle;
+    }
+    .cell-green { background-color: #28a745; color: white; font-weight: bold; }
+    .cell-yellow { background-color: #ffc107; color: #333; font-weight: bold; }
+    .cell-orange { background-color: #fd7e14; color: white; font-weight: bold; }
+    .cell-red { background-color: #dc3545; color: white; font-weight: bold; }
+    .cell-selected {
+        outline: 4px solid #002147 !important;
+        outline-offset: -4px;
+        box-shadow: inset 0 0 10px rgba(0,0,0,0.6);
+        animation: pulse 1.8s infinite;
+    }
+    .risk-pin {
+        background-color: #ffffff;
+        color: #002147;
+        border-radius: 12px;
+        padding: 3px 6px;
+        font-weight: 900;
+        font-size: 0.78rem;
+        display: inline-block;
+        box-shadow: 0px 2px 4px rgba(0,0,0,0.3);
+    }
     </style>
 """, unsafe_allow_html=True)
 
@@ -334,6 +369,12 @@ def obter_badge_prazo(data_conclusao_str, status_acao):
     except Exception:
         return "⚪ Data Inválida", "off"
 
+def gerar_barra_progresso_ascii(pct):
+    pct_val = max(0, min(100, int(pct or 0)))
+    blocos = pct_val // 10
+    vazios = 10 - blocos
+    return f"{'█' * blocos}{'░' * vazios} {pct_val}%"
+
 def recalcular_e_atualizar_status_risco(risco_id):
     try:
         res_acoes = supabase.table("acoes_tratamento").select("status_acao").eq("risco_id", risco_id).execute()
@@ -357,6 +398,51 @@ def recalcular_e_atualizar_status_risco(risco_id):
             supabase.table("riscos").update({"situacao_status": novo_status_risco}).eq("id", risco_id).execute()
     except Exception as e:
         st.error(f"Erro ao recalcular status automático do risco: {e}")
+
+# ---------------------------------------------------------
+# RENDERIZADOR DA MATRIZ DE RISCO 5X5 INDIVIDUAL
+# ---------------------------------------------------------
+def renderizar_matriz_risco_5x5(prob_alvo, imp_alvo, risco_id):
+    matriz_cores = [
+        ["cell-green", "cell-green", "cell-yellow", "cell-orange", "cell-orange"],
+        ["cell-green", "cell-yellow", "cell-yellow", "cell-orange", "cell-red"],
+        ["cell-yellow", "cell-yellow", "cell-orange", "cell-red", "cell-red"],
+        ["cell-orange", "cell-orange", "cell-red", "cell-red", "cell-red"],
+        ["cell-red", "cell-red", "cell-red", "cell-red", "cell-red"]
+    ]
+
+    html_code = """
+    <table class="risk-matrix-table">
+        <thead>
+            <tr>
+                <th style="width: 15%;">P \\ I</th>
+                <th style="width: 17%;">1 (Muito Baixo)</th>
+                <th style="width: 17%;">2 (Baixo)</th>
+                <th style="width: 17%;">3 (Médio)</th>
+                <th style="width: 17%;">4 (Alto)</th>
+                <th style="width: 17%;">5 (Muito Alto)</th>
+            </tr>
+        </thead>
+        <tbody>
+    """
+
+    for prob_idx in range(5, 0, -1):
+        html_code += f"<tr><th>{prob_idx}</th>"
+        for imp_idx in range(1, 6):
+            cor_classe = matriz_cores[prob_idx - 1][imp_idx - 1]
+            eh_selecionado = (prob_idx == prob_alvo and imp_idx == imp_alvo)
+            
+            sel_class = " cell-selected" if eh_selecionado else ""
+            conteudo_celula = f"<span class='risk-pin'>🎯 #{risco_id}</span>" if eh_selecionado else f"{prob_idx * imp_idx}"
+
+            html_code += f'<td class="{cor_classe}{sel_class}">{conteudo_celula}</td>'
+        html_code += "</tr>"
+
+    html_code += """
+        </tbody>
+    </table>
+    """
+    st.markdown(html_code, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # COMPONENTE VISUAL DE TIMELINE / LINHA DO TEMPO
@@ -407,7 +493,7 @@ def renderizar_timeline_risco(risco_id):
     eventos.sort(key=lambda x: x["data"] or "", reverse=True)
 
     if not eventos:
-        st.info("Nenhum registro de movimentação ou tramitação até o momento.")
+        st.info("Nenum registro de movimentação ou tramitação até o momento.")
         return
 
     for ev in eventos:
@@ -435,7 +521,6 @@ else:
 
 st.sidebar.divider()
 
-# Informações do Usuário Logado
 st.sidebar.markdown(f"👤 **{usr_atual['nome']}**")
 st.sidebar.caption(f"Perfil: `{perfil_usr}` | Unidade: `{usr_atual['unidade'] or 'Todas'}`")
 if st.sidebar.button("🚪 Sair / Logout", use_container_width=True, key="btn_logout_top"):
@@ -464,7 +549,6 @@ st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 st.sidebar.divider()
 
-# 1. GRUPO: ADMINISTRAÇÃO (Visível apenas para Admin)
 if is_admin:
     with st.sidebar.expander("⚙ Administração", expanded=False):
         if st.button("👥 Usuários e Permissões", key="btn_adm_usr", use_container_width=True):
@@ -472,7 +556,6 @@ if is_admin:
         if st.button("🔧 Configurações Gerais", key="btn_adm_cfg", use_container_width=True):
             navegar_para("Administração do Sistema", "Configurações")
 
-# 2. GRUPO: CADASTROS
 with st.sidebar.expander("📝 Cadastros", expanded=False):
     if is_admin:
         if st.button("🏢 Unidades", key="btn_cad_unid", use_container_width=True):
@@ -492,22 +575,18 @@ with st.sidebar.expander("📝 Cadastros", expanded=False):
         if st.button("📋 Riscos", key="btn_cad_risco", use_container_width=True):
             navegar_para("Cadastros", "Riscos")
 
-# 3. GRUPO: PLANOS DE TRATAMENTO
 with st.sidebar.expander("🛡️ Planos de Tratamento", expanded=False):
     if st.button("📋 Ações de Mitigação", key="btn_pt_acoes", use_container_width=True):
         navegar_para("Planos de Tratamento", "Ações")
 
-# 4. GRUPO: MONITORAMENTO
 with st.sidebar.expander("🔄 Monitoramento", expanded=False):
     if st.button("📌 Acompanhamento de Riscos", key="btn_mon_acomp", use_container_width=True):
         navegar_para("Monitoramento", "Acompanhamento")
 
-# 5. GRUPO: DASHBOARDS
 with st.sidebar.expander("📊 Dashboards", expanded=False):
     if st.button("📈 Painel Geral", key="btn_dash_geral", use_container_width=True):
         navegar_para("Dashboards", "Painel Geral")
 
-# 6. GRUPO: BIBLIOTECA
 with st.sidebar.expander("📚 Biblioteca", expanded=False):
     if st.button("📄 Documentos e Normativas", key="btn_bib_doc", use_container_width=True):
         navegar_para("Biblioteca", "Documentos")
@@ -547,14 +626,13 @@ if st.session_state.pagina_atual == "Início":
     st.info("👈 Utilize o menu lateral para navegar entre os módulos do sistema.")
 
 # ---------------------------------------------------------
-# PÁGINA: ADMINISTRAÇÃO DO SISTEMA (USUÁRIOS E CONFIGURAÇÕES)
+# PÁGINA: ADMINISTRAÇÃO DO SISTEMA
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Administração do Sistema" and is_admin:
     sub = st.session_state.sub_pagina_atual or "Usuários"
     
     if sub == "Usuários":
         st.title("👥 Gestão de Usuários e Permissões")
-        
         tab_users_list, tab_user_new = st.tabs(["🔍 Usuários Cadastrados", "➕ Cadastrar Novo Usuário"])
         
         with tab_users_list:
@@ -576,13 +654,11 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and is_admin:
                                     e_nome = st.text_input("Nome", value=u_item["nome"])
                                     e_ativo = st.checkbox("Ativo", value=u_item.get("ativo", True))
                                     
-                                    # Perfis
                                     res_p = supabase.table("perfis").select("*").execute().data or []
                                     mapa_perfis = {p["nome"]: p["id"] for p in res_p}
                                     idx_p = list(mapa_perfis.keys()).index(u_item.get("perfil_nome")) if u_item.get("perfil_nome") in mapa_perfis else 0
                                     e_perfil = st.selectbox("Perfil de Acesso", list(mapa_perfis.keys()), index=idx_p)
                                     
-                                    # Unidades
                                     res_un = supabase.table("unidades").select("sigla").execute().data or []
                                     opts_un = ["Nenhuma / Todas"] + [un["sigla"] for un in res_un]
                                     idx_u_sig = opts_un.index(u_item.get("unidade_sigla")) if u_item.get("unidade_sigla") in opts_un else 0
@@ -1456,7 +1532,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             with col_b_act1:
                                 st.link_button("📥 Abrir / Download PDF", d_url)
                             with col_b_act2:
-                                pop_del_doc = st.popover("🗑️️ Excluir Documento")
+                                pop_del_doc = st.popover("🗑 Excluir Documento")
                                 with pop_del_doc:
                                     st.warning(f"Deseja remover o documento '{d_titulo}'?")
                                     if st.button("Confirmar Exclusão", key=f"btn_del_doc_{doc_id}"):
@@ -1731,47 +1807,58 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar o risco no banco de dados: {e}")
 
 # ---------------------------------------------------------
-# PÁGINA: MONITORAMENTO (PASSO 2 INTEGRADO)
+# PÁGINA: MONITORAMENTO E ACOMPANHAMENTO 360° (REFORMULADA - ETAPA 3)
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Monitoramento":
-    st.title("📌 Monitoramento e Acompanhamento de Riscos")
+    st.title("📌 Monitoramento e Acompanhamento 360°")
+    st.caption("Painel gerencial do risco selecionado com métricas, matriz 5x5, evolução histórica e ações de mitigação.")
     
     try:
         res_riscos = supabase.table("riscos").select("*").order("id", desc=True).execute()
         lista_riscos = res_riscos.data or []
     except Exception as e:
-        st.error(f"Erro ao carregar riscos: {e}")
+        st.error(f"Erro ao carregar lista de riscos: {e}")
         lista_riscos = []
 
     if not lista_riscos:
         st.info("Nenhum risco cadastrado para monitoramento.")
     else:
-        mapa_riscos_mon = {f"Risco #{r['id']} | {r['unidade']} - {r['evento'][:50]}...": r for r in lista_riscos}
-        risco_sel_label = st.selectbox("Selecione o Risco para Acompanhamento 360°:", list(mapa_riscos_mon.keys()))
+        mapa_riscos_mon = {f"Risco #{r['id']} | {r['unidade']} - {r['evento'][:55]}...": r for r in lista_riscos}
+        risco_sel_label = st.selectbox("🎯 Selecione o Risco para Análise Painel 360°:", list(mapa_riscos_mon.keys()))
         risco_obj = mapa_riscos_mon[risco_sel_label]
         r_id = risco_obj["id"]
 
-        # Carregar ações associadas ao risco selecionado para os cálculos
+        # Carregamento das Ações de Tratamento do Risco
         try:
-            res_ac_mon = supabase.table("acoes_tratamento").select("*").eq("risco_id", r_id).execute()
+            res_ac_mon = supabase.table("acoes_tratamento").select("*").eq("risco_id", r_id).order("numero_sequencial").execute()
             df_ac_mon = pd.DataFrame(res_ac_mon.data or [])
         except Exception:
             df_ac_mon = pd.DataFrame()
 
-        # Cálculo de Indicadores Específicos do Risco via calculos_siger.py
-        sit_revisao = calcular_situacao_revisao_risco(risco_obj.get("data_proxima_revisao"))
+        # Carregamento do Histórico de Avaliações (avaliacoes_risco)
+        try:
+            res_hist = supabase.table("avaliacoes_risco").select("*").eq("risco_id", r_id).order("created_at", desc=False).execute()
+            df_hist_eval = pd.DataFrame(res_hist.data or [])
+        except Exception:
+            df_hist_eval = pd.DataFrame()
+
+        # Cálculo das Métricas e Indicadores Gerenciais via calculos_siger.py
+        data_prox_rev = risco_obj.get("proxima_revisao") or risco_obj.get("data_proxima_revisao")
+        sit_revisao = calcular_situacao_revisao_risco(data_prox_rev)
         
         tot_acoes_r = len(df_ac_mon)
         if not df_ac_mon.empty:
+            acoes_concluidas_r = sum(1 for _, row in df_ac_mon.iterrows() if row.get("status_status") == "Concluída" or row.get("status_acao") == "Concluída")
             acoes_atrasadas_r = sum(
                 1 for _, row in df_ac_mon.iterrows()
                 if calcular_situacao_prazo_acao(row.get("status_acao"), row.get("previsao_data_conclusao")) == "⚠️ Atrasada"
             )
             iet_r = calcular_iet(df_ac_mon)
             icp_r = calcular_icp(df_ac_mon)
-            pct_conc_r = round(float((df_ac_mon["status_acao"] == "Concluída").sum() / tot_acoes_r * 100), 2) if tot_acoes_r > 0 else 0.0
+            pct_conc_r = round(float((acoes_concluidas_r / tot_acoes_r) * 100), 2) if tot_acoes_r > 0 else 0.0
             itr_r = calcular_itr(iet_r, pct_conc_r, icp_r)
         else:
+            acoes_concluidas_r = 0
             acoes_atrasadas_r = 0
             iet_r = 0.0
             icp_r = 100.0
@@ -1787,60 +1874,133 @@ elif st.session_state.pagina_atual == "Monitoramento":
 
         st.divider()
 
-        t_visao, t_acoes, t_timeline = st.tabs([
-            "🔍 Visão Geral e Indicadores", 
-            "📋 Ações de Tratamento Vinculadas", 
-            "🕒 Timeline / Linha do Tempo Visual"
-        ])
-
-        with t_visao:
-            st.markdown("#### 📊 Métricas e Índices do Risco (IAR, ITR, IET, ICP)")
-            
-            c_iar1, c_iar2, c_iar3, c_iar4, c_iar5 = st.columns(5)
-            c_iar1.metric("Índice de Atenção (IAR)", f"{iar_info['iar_score']} pts", iar_info['classificacao'])
-            c_iar2.metric("Tratamento (ITR)", f"{itr_r}%")
-            c_iar3.metric("Execução (IET)", f"{iet_r}%")
-            c_iar4.metric("Cumprimento Prazo (ICP)", f"{icp_r}%")
-            c_iar5.metric("Situação da Revisão", sit_revisao)
-
-            st.markdown("---")
-
-            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-            nivel = risco_obj.get("nivel_risco", 1)
-            cor_nivel = "🔴 Crítico" if nivel >= 15 else "🟡 Médio" if nivel >= 8 else "🟢 Baixo"
-            
-            col_m1.metric("Nível de Risco", f"{nivel}", cor_nivel)
-            col_m2.metric("Probabilidade", f"{risco_obj.get('probabilidade', 1)} / 5")
-            col_m3.metric("Impacto", f"{risco_obj.get('impacto', 1)} / 5")
-            col_m4.metric("Situação Atual", risco_obj.get("situacao_status", "Identificado"))
-
-            st.markdown("---")
-            st.markdown(f"**Evento:** {risco_obj.get('evento')}")
+        # -----------------------------------------------------
+        # REQUISITO 1 & 2: CABEÇALHO 360° E CARDS DE INDICADORES
+        # -----------------------------------------------------
+        col_hdr1, col_hdr2 = st.columns([2.5, 1.5])
+        with col_hdr1:
+            st.markdown(f"### 🛡️ Risco #{r_id}: {risco_obj.get('evento')}")
+            st.markdown(f"**Unidade Responsável:** `{risco_obj.get('unidade')}` | **Gestor:** `{risco_obj.get('gestor_risco', '-')}`")
             st.markdown(f"**Causa:** {risco_obj.get('causa', '-')}")
             st.markdown(f"**Consequência:** {risco_obj.get('consequencia', '-')}")
-            st.markdown(f"**Unidade:** {risco_obj.get('unidade')} | **Gestor:** {risco_obj.get('gestor_risco')}")
+            
+        with col_hdr2:
+            st.info(f"""
+            📅 **Data de Identificação:** {formatar_data_br(risco_obj.get('data_identificacao'))}  
+            🔄 **Periodicidade:** {risco_obj.get('periodicidade_revisao', 'Não informada')}  
+            📆 **Próxima Revisão:** {formatar_data_br(data_prox_rev)} (`{sit_revisao}`)
+            """)
 
-        with t_acoes:
-            if not df_ac_mon.empty:
-                for _, ac in df_ac_mon.iterrows():
-                    seq = ac["numero_sequencial"]
-                    st_ac = ac.get("status_acao", "Pendente")
-                    sit_prazo_ac = calcular_situacao_prazo_acao(st_ac, ac.get("previsao_data_conclusao"))
-                    bad_prazo, _ = obter_badge_prazo(ac.get("previsao_data_conclusao"), st_ac)
-                    
-                    with st.expander(f"Ação #{seq}: {ac['acao']} ({st_ac}) | Status Prazo: {sit_prazo_ac} ({bad_prazo})"):
-                        st.write(f"**Objetivo:** {ac.get('objetivo_acao')}")
-                        st.write(f"**Responsável:** {ac.get('nome_responsavel_implementacao')} ({ac.get('unidade_responsavel')})")
-                        st.write(f"**Como Executar:** {ac.get('como_sera_implementada')}")
-                        st.write(f"**Período:** {formatar_data_br(ac.get('previsao_data_inicio'))} até {formatar_data_br(ac.get('previsao_data_conclusao'))}")
+        st.markdown("#### 📊 Grid de KPIs e Indicadores Gerenciais")
+        
+        nivel_val = risco_obj.get('nivel_risco', 1)
+        cor_nivel_str = "🔴 Crítico" if nivel_val >= 15 else "🟡 Médio" if nivel_val >= 8 else "🟢 Baixo"
+
+        kpi_c1, kpi_c2, kpi_c3, kpi_c4, kpi_c5, kpi_c6, kpi_c7 = st.columns(7)
+        kpi_c1.metric("Nível do Risco", f"{nivel_val}", cor_nivel_str)
+        kpi_c2.metric("Total Ações", tot_acoes_r)
+        kpi_c3.metric("Concluídas", acoes_concluidas_r)
+        kpi_c4.metric("Atrasadas", acoes_atrasadas_r)
+        kpi_c5.metric("IET (Execução)", f"{iet_r}%")
+        kpi_c6.metric("ICP (Prazo)", f"{icp_r}%")
+        kpi_c7.metric("ITR (Tratamento)", f"{itr_r}%")
+
+        st.divider()
+
+        # -----------------------------------------------------
+        # REQUISITO 3 & 4: MATRIZ 5X5, HISTÓRICO E ALERTAS
+        # -----------------------------------------------------
+        col_sec1, col_sec2 = st.columns([1.2, 1.3])
+
+        with col_sec1:
+            st.markdown("### 🎲 Matriz de Risco 5x5 Individual")
+            st.caption("Destaque dinâmico na célula ocupada pelo risco (Probabilidade x Impacto).")
+            prob_atual = int(risco_obj.get("probabilidade") or 1)
+            imp_atual = int(risco_obj.get("impacto") or 1)
+            
+            renderizar_matriz_risco_5x5(prob_atual, imp_atual, r_id)
+
+        with col_sec2:
+            st.markdown("### 📈 Evolução Histórica das Avaliações")
+            
+            if not df_hist_eval.empty:
+                df_chart = df_hist_eval.copy()
+                col_dt = 'created_at' if 'created_at' in df_chart.columns else 'data_avaliacao'
+                df_chart['Data'] = pd.to_datetime(df_chart[col_dt]).dt.strftime('%d/%m/%Y')
+                df_chart_display = df_chart[['Data', 'nivel_risco', 'probabilidade', 'impacto']].rename(
+                    columns={'nivel_risco': 'Nível de Risco'}
+                ).set_index('Data')
+                
+                st.line_chart(df_chart_display['Nível de Risco'])
             else:
-                st.info("Nenhuma ação cadastrada para este risco.")
+                st.caption("Nenhum histórico de reavaliações gravado na tabela `avaliacoes_risco`. Exibindo ponto atual:")
+                data_ident_str = formatar_data_br(risco_obj.get('data_identificacao'))
+                df_ponto_unico = pd.DataFrame({
+                    "Data": [data_ident_str],
+                    "Nível de Risco": [nivel_val]
+                }).set_index("Data")
+                st.line_chart(df_ponto_unico)
 
-        with t_timeline:
-            renderizar_timeline_risco(r_id)
+            st.markdown("### ⚠️ Pontos de Atenção e Alertas Automáticos")
+            
+            alertas = []
+            if nivel_val >= 15 and tot_acoes_r == 0:
+                alertas.append("🔴 **Risco Crítico sem Ações:** O risco possui nível crítico (≥ 15) mas nenhuma ação de mitigação cadastrada.")
+            if sit_revisao == "Atrasada":
+                alertas.append("⏰ **Revisão Temporal Atrasada:** A data da próxima revisão do risco expirou.")
+            if acoes_atrasadas_r > 0:
+                alertas.append(f"⚠️ **Ações de Mitigação Atrasadas:** Existem {acoes_atrasadas_r} ação(ões) com prazo de conclusão vencido.")
+            if iet_r < 50.0 and tot_acoes_r > 0:
+                alertas.append(f"📉 **Baixa Execução do Tratamento:** O Índice de Execução do Tratamento (IET) está em apenas {iet_r}%.")
+
+            if alertas:
+                for alt in alertas:
+                    st.warning(alt)
+            else:
+                st.success("✅ **Nenhum ponto de atenção crítico detectado.** O acompanhamento do risco está em conformidade com as metas.")
+
+        st.divider()
+
+        # -----------------------------------------------------
+        # REQUISITO 5: TABELA E BARRA DE PROGRESSO DAS AÇÕES
+        # -----------------------------------------------------
+        st.markdown("### 🛡️ Planos de Ação e Progresso das Mitigações")
+        
+        if not df_ac_mon.empty:
+            df_tabela_exib = []
+            for _, ac in df_ac_mon.iterrows():
+                seq = ac.get("numero_sequencial")
+                nome_ac = ac.get("acao")
+                carater_ac = ac.get("carater_acao", "Preventivo")
+                resp_ac = ac.get("nome_responsavel_implementacao", "-")
+                st_ac = ac.get("status_acao", "Pendente")
+                pct_exec = ac.get("percentual_execucao") or ac.get("percentual_conclusao") or 0
+                dt_fim = formatar_data_br(ac.get("previsao_data_conclusao"))
+                
+                txt_badge, _ = obter_badge_prazo(ac.get("previsao_data_conclusao"), st_ac)
+                barra_ascii = gerar_barra_progresso_ascii(pct_exec)
+
+                df_tabela_exib.append({
+                    "Ação nº": seq,
+                    "Descrição da Ação": nome_ac,
+                    "Caráter": carater_ac,
+                    "Responsável": resp_ac,
+                    "Status": st_ac,
+                    "Previsão Conclusão": dt_fim,
+                    "Situação Prazo": txt_badge,
+                    "Barra de Progresso": barra_ascii
+                })
+
+            df_exib_final = pd.DataFrame(df_tabela_exib)
+            st.dataframe(df_exib_final, use_container_width=True)
+
+            with st.expander("🕒 Linha do Tempo Visual e Tramitações Históricas"):
+                renderizar_timeline_risco(r_id)
+        else:
+            st.info("Nenhuma ação de mitigação cadastrada para este risco até o momento.")
 
 # ---------------------------------------------------------
-# PÁGINA: DASHBOARDS (PASSO 3 INTEGRADO)
+# PÁGINA: DASHBOARDS
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Dashboards":
     st.title("📊 Painel Geral de Governança, Riscos e Indicadores")
@@ -1862,7 +2022,6 @@ elif st.session_state.pagina_atual == "Dashboards":
     criticos = sum(1 for _, r in df_riscos_all.iterrows() if r.get("nivel_risco", 0) >= 15) if not df_riscos_all.empty else 0
     medios = sum(1 for _, r in df_riscos_all.iterrows() if 8 <= r.get("nivel_risco", 0) < 15) if not df_riscos_all.empty else 0
 
-    # Indicadores Globais via calculos_siger.py
     iet_global = calcular_iet(df_acoes_all)
     icp_global = calcular_icp(df_acoes_all)
     
@@ -1875,7 +2034,6 @@ elif st.session_state.pagina_atual == "Dashboards":
 
     itr_global = calcular_itr(iet_global, pct_conc_global, icp_global)
 
-    # Cartões de KPIs Principais
     c_kpi1, c_kpi2, c_kpi3, c_kpi4, c_kpi5 = st.columns(5)
     c_kpi1.metric("Total de Riscos", tot_riscos)
     c_kpi2.metric("Riscos Críticos 🔴", criticos)
@@ -1885,7 +2043,6 @@ elif st.session_state.pagina_atual == "Dashboards":
 
     st.markdown("---")
 
-    # Exposição Operacional Agregada
     st.subheader("🏢 Exposição Operacional Agregada por Unidade")
     if not df_riscos_all.empty:
         df_exp_unid = calcular_exposicao_agregada(df_riscos_all, agrupar_por="unidade")
@@ -1908,7 +2065,7 @@ elif st.session_state.pagina_atual == "Dashboards":
             st.info("Sem dados de riscos.")
 
     with col_g2:
-        st.subheader("🛡️️ Ações de Tratamento por Status")
+        st.subheader("🛡 Ações de Tratamento por Status")
         if not df_acoes_all.empty:
             col_st_ac = "status_acao" if "status_acao" in df_acoes_all.columns else "status"
             df_ac_st = df_acoes_all[col_st_ac].value_counts().reset_index()
@@ -1946,3 +2103,4 @@ else:
     if st.session_state.sub_pagina_atual:
         st.subheader(f"Área: {st.session_state.sub_pagina_atual}")
     st.info("Você não possui permissão para acessar esta área ou o módulo está em estruturação.")
+```
