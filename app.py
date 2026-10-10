@@ -239,6 +239,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 TIPOS_UNIDADE_OPCOES = [
+    "Administração Central"
     "Unidade Acadêmica",
     "Pró-Reitoria",
     "Diretoria"
