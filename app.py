@@ -1147,6 +1147,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                         try:
                                             supabase.table("acoes_tratamento").update({
                                                 "status_acao": novo_status_ac,
+                                                "percentual_conclusao": novo_pct,
                                                 "unidade_responsavel": unid_destino_wf,
                                                 "nome_responsavel_implementacao": resp_destino_wf
                                             }).eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
@@ -1963,6 +1964,8 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         
                                         if st.form_submit_button("💾 Salvar Alterações"):
                                             novo_nivel = e_prob * e_imp
+    
+                                            # 1. Atualiza o cadastro do risco
                                             supabase.table("riscos").update({
                                                 "evento": e_evento,
                                                 "causa": e_causa,
@@ -1973,8 +1976,21 @@ elif st.session_state.pagina_atual == "Cadastros":
                                                 "gestor_risco": e_resp,
                                                 "situacao_status": e_sit
                                             }).eq("id", r_item['id']).execute()
-                                            
-                                            st.success("Risco atualizado!")
+    
+                                            # 2. Grava o novo nó na tabela de histórico para alimentar o gráfico
+                                            dados_avaliac = {
+                                                "risco_id": r_item['id'],
+                                                "probabilidade": e_prob,
+                                                "impacto": e_imp,
+                                                "nivel_risco": novo_nivel,
+                                                "data_avaliacao": datetime.now().isoformat(),
+                                                "usuario_avaliador": usr_atual["nome"],
+                                                "tipo_avaliacao": "Reavaliação Periódica",
+                                                "justificativa": "Reavaliação de probabilidade e impacto gravada via painel gerencial."
+                                            }
+                                            supabase.table("avaliacoes_risco").insert(dados_avaliac).execute()
+    
+                                            st.success("✅ Risco reavaliado e novo ponto registrado na Evolução Histórica!")
                                             st.rerun()
 
                             with col_r_del:
@@ -2198,6 +2214,42 @@ elif st.session_state.pagina_atual == "Monitoramento":
             🔄 **Periodicidade:** {risco_obj.get('periodicidade_revisao', 'Não informada')}  
             📆 **Próxima Revisão:** {formatar_data_br(data_prox_rev)} (`{sit_revisao}`)
             """)
+            
+            # --- POPOVER DE REAVALIAÇÃO POSICIONADO CORRETAMENTE ---
+            pop_reavaliar = st.popover("🎯 Reavaliar Nível do Risco")
+            with pop_reavaliar:
+                st.markdown(f"### Reavaliação Qualitativa do Risco #{r_id}")
+                with st.form(f"form_reavaliar_mon_{r_id}"):
+                    p_nova = st.slider("Nova Probabilidade (1 a 5)", 1, 5, value=int(risco_obj.get("probabilidade") or 1))
+                    i_novo = st.slider("Novo Impacto (1 a 5)", 1, 5, value=int(risco_obj.get("impacto") or 1))
+                    just_reav = st.text_area("Justificativa da Reavaliação*", placeholder="Ex: Redução da probabilidade após implantação das ações...")
+                    
+                    if st.form_submit_button("💾 Salvar Reavaliação"):
+                        if not just_reav.strip():
+                            st.warning("Preencha a justificativa da reavaliação.")
+                        else:
+                            nivel_n = p_nova * i_novo
+                            # 1. Atualiza o risco pai
+                            supabase.table("riscos").update({
+                                "probabilidade": p_nova,
+                                "impacto": i_novo,
+                                "nivel_risco": nivel_n
+                            }).eq("id", r_id).execute()
+                            
+                            # 2. Insere registro histórico na tabela de avaliações
+                            supabase.table("avaliacoes_risco").insert({
+                                "risco_id": r_id,
+                                "probabilidade": p_nova,
+                                "impacto": i_novo,
+                                "nivel_risco": nivel_n,
+                                "data_avaliacao": datetime.now().isoformat(),
+                                "usuario_avaliador": usr_atual["nome"],
+                                "tipo_avaliacao": "Monitoramento",
+                                "justificativa": just_reav.strip()
+                            }).execute()
+                            
+                            st.success("✅ Reavaliação gravada no gráfico histórico!")
+                            st.rerun()
 
         st.markdown("#### 📊 Grid de KPIs e Indicadores Gerenciais")
         
