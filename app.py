@@ -1351,205 +1351,205 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
         st.title("🛡 Planos de Tratamento e Mitigação de Riscos")
         
         tab_list_acoes, tab_nova_acao = st.tabs(["🔍 Ações Cadastradas", "➕ Cadastrar Nova Ação de Mitigação"])
-    
-    with tab_list_acoes:
-        try:
-            res_acoes = supabase.table("acoes_tratamento").select("*, riscos(id, evento, unidade)").order("risco_id").order("numero_sequencial").execute()
-            
-            if res_acoes.data:
-                st.write(f"Total de ações de tratamento registradas: **{len(res_acoes.data)}**")
-                
-                for acao_item in res_acoes.data:
-                    r_id = acao_item["risco_id"]
-                    seq = acao_item["numero_sequencial"]
-                    carater = acao_item["carater_acao"]
-                    nome_acao = acao_item["acao"]
-                    
-                    dados_risco_rel = acao_item.get("riscos") or {}
-                    evento_txt = dados_risco_rel.get("evento", "Não especificado")
-                    
-                    badge_carater = "🟢" if carater == "Preventivo" else "🟡" if carater == "Corretivo" else "🔵"
-                    
-                    dt_inicio_fmt = formatar_data_br(acao_item.get('previsao_data_inicio'))
-                    dt_conclusao_fmt = formatar_data_br(acao_item.get('previsao_data_conclusao'))
-                    
-                    with st.expander(f"{badge_carater} Risco #{r_id} | Ação {seq}: {nome_acao}"):
-                        st.markdown(f"**Risco:** {evento_txt}")
-                        st.markdown(f"**Caráter da Ação:** {carater}")
-                        st.markdown(f"**Status da Ação:** `{acao_item.get('status_acao', 'Pendente')}`")
-                        st.markdown(f"**Objetivo da Ação:** {acao_item['objetivo_acao']}")
-                        st.markdown(f"**Unidade Responsável:** {acao_item['unidade_responsavel']}")
-                        st.markdown(f"**Responsável pela Implementação:** {acao_item['nome_responsavel_implementacao']}")
-                        st.markdown(f"**Como será Implementada:** {acao_item['como_sera_implementada']}")
-                        st.markdown(f"**Período de Execução:** {dt_inicio_fmt} até {dt_conclusao_fmt}")
-                        
-                        if is_gestor:
-                            col_ac_edit, col_ac_del = st.columns([1, 1])
-                            
-                            with col_ac_edit:
-                                pop_edit_ac = st.popover("✏ Editar Ação")
-                                with pop_edit_ac:
-                                    with st.form(f"form_edit_acao_{r_id}_{seq}"):
-                                        edit_nome_ac = st.text_input("Ação", value=nome_acao)
-                                        
-                                        idx_carater = ["Preventivo", "Corretivo", "Compensatório"].index(carater) if carater in ["Preventivo", "Corretivo", "Compensatório"] else 0
-                                        edit_carater = st.selectbox("Caráter da Ação", ["Preventivo", "Corretivo", "Compensatório"], index=idx_carater)
-                                        
-                                        edit_obj = st.text_area("Objetivo da Ação", value=acao_item['objetivo_acao'])
-                                        edit_resp = st.text_input("Responsável pela Implementação", value=acao_item['nome_responsavel_implementacao'])
-                                        edit_como = st.text_area("Como será Implementada", value=acao_item['como_sera_implementada'])
-                                        
-                                        d_i = datetime.strptime(acao_item['previsao_data_inicio'], "%Y-%m-%d").date() if acao_item.get('previsao_data_inicio') else datetime.now().date()
-                                        d_f = datetime.strptime(acao_item['previsao_data_conclusao'], "%Y-%m-%d").date() if acao_item.get('previsao_data_conclusao') else datetime.now().date()
-                                        
-                                        edit_dt_i = st.date_input("Previsão Início", value=d_i, format="DD/MM/YYYY")
-                                        edit_dt_f = st.date_input("Previsão Conclusão", value=d_f, format="DD/MM/YYYY")
-                                        
-                                        if st.form_submit_button("💾 Salvar Alterações"):
-                                            if edit_dt_f < edit_dt_i:
-                                                st.error("A data de conclusão não pode ser anterior à data de início.")
-                                            else:
-                                                supabase.table("acoes_tratamento").update({
-                                                    "acao": edit_nome_ac,
-                                                    "carater_acao": edit_carater,
-                                                    "objetivo_acao": edit_obj,
-                                                    "nome_responsavel_implementacao": edit_resp,
-                                                    "como_sera_implementada": edit_como,
-                                                    "previsao_data_inicio": edit_dt_i.strftime("%Y-%m-%d"),
-                                                    "previsao_data_conclusao": edit_dt_f.strftime("%Y-%m-%d")
-                                                }).eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
-                                                
-                                                st.success("Ação atualizada!")
-                                                st.rerun()
-
-                            with col_ac_del:
-                                pop_del_ac = st.popover("🗑️ Excluir Ação")
-                                with pop_del_ac:
-                                    st.warning("Deseja remover esta ação de mitigação?")
-                                    if st.button("Confirmar Exclusão", key=f"btn_del_ac_{r_id}_{seq}"):
-                                        try:
-                                            supabase.table("acoes_tratamento").delete().eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
-                                            recalcular_e_atualizar_status_risco(r_id)
-                                            st.success("Ação removida e status do risco atualizado!")
-                                            st.rerun()
-                                        except Exception as e:
-                                            st.error(f"Erro ao excluir ação: {e}")
-            else:
-                st.info("Nenhuma ação de tratamento/mitigação cadastrada até o momento.")
-        except Exception as e:
-            st.error(f"Erro ao carregar ações de tratamento: {e}")
-            
-    with tab_nova_acao:
-        if not is_gestor:
-            st.warning("Seu perfil de usuário possui acesso apenas de leitura.")
-        else:
+        
+        with tab_list_acoes:
             try:
-                res_riscos_db = supabase.table("riscos").select("id, evento, unidade").order("id").execute().data or []
-                res_unid_db = supabase.table("unidades").select("sigla, nome_extenso").order("sigla").execute().data or []
-            except Exception:
-                res_riscos_db, res_unid_db = [], []
+                res_acoes = supabase.table("acoes_tratamento").select("*, riscos(id, evento, unidade)").order("risco_id").order("numero_sequencial").execute()
                 
-            if not res_riscos_db:
-                st.warning("⚠️ É necessário ter pelo menos um Risco cadastrado no sistema para criar um Plano de Tratamento.")
-            else:
-                mapa_riscos = {f"Risco #{r['id']} - {r['evento'] if r['evento'] else 'Sem Risco'}" : (r['id'], r['unidade']) for r in res_riscos_db}
-                
-                opcoes_unid_siglas = [u['sigla'] for u in res_unid_db] if res_unid_db else ["S/U"]
-
-                risco_selecionado_label = st.selectbox("Selecione o Risco Mapeado*", options=list(mapa_riscos.keys()))
-                id_risco_sel, unidade_origem_risco = mapa_riscos[risco_selecionado_label]
-                
-                try:
-                    res_seq = supabase.table("acoes_tratamento").select("numero_sequencial").eq("risco_id", id_risco_sel).order("numero_sequencial", desc=True).limit(1).execute()
-                    prox_seq = (res_seq.data[0]["numero_sequencial"] + 1) if res_seq.data else 1
-                except Exception:
-                    prox_seq = 1
+                if res_acoes.data:
+                    st.write(f"Total de ações de tratamento registradas: **{len(res_acoes.data)}**")
                     
-                st.info(f"📌 Esta será a **Ação nº {prox_seq}** associada ao **Risco #{id_risco_sel}**.")
-
-                with st.form("form_cadastrar_acao_tratamento", clear_on_submit=True):
-                    col_a1, col_a2 = st.columns(2)
-                    with col_a1:
-                        acao_input = st.text_input("Ação de Mitigação*", placeholder="Ex: Implantar rotina diária de backup automatizado")
-                        carater_sel = st.selectbox("Caráter da Ação*", options=["Preventivo", "Corretivo", "Compensatório"])
-                        unidade_resp_sel = st.selectbox("Unidade Responsável pela Ação*", options=opcoes_unid_siglas)
-                    with col_a2:
-                        nome_resp_input = st.text_input("Nome do Responsável pela Implementação*", value=usr_atual["nome"])
-                        dt_inicio = st.date_input("Previsão da Data do Início*", datetime.now(), format="DD/MM/YYYY")
-                        dt_conclusao = st.date_input("Previsão da Data da Conclusão*", datetime.now(), format="DD/MM/YYYY")
-
-                    objetivo_input = st.text_area("Objetivo da Ação*", placeholder="O que se pretende alcançar com esta ação?")
-                    como_input = st.text_area("Como será Implementada a Ação*", placeholder="Descreva o passo a passo...")
-
-                    st.caption("* Campos de preenchimento obrigatório.")
-                    submitted_acao = st.form_submit_button("💾 Salvar Ação de Tratamento")
-
-                    if submitted_acao:
-                        if not acao_input or not objetivo_input or not nome_resp_input or not como_input:
-                            st.warning("Por favor, preencha todos os campos obrigatórios do formulário.")
-                        elif dt_conclusao < dt_inicio:
-                            st.error("A Previsão da Data de Conclusão não pode ser anterior à Data do Início.")
-                        else:
-                            dados_nova_acao = {
-                                "risco_id": id_risco_sel,
-                                "numero_sequencial": prox_seq,
-                                "acao": acao_input,
-                                "carater_acao": carater_sel,
-                                "objetivo_acao": objetivo_input,
-                                "unidade_responsavel": unidade_resp_sel,
-                                "nome_responsavel_implementacao": nome_resp_input,
-                                "como_sera_implementada": como_input,
-                                "previsao_data_inicio": dt_inicio.strftime("%Y-%m-%d"),
-                                "previsao_data_conclusao": dt_conclusao.strftime("%Y-%m-%d"),
-                                "status_acao": "Pendente"
-                            }
-                            try:
-                                supabase.table("acoes_tratamento").insert(dados_nova_acao).execute()
+                    for acao_item in res_acoes.data:
+                        r_id = acao_item["risco_id"]
+                        seq = acao_item["numero_sequencial"]
+                        carater = acao_item["carater_acao"]
+                        nome_acao = acao_item["acao"]
+                        
+                        dados_risco_rel = acao_item.get("riscos") or {}
+                        evento_txt = dados_risco_rel.get("evento", "Não especificado")
+                        
+                        badge_carater = "🟢" if carater == "Preventivo" else "🟡" if carater == "Corretivo" else "🔵"
+                        
+                        dt_inicio_fmt = formatar_data_br(acao_item.get('previsao_data_inicio'))
+                        dt_conclusao_fmt = formatar_data_br(acao_item.get('previsao_data_conclusao'))
+                        
+                        with st.expander(f"{badge_carater} Risco #{r_id} | Ação {seq}: {nome_acao}"):
+                            st.markdown(f"**Risco:** {evento_txt}")
+                            st.markdown(f"**Caráter da Ação:** {carater}")
+                            st.markdown(f"**Status da Ação:** `{acao_item.get('status_acao', 'Pendente')}`")
+                            st.markdown(f"**Objetivo da Ação:** {acao_item['objetivo_acao']}")
+                            st.markdown(f"**Unidade Responsável:** {acao_item['unidade_responsavel']}")
+                            st.markdown(f"**Responsável pela Implementação:** {acao_item['nome_responsavel_implementacao']}")
+                            st.markdown(f"**Como será Implementada:** {acao_item['como_sera_implementada']}")
+                            st.markdown(f"**Período de Execução:** {dt_inicio_fmt} até {dt_conclusao_fmt}")
+                            
+                            if is_gestor:
+                                col_ac_edit, col_ac_del = st.columns([1, 1])
                                 
-                                dados_mov_inicial = {
+                                with col_ac_edit:
+                                    pop_edit_ac = st.popover("✏ Edit Ação")
+                                    with pop_edit_ac:
+                                        with st.form(f"form_edit_acao_{r_id}_{seq}"):
+                                            edit_nome_ac = st.text_input("Ação", value=nome_acao)
+                                            
+                                            idx_carater = ["Preventivo", "Corretivo", "Compensatório"].index(carater) if carater in ["Preventivo", "Corretivo", "Compensatório"] else 0
+                                            edit_carater = st.selectbox("Caráter da Ação", ["Preventivo", "Corretivo", "Compensatório"], index=idx_carater)
+                                            
+                                            edit_obj = st.text_area("Objetivo da Ação", value=acao_item['objetivo_acao'])
+                                            edit_resp = st.text_input("Responsável pela Implementação", value=acao_item['nome_responsavel_implementacao'])
+                                            edit_como = st.text_area("Como será Implementada", value=acao_item['como_sera_implementada'])
+                                            
+                                            d_i = datetime.strptime(acao_item['previsao_data_inicio'], "%Y-%m-%d").date() if acao_item.get('previsao_data_inicio') else datetime.now().date()
+                                            d_f = datetime.strptime(acao_item['previsao_data_conclusao'], "%Y-%m-%d").date() if acao_item.get('previsao_data_conclusao') else datetime.now().date()
+                                            
+                                            edit_dt_i = st.date_input("Previsão Início", value=d_i, format="DD/MM/YYYY")
+                                            edit_dt_f = st.date_input("Previsão Conclusão", value=d_f, format="DD/MM/YYYY")
+                                            
+                                            if st.form_submit_button("💾 Salvar Alterações"):
+                                                if edit_dt_f < edit_dt_i:
+                                                    st.error("A data de conclusão não pode ser anterior à data de início.")
+                                                else:
+                                                    supabase.table("acoes_tratamento").update({
+                                                        "acao": edit_nome_ac,
+                                                        "carater_acao": edit_carater,
+                                                        "objetivo_acao": edit_obj,
+                                                        "nome_responsavel_implementacao": edit_resp,
+                                                        "como_sera_implementada": edit_como,
+                                                        "previsao_data_inicio": edit_dt_i.strftime("%Y-%m-%d"),
+                                                        "previsao_data_conclusao": edit_dt_f.strftime("%Y-%m-%d")
+                                                    }).eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
+                                                    
+                                                    st.success("Ação atualizada!")
+                                                    st.rerun()
+
+                                with col_ac_del:
+                                    pop_del_ac = st.popover("🗑️ Excluir Ação")
+                                    with pop_del_ac:
+                                        st.warning("Deseja remover esta ação de mitigação?")
+                                        if st.button("Confirmar Exclusão", key=f"btn_del_ac_{r_id}_{seq}"):
+                                            try:
+                                                supabase.table("acoes_tratamento").delete().eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
+                                                recalcular_e_atualizar_status_risco(r_id)
+                                                st.success("Ação removida e status do risco atualizado!")
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Erro ao excluir ação: {e}")
+                else:
+                    st.info("Nenhuma ação de tratamento/mitigação cadastrada até o momento.")
+            except Exception as e:
+                st.error(f"Erro ao carregar ações de tratamento: {e}")
+                
+        with tab_nova_acao:
+            if not is_gestor:
+                st.warning("Seu perfil de usuário possui acesso apenas de leitura.")
+            else:
+                try:
+                    res_riscos_db = supabase.table("riscos").select("id, evento, unidade").order("id").execute().data or []
+                    res_unid_db = supabase.table("unidades").select("sigla, nome_extenso").order("sigla").execute().data or []
+                except Exception:
+                    res_riscos_db, res_unid_db = [], []
+                    
+                if not res_riscos_db:
+                    st.warning("⚠️ É necessário ter pelo menos um Risco cadastrado no sistema para criar um Plano de Tratamento.")
+                else:
+                    mapa_riscos = {f"Risco #{r['id']} - {r['evento'] if r['evento'] else 'Sem Risco'}" : (r['id'], r['unidade']) for r in res_riscos_db}
+                    
+                    opcoes_unid_siglas = [u['sigla'] for u in res_unid_db] if res_unid_db else ["S/U"]
+
+                    risco_selecionado_label = st.selectbox("Selecione o Risco Mapeado*", options=list(mapa_riscos.keys()))
+                    id_risco_sel, unidade_origem_risco = mapa_riscos[risco_selecionado_label]
+                    
+                    try:
+                        res_seq = supabase.table("acoes_tratamento").select("numero_sequencial").eq("risco_id", id_risco_sel).order("numero_sequencial", desc=True).limit(1).execute()
+                        prox_seq = (res_seq.data[0]["numero_sequencial"] + 1) if res_seq.data else 1
+                    except Exception:
+                        prox_seq = 1
+                        
+                    st.info(f"📌 Esta será a **Ação nº {prox_seq}** associada ao **Risco #{id_risco_sel}**.")
+
+                    with st.form("form_cadastrar_acao_tratamento", clear_on_submit=True):
+                        col_a1, col_a2 = st.columns(2)
+                        with col_a1:
+                            acao_input = st.text_input("Ação de Mitigação*", placeholder="Ex: Implantar rotina diária de backup automatizado")
+                            carater_sel = st.selectbox("Caráter da Ação*", options=["Preventivo", "Corretivo", "Compensatório"])
+                            unidade_resp_sel = st.selectbox("Unidade Responsável pela Ação*", options=opcoes_unid_siglas)
+                        with col_a2:
+                            nome_resp_input = st.text_input("Nome do Responsável pela Implementação*", value=usr_atual["nome"])
+                            dt_inicio = st.date_input("Previsão da Data do Início*", datetime.now(), format="DD/MM/YYYY")
+                            dt_conclusao = st.date_input("Previsão da Data da Conclusão*", datetime.now(), format="DD/MM/YYYY")
+
+                        objetivo_input = st.text_area("Objetivo da Ação*", placeholder="O que se pretende alcançar com esta ação?")
+                        como_input = st.text_area("Como será Implementada a Ação*", placeholder="Descreva o passo a passo...")
+
+                        st.caption("* Campos de preenchimento obrigatório.")
+                        submitted_acao = st.form_submit_button("💾 Salvar Ação de Tratamento")
+
+                        if submitted_acao:
+                            if not acao_input or not objetivo_input or not nome_resp_input or not como_input:
+                                st.warning("Por favor, preencha todos os campos obrigatórios do formulário.")
+                            elif dt_conclusao < dt_inicio:
+                                st.error("A Previsão da Data de Conclusão não pode ser anterior à Data do Início.")
+                            else:
+                                dados_nova_acao = {
                                     "risco_id": id_risco_sel,
                                     "numero_sequencial": prox_seq,
-                                    "status_anterior": None,
-                                    "status_novo": "Pendente",
-                                    "descricao_avanco": "Ação cadastrada e aguardando início de implementação.",
-                                    "percentual_conclusao": 0,
+                                    "acao": acao_input,
+                                    "carater_acao": carater_sel,
+                                    "objetivo_acao": objetivo_input,
                                     "unidade_responsavel": unidade_resp_sel,
-                                    "usuario_responsavel": nome_resp_input
+                                    "nome_responsavel_implementacao": nome_resp_input,
+                                    "como_sera_implementada": como_input,
+                                    "previsao_data_inicio": dt_inicio.strftime("%Y-%m-%d"),
+                                    "previsao_data_conclusao": dt_conclusao.strftime("%Y-%m-%d"),
+                                    "status_acao": "Pendente"
                                 }
-                                supabase.table("movimentacoes_acoes").insert(dados_mov_inicial).execute()
+                                try:
+                                    supabase.table("acoes_tratamento").insert(dados_nova_acao).execute()
+                                    
+                                    dados_mov_inicial = {
+                                        "risco_id": id_risco_sel,
+                                        "numero_sequencial": prox_seq,
+                                        "status_anterior": None,
+                                        "status_novo": "Pendente",
+                                        "descricao_avanco": "Ação cadastrada e aguardando início de implementação.",
+                                        "percentual_conclusao": 0,
+                                        "unidade_responsavel": unidade_resp_sel,
+                                        "usuario_responsavel": nome_resp_input
+                                    }
+                                    supabase.table("movimentacoes_acoes").insert(dados_mov_inicial).execute()
 
-                                dados_tramitacao_acao = {
-                                    "risco_id": id_risco_sel,
-                                    "unidade_origem": unidade_origem_risco or unidade_resp_sel,
-                                    "unidade_destino": unidade_resp_sel,
-                                    "usuario_remetente": usr_atual["nome"],
-                                    "parecer_observacao": f"Ação nº {prox_seq} registrada e atribuída a {nome_resp_input}."
-                                }
-                                supabase.table("tramitacoes").insert(dados_tramitacao_acao).execute()
+                                    dados_tramitacao_acao = {
+                                        "risco_id": id_risco_sel,
+                                        "unidade_origem": unidade_origem_risco or unidade_resp_sel,
+                                        "unidade_destino": unidade_resp_sel,
+                                        "usuario_remetente": usr_atual["nome"],
+                                        "parecer_observacao": f"Ação nº {prox_seq} registrada e atribuída a {nome_resp_input}."
+                                    }
+                                    supabase.table("tramitacoes").insert(dados_tramitacao_acao).execute()
 
-                                supabase.table("riscos").update({"situacao_status": "Em tratamento"}).eq("id", id_risco_sel).execute()
+                                    supabase.table("riscos").update({"situacao_status": "Em tratamento"}).eq("id", id_risco_sel).execute()
 
-                                # --- ENVIO DO E-MAIL DE NOVA AÇÃO ---
-                                emails_dest = obter_emails_unidade_ou_usuario(unidade_sigla=unidade_resp_sel, nome_usuario=nome_resp_input)
-                                if emails_dest:
-                                    assunto_e = f"🛡️ [SIGER] Nova Ação de Mitigação Atribuída - Risco #{id_risco_sel} (Ação {prox_seq})"
-                                    corpo_html = f"""
-                                    <h3>Nova Ação de Mitigação Atribuída</h3>
-                                    <p>Olá,</p>
-                                    <p>Uma nova ação foi vinculada ao Risco <b>#{id_risco_sel}</b> e atribuída para a sua unidade (<b>{unidade_resp_sel}</b>).</p>
-                                    <ul>
-                                        <li><b>Ação:</b> {acao_input}</li>
-                                        <li><b>Responsável:</b> {nome_resp_input}</li>
-                                        <li><b>Prazo Conclusão:</b> {dt_conclusao.strftime('%d/%m/%Y')}</li>
-                                    </ul>
-                                    <p>Acesse o SIGER para acompanhar a demanda.</p>
-                                    """
-                                    enviar_email_notificacao_siger(emails_dest, assunto_e, corpo_html)
+                                    # --- ENVIO DO E-MAIL DE NOVA AÇÃO ---
+                                    emails_dest = obter_emails_unidade_ou_usuario(unidade_sigla=unidade_resp_sel, nome_usuario=nome_resp_input)
+                                    if emails_dest:
+                                        assunto_e = f"🛡️ [SIGER] Nova Ação de Mitigação Atribuída - Risco #{id_risco_sel} (Ação {prox_seq})"
+                                        corpo_html = f"""
+                                        <h3>Nova Ação de Mitigação Atribuída</h3>
+                                        <p>Olá,</p>
+                                        <p>Uma nova ação foi vinculada ao Risco <b>#{id_risco_sel}</b> e atribuída para a sua unidade (<b>{unidade_resp_sel}</b>).</p>
+                                        <ul>
+                                            <li><b>Ação:</b> {acao_input}</li>
+                                            <li><b>Responsável:</b> {nome_resp_input}</li>
+                                            <li><b>Prazo Conclusão:</b> {dt_conclusao.strftime('%d/%m/%Y')}</li>
+                                        </ul>
+                                        <p>Acesse o SIGER para acompanhar a demanda.</p>
+                                        """
+                                        enviar_email_notificacao_siger(emails_dest, assunto_e, corpo_html)
 
-                                st.success(f"✅ Ação nº {prox_seq} cadastrada e notificação por e-mail enviada!")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Erro ao salvar ação no banco de dados: {e}")
+                                    st.success(f"✅ Ação nº {prox_seq} cadastrada e notificação por e-mail enviada!")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Erro ao salvar ação no banco de dados: {e}")
 
 # ---------------------------------------------------------
 # PÁGINA: CADASTROS
