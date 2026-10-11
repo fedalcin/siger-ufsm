@@ -1323,19 +1323,17 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                         st.warning("Preencha a justificativa da reavaliação.")
                     else:
                         try:
-                            # 1. Atualiza o risco pai na tabela 'riscos'
+                            # 1. Atualiza o risco pai na tabela 'riscos' (sem passar nivel_risco, pois é uma coluna gerada no banco)
                             supabase.table("riscos").update({
                                 "probabilidade": p_nova,
-                                "impacto": i_novo,
-                                "nivel_risco": novo_nivel_calc
+                                "impacto": i_novo
                             }).eq("id", r_id).execute()
 
-                            # 2. Registra o histórico na tabela 'avaliacoes_risco'
+                            # 2. Registra o histórico na tabela 'avaliacoes_risco' (sem passar nivel_risco)
                             supabase.table("avaliacoes_risco").insert({
                                 "risco_id": r_id,
                                 "probabilidade": p_nova,
                                 "impacto": i_novo,
-                                "nivel_risco": novo_nivel_calc,
                                 "data_avaliacao": datetime.now().isoformat(),
                                 "usuario_avaliador": usr_atual["nome"],
                                 "tipo_avaliacao": "Reavaliação Periódica",
