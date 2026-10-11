@@ -793,6 +793,9 @@ with st.sidebar.expander("📝 Cadastros", expanded=False):
 with st.sidebar.expander("🛡️ Planos de Tratamento", expanded=False):
     if st.button("📋 Ações de Mitigação", key="btn_pt_acoes", use_container_width=True):
         navegar_para("Planos de Tratamento", "Ações")
+    if is_gestor:
+        if st.button("🎯 Reavaliar Nível do Risco", key="btn_pt_reavaliar", use_container_width=True):
+            navegar_para("Planos de Tratamento", "Reavaliar Risco")
 
 with st.sidebar.expander("🔄 Monitoramento", expanded=False):
     if st.button("📌 Acompanhamento de Riscos", key="btn_mon_acomp", use_container_width=True):
@@ -1253,9 +1256,101 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
 # PÁGINA: PLANOS DE TRATAMENTO / AÇÕES DE MITIGAÇÃO
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Planos de Tratamento":
-    st.title("🛡 Planos de Tratamento e Mitigação de Riscos")
-    
-    tab_list_acoes, tab_nova_acao = st.tabs(["🔍 Ações Cadastradas", "➕ Cadastrar Nova Ação de Mitigação"])
+    sub_pt = st.session_state.sub_pagina_atual or "Ações"
+
+    if sub_pt == "Reavaliar Risco" and is_gestor:
+        st.title("🎯 Reavaliação Qualitativa do Nível do Risco")
+        st.caption("Atualize a probabilidade e o impacto do risco com base na efetividade das ações executadas.")
+
+        try:
+            res_riscos = supabase.table("riscos").select("*").order("id", desc=True).execute()
+            lista_riscos = res_riscos.data or []
+        except Exception as e:
+            st.error(f"Erro ao carregar lista de riscos: {e}")
+            lista_riscos = []
+
+        if not lista_riscos:
+            st.info("Nenhum risco cadastrado para reavaliação.")
+        else:
+            mapa_riscos_reav = {f"Risco #{r['id']} | {r['unidade']} - {r['evento'][:60]}...": r for r in lista_riscos}
+            risco_sel_label = st.selectbox("🎯 Selecione o Risco para Reavaliar:", list(mapa_riscos_reav.keys()))
+            risco_obj = mapa_riscos_reav[risco_sel_label]
+            r_id = risco_obj["id"]
+
+            st.divider()
+
+            col_inf1, col_inf2 = st.columns([2, 1])
+            with col_inf1:
+                st.markdown(f"### 🛡️ Risco #{r_id}: {risco_obj.get('evento')}")
+                st.markdown(f"**Unidade:** `{risco_obj.get('unidade')}` | **Gestor:** `{risco_obj.get('gestor_risco', '-')}`")
+                st.markdown(f"**Causa:** {risco_obj.get('causa', '-')}")
+                st.markdown(f"**Consequência:** {risco_obj.get('consequencia', '-')}")
+
+            with col_inf2:
+                p_at = int(risco_obj.get("probabilidade") or 1)
+                i_at = int(risco_obj.get("impacto") or 1)
+                n_at = int(risco_obj.get("nivel_risco") or (p_at * i_at))
+                cor_n = "🔴 Crítico" if n_at >= 15 else "🟡 Médio" if n_at >= 8 else "🟢 Baixo"
+
+                st.info(f"""
+                📊 **Situação Atual do Risco:**
+                * **Probabilidade:** {p_at} / 5
+                * **Impacto:** {i_at} / 5
+                * **Nível de Risco:** **{n_at}** ({cor_n})
+                """)
+
+            st.divider()
+
+            st.markdown("### 📝 Formulário de Reavaliação")
+            with st.form(f"form_reavaliar_dedicado_{r_id}"):
+                col_sl1, col_sl2 = st.columns(2)
+                with col_sl1:
+                    p_nova = st.slider("Nova Probabilidade (1 a 5)*", 1, 5, value=p_at)
+                with col_sl2:
+                    i_novo = st.slider("Novo Impacto (1 a 5)*", 1, 5, value=i_at)
+
+                just_reav = st.text_area(
+                    "Justificativa da Reavaliação*", 
+                    placeholder="Descreva as razões técnicas, ações implementadas ou evidências que justificam a alteração da nota..."
+                )
+
+                novo_nivel_calc = p_nova * i_novo
+                cor_novo_n = "🔴 Crítico" if novo_nivel_calc >= 15 else "🟡 Médio" if novo_nivel_calc >= 8 else "🟢 Baixo"
+                st.caption(f"⚡ **Novo Nível do Risco Calculado:** `{novo_nivel_calc}` ({cor_novo_n})")
+
+                if st.form_submit_button("💾 Confirmar e Gravar Nova Avaliação"):
+                    if not just_reav.strip():
+                        st.warning("Preencha a justificativa da reavaliação.")
+                    else:
+                        try:
+                            # 1. Atualiza o risco pai na tabela 'riscos'
+                            supabase.table("riscos").update({
+                                "probabilidade": p_nova,
+                                "impacto": i_novo,
+                                "nivel_risco": novo_nivel_calc
+                            }).eq("id", r_id).execute()
+
+                            # 2. Registra o histórico na tabela 'avaliacoes_risco'
+                            supabase.table("avaliacoes_risco").insert({
+                                "risco_id": r_id,
+                                "probabilidade": p_nova,
+                                "impacto": i_novo,
+                                "nivel_risco": novo_nivel_calc,
+                                "data_avaliacao": datetime.now().isoformat(),
+                                "usuario_avaliador": usr_atual["nome"],
+                                "tipo_avaliacao": "Reavaliação Periódica",
+                                "justificativa": just_reav.strip()
+                            }).execute()
+
+                            st.success(f"✅ Risco #{r_id} reavaliado com sucesso para Nível {novo_nivel_calc}!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao salvar reavaliação: {e}")
+
+    else:
+        st.title("🛡 Planos de Tratamento e Mitigação de Riscos")
+        
+        tab_list_acoes, tab_nova_acao = st.tabs(["🔍 Ações Cadastradas", "➕ Cadastrar Nova Ação de Mitigação"])
     
     with tab_list_acoes:
         try:
@@ -2214,43 +2309,7 @@ elif st.session_state.pagina_atual == "Monitoramento":
             🔄 **Periodicidade:** {risco_obj.get('periodicidade_revisao', 'Não informada')}  
             📆 **Próxima Revisão:** {formatar_data_br(data_prox_rev)} (`{sit_revisao}`)
             """)
-            
-            # --- POPOVER DE REAVALIAÇÃO POSICIONADO CORRETAMENTE ---
-            pop_reavaliar = st.popover("🎯 Reavaliar Nível do Risco")
-            with pop_reavaliar:
-                st.markdown(f"### Reavaliação Qualitativa do Risco #{r_id}")
-                with st.form(f"form_reavaliar_mon_{r_id}"):
-                    p_nova = st.slider("Nova Probabilidade (1 a 5)", 1, 5, value=int(risco_obj.get("probabilidade") or 1))
-                    i_novo = st.slider("Novo Impacto (1 a 5)", 1, 5, value=int(risco_obj.get("impacto") or 1))
-                    just_reav = st.text_area("Justificativa da Reavaliação*", placeholder="Ex: Redução da probabilidade após implantação das ações...")
-                    
-                    if st.form_submit_button("💾 Salvar Reavaliação"):
-                        if not just_reav.strip():
-                            st.warning("Preencha a justificativa da reavaliação.")
-                        else:
-                            nivel_n = p_nova * i_novo
-                            # 1. Atualiza o risco pai
-                            supabase.table("riscos").update({
-                                "probabilidade": p_nova,
-                                "impacto": i_novo,
-                                "nivel_risco": nivel_n
-                            }).eq("id", r_id).execute()
-                            
-                            # 2. Insere registro histórico na tabela de avaliações
-                            supabase.table("avaliacoes_risco").insert({
-                                "risco_id": r_id,
-                                "probabilidade": p_nova,
-                                "impacto": i_novo,
-                                "nivel_risco": nivel_n,
-                                "data_avaliacao": datetime.now().isoformat(),
-                                "usuario_avaliador": usr_atual["nome"],
-                                "tipo_avaliacao": "Monitoramento",
-                                "justificativa": just_reav.strip()
-                            }).execute()
-                            
-                            st.success("✅ Reavaliação gravada no gráfico histórico!")
-                            st.rerun()
-
+                   
         st.markdown("#### 📊 Grid de KPIs e Indicadores Gerenciais")
         
         nivel_val = risco_obj.get('nivel_risco', 1)
