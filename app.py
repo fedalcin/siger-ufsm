@@ -183,6 +183,12 @@ st.markdown("""
         padding-top: 0rem !important;
     }
 
+    /* Alinha TODOS os botões da barra lateral à esquerda */
+    section[data-testid="stSidebar"] div.stButton > button {
+        text-align: left !important;
+        justify-content: flex-start !important;
+    }
+
     section[data-testid="stSidebar"] div[data-testid="stImage"] {
         margin-top: 0rem !important;
         margin-bottom: 0rem !important;
@@ -231,6 +237,7 @@ st.markdown("""
         margin-bottom: 4px !important;
         width: 100% !important;
         text-align: left !important;
+        justify-content: flex-start !important;
         border: 1px solid #001733 !important;
     }
     .btn-inicio-sidebar button:hover {
@@ -269,6 +276,7 @@ st.markdown("""
         text-justify: inter-word !important;
         line-height: 1.6;
     }
+    </style>
 
     /* ESTILOS DA TIMELINE */
     .timeline-item {
