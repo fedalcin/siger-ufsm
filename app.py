@@ -276,7 +276,6 @@ st.markdown("""
         text-justify: inter-word !important;
         line-height: 1.6;
     }
-    </style>
 
     /* ESTILOS DA TIMELINE */
     .timeline-item {
