@@ -1318,32 +1318,35 @@ elif st.session_state.pagina_atual == "Planos de Tratamento":
                 cor_novo_n = "🔴 Crítico" if novo_nivel_calc >= 15 else "🟡 Médio" if novo_nivel_calc >= 8 else "🟢 Baixo"
                 st.caption(f"⚡ **Novo Nível do Risco Calculado:** `{novo_nivel_calc}` ({cor_novo_n})")
 
-                if st.form_submit_button("💾 Confirmar e Gravar Nova Avaliação"):
-                    if not just_reav.strip():
-                        st.warning("Preencha a justificativa da reavaliação.")
-                    else:
-                        try:
-                            # 1. Atualiza o risco pai na tabela 'riscos' (sem passar nivel_risco, pois é uma coluna gerada no banco)
-                            supabase.table("riscos").update({
-                                "probabilidade": p_nova,
-                                "impacto": i_novo
-                            }).eq("id", r_id).execute()
+                btn_sub_reav = st.form_submit_button("💾 Confirmar e Gravar Nova Avaliação")
 
-                            # 2. Registra o histórico na tabela 'avaliacoes_risco' (sem passar nivel_risco)
-                            supabase.table("avaliacoes_risco").insert({
-                                "risco_id": r_id,
-                                "probabilidade": p_nova,
-                                "impacto": i_novo,
-                                "data_avaliacao": datetime.now().isoformat(),
-                                "usuario_avaliador": usr_atual["nome"],
-                                "tipo_avaliacao": "Reavaliação Periódica",
-                                "justificativa": just_reav.strip()
-                            }).execute()
+            if btn_sub_reav:
+                if not just_reav.strip():
+                    st.warning("Preencha a justificativa da reavaliação.")
+                else:
+                    try:
+                        # 1. Atualiza o risco na tabela 'riscos'
+                        supabase.table("riscos").update({
+                            "probabilidade": p_nova,
+                            "impacto": i_novo
+                        }).eq("id", r_id).execute()
 
-                            st.success(f"✅ Risco #{r_id} reavaliado com sucesso para Nível {novo_nivel_calc}!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Erro ao salvar reavaliação: {e}")
+                        # 2. Registra o histórico na tabela 'avaliacoes_risco'
+                        supabase.table("avaliacoes_risco").insert({
+                            "risco_id": r_id,
+                            "probabilidade": p_nova,
+                            "impacto": i_novo,
+                            "data_avaliacao": datetime.now().isoformat(),
+                            "usuario_avaliador": usr_atual["nome"],
+                            "tipo_avaliacao": "Reavaliação Periódica",
+                            "justificativa": just_reav.strip()
+                        }).execute()
+
+                        st.toast(f"✅ Risco #{r_id} reavaliado com sucesso para Nível {novo_nivel_calc}!", icon="🎉")
+                        st.success(f"✅ Risco #{r_id} reavaliado com sucesso para Nível {novo_nivel_calc}!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao salvar reavaliação: {e}")
 
     else:
         st.title("🛡 Planos de Tratamento e Mitigação de Riscos")
