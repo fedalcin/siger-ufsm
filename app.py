@@ -1279,7 +1279,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                         with pop_atuar:
                             st.markdown(f"### Atuação na Ação nº {seq} (Risco #{r_id})")
                             
-                            # Seleção da Unidade Destino FORA do form para permitir dinamismo
+                            # Seleção da Unidade Destino FORA do form para filtrar os usuários dinamicamente
                             idx_dest_def = opcoes_unid.index(unidade_risco_origem) if unidade_risco_origem in opcoes_unid else 0
                             unid_destino_wf = st.selectbox(
                                 "Encaminhar Para Unidade*", 
@@ -1288,7 +1288,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                 key=f"sb_dest_out_{r_id}_{seq}"
                             )
 
-                            # Carrega ESTRITAMENTE os usuários ativos vinculados à unidade selecionada
+                            # Carrega ESTRITAMENTE os usuários ativos da unidade selecionada
                             try:
                                 res_u_dest = supabase.table("usuarios")\
                                     .select("nome")\
@@ -1299,7 +1299,6 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                             except Exception:
                                 res_u_dest = []
 
-                            # Monta lista restrita aos servidores da unidade
                             usrs_filtrados = [u["nome"] for u in res_u_dest if u.get("nome")]
                             opts_resp_dest = ["Toda a Unidade"] + usrs_filtrados
 
@@ -1321,18 +1320,15 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                 st.markdown("##### 3. Encaminhamento e Tramitação")
                                 col_t_wf1, col_t_wf2 = st.columns(2)
                                 with col_t_wf1:
-                                    st.text_input("Unidade Destino Selecionada", value=unid_destino_wf, disabled=True, key=f"txt_unid_dis_{r_id}_{seq}")
-                                
-                                with col_t_wf2:
                                     resp_destino_wf = st.selectbox(
                                         "Destinatário / Responsável Específico*", 
                                         options=opts_resp_dest, 
                                         index=0, 
                                         key=f"sb_resp_dest_{r_id}_{seq}"
                                     )
-                                    
-                                # Remetente fixo do usuário logado (Apenas Leitura)
-                                st.text_input("Remetente (Seu Usuário)", value=usr_atual["nome"], disabled=True, key=f"txt_rem_dis_{r_id}_{seq}")
+                                with col_t_wf2:
+                                    # Remetente fixo do usuário logado (Apenas Leitura)
+                                    st.text_input("Remetente (Seu Usuário)", value=usr_atual["nome"], disabled=True, key=f"txt_rem_dis_{r_id}_{seq}")
                                 
                                 btn_enviar_wf = st.form_submit_button("🚀 Gravar Avanço e Tramitar Demanda")
                                 
