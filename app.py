@@ -183,15 +183,10 @@ st.markdown("""
         padding-top: 0rem !important;
     }
 
-    /* FORÇA ALINHAMENTO À ESQUERDA EM ABSOLUTAMENTE TODOS OS BOTÕES DA BARRA LATERAL */
-    section[data-testid="stSidebar"] button,
-    section[data-testid="stSidebar"] button p,
-    section[data-testid="stSidebar"] div.stButton > button,
-    section[data-testid="stSidebar"] div[data-testid="stExpander"] div.stButton > button {
+    /* Alinha TODOS os botões da barra lateral à esquerda */
+    section[data-testid="stSidebar"] div.stButton > button {
         text-align: left !important;
         justify-content: flex-start !important;
-        display: flex !important;
-        align-items: center !important;
     }
 
     section[data-testid="stSidebar"] div[data-testid="stImage"] {
@@ -241,6 +236,8 @@ st.markdown("""
         padding: 8px 12px !important;
         margin-bottom: 4px !important;
         width: 100% !important;
+        text-align: left !important;
+        justify-content: flex-start !important;
         border: 1px solid #001733 !important;
     }
     .btn-inicio-sidebar button:hover {
@@ -249,6 +246,8 @@ st.markdown("""
     }
     
     section[data-testid="stSidebar"] div[data-testid="stExpander"] div.stButton > button {
+        text-align: left !important;
+        justify-content: flex-start !important;
         width: calc(100% - 20px) !important;
         margin-left: 20px !important;
         border: none !important;
@@ -1267,773 +1266,14 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
         renderizar_lista_demandas(demandas_concluidas)
 
 # ---------------------------------------------------------
-# PÁGINA: PLANOS DE TRATAMENTO / AÇÕES DE MITIGAÇÃO
+# PÁGINA: GESTÃO DE RISCOS
 # ---------------------------------------------------------
-elif st.session_state.pagina_atual == "Planos de Tratamento":
-    sub_pt = st.session_state.sub_pagina_atual or "Ações"
+elif st.session_state.pagina_atual == "Gestão de Riscos":
+    sub_gr = st.session_state.sub_pagina_atual or "Riscos"
 
-    if sub_pt == "Reavaliar Risco" and is_gestor:
-        st.title("🎯 Reavaliação Qualitativa do Nível do Risco")
-        st.caption("Atualize a probabilidade e o impacto do risco com base na efetividade das ações executadas.")
-
-        try:
-            res_riscos = supabase.table("riscos").select("*").order("id", desc=True).execute()
-            lista_riscos = res_riscos.data or []
-        except Exception as e:
-            st.error(f"Erro ao carregar lista de riscos: {e}")
-            lista_riscos = []
-
-        if not lista_riscos:
-            st.info("Nenhum risco cadastrado para reavaliação.")
-        else:
-            mapa_riscos_reav = {f"Risco #{r['id']} | {r['unidade']} - {r['evento'][:60]}...": r for r in lista_riscos}
-            risco_sel_label = st.selectbox("🎯 Selecione o Risco para Reavaliar:", list(mapa_riscos_reav.keys()))
-            risco_obj = mapa_riscos_reav[risco_sel_label]
-            r_id = risco_obj["id"]
-
-            st.divider()
-
-            col_inf1, col_inf2 = st.columns([2, 1])
-            with col_inf1:
-                st.markdown(f"### 🛡️ Risco #{r_id}: {risco_obj.get('evento')}")
-                st.markdown(f"**Unidade:** `{risco_obj.get('unidade')}` | **Gestor:** `{risco_obj.get('gestor_risco', '-')}`")
-                st.markdown(f"**Causa:** {risco_obj.get('causa', '-')}")
-                st.markdown(f"**Consequência:** {risco_obj.get('consequencia', '-')}")
-
-            with col_inf2:
-                p_at = int(risco_obj.get("probabilidade") or 1)
-                i_at = int(risco_obj.get("impacto") or 1)
-                n_at = int(risco_obj.get("nivel_risco") or (p_at * i_at))
-                cor_n = "🔴 Crítico" if n_at >= 15 else "🟡 Médio" if n_at >= 8 else "🟢 Baixo"
-
-                st.info(f"""
-                📊 **Situação Atual do Risco:**
-                * **Probabilidade:** {p_at} / 5
-                * **Impacto:** {i_at} / 5
-                * **Nível de Risco:** **{n_at}** ({cor_n})
-                """)
-
-            st.divider()
-
-            st.markdown("### 📝 Formulário de Reavaliação")
-            with st.form(f"form_reavaliar_dedicado_{r_id}"):
-                col_sl1, col_sl2 = st.columns(2)
-                with col_sl1:
-                    p_nova = st.slider("Nova Probabilidade (1 a 5)*", 1, 5, value=p_at)
-                with col_sl2:
-                    i_novo = st.slider("Novo Impacto (1 a 5)*", 1, 5, value=i_at)
-
-                just_reav = st.text_area(
-                    "Justificativa da Reavaliação*", 
-                    placeholder="Descreva as razões técnicas, ações implementadas ou evidências que justificam a alteração da nota..."
-                )
-
-                novo_nivel_calc = p_nova * i_novo
-                cor_novo_n = "🔴 Crítico" if novo_nivel_calc >= 15 else "🟡 Médio" if novo_nivel_calc >= 8 else "🟢 Baixo"
-                st.caption(f"⚡ **Novo Nível do Risco Calculado:** `{novo_nivel_calc}` ({cor_novo_n})")
-
-                btn_sub_reav = st.form_submit_button("💾 Confirmar e Gravar Nova Avaliação")
-
-            if btn_sub_reav:
-                if not just_reav.strip():
-                    st.warning("Preencha a justificativa da reavaliação.")
-                else:
-                    try:
-                        novo_nivel_calc = p_nova * i_novo
-
-                        # 1. Atualiza 'riscos' (o banco calcula o nivel_risco automaticamente)
-                        supabase.table("riscos").update({
-                            "probabilidade": p_nova,
-                            "impacto": i_novo
-                        }).eq("id", r_id).execute()
-
-                        # 2. Registra histórico na tabela 'avaliacoes_risco'
-                        supabase.table("avaliacoes_risco").insert({
-                            "risco_id": r_id,
-                            "probabilidade": p_nova,
-                            "impacto": i_novo,
-                            "data_avaliacao": datetime.now().isoformat(),
-                            "usuario_avaliador": usr_atual["nome"],
-                            "tipo_avaliacao": "Reavaliação Periódica",
-                            "justificativa": just_reav.strip()
-                        }).execute()
-
-                        st.toast(f"✅ Risco #{r_id} reavaliado com sucesso para Nível {novo_nivel_calc}!", icon="🎉")
-                        st.success(f"✅ Risco #{r_id} reavaliado com sucesso para Nível {novo_nivel_calc}!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao salvar reavaliação: {e}")
-
-    else:
-        st.title("🛡 Planos de Tratamento e Mitigação de Riscos")
-        
-        tab_list_acoes, tab_nova_acao = st.tabs(["🔍 Ações Cadastradas", "➕ Cadastrar Nova Ação de Mitigação"])
-        
-        with tab_list_acoes:
-            try:
-                res_acoes = supabase.table("acoes_tratamento").select("*, riscos(id, evento, unidade)").order("risco_id").order("numero_sequencial").execute()
-                
-                if res_acoes.data:
-                    st.write(f"Total de ações de tratamento registradas: **{len(res_acoes.data)}**")
-                    
-                    for acao_item in res_acoes.data:
-                        r_id = acao_item["risco_id"]
-                        seq = acao_item["numero_sequencial"]
-                        carater = acao_item["carater_acao"]
-                        nome_acao = acao_item["acao"]
-                        
-                        dados_risco_rel = acao_item.get("riscos") or {}
-                        evento_txt = dados_risco_rel.get("evento", "Não especificado")
-                        
-                        badge_carater = "🟢" if carater == "Preventivo" else "🟡" if carater == "Corretivo" else "🔵"
-                        
-                        dt_inicio_fmt = formatar_data_br(acao_item.get('previsao_data_inicio'))
-                        dt_conclusao_fmt = formatar_data_br(acao_item.get('previsao_data_conclusao'))
-                        
-                        with st.expander(f"{badge_carater} Risco #{r_id} | Ação {seq}: {nome_acao}"):
-                            st.markdown(f"**Risco:** {evento_txt}")
-                            st.markdown(f"**Caráter da Ação:** {carater}")
-                            st.markdown(f"**Status da Ação:** `{acao_item.get('status_acao', 'Pendente')}`")
-                            st.markdown(f"**Objetivo da Ação:** {acao_item['objetivo_acao']}")
-                            st.markdown(f"**Unidade Responsável:** {acao_item['unidade_responsavel']}")
-                            st.markdown(f"**Responsável pela Implementação:** {acao_item['nome_responsavel_implementacao']}")
-                            st.markdown(f"**Como será Implementada:** {acao_item['como_sera_implementada']}")
-                            st.markdown(f"**Período de Execução:** {dt_inicio_fmt} até {dt_conclusao_fmt}")
-                            
-                            if is_gestor:
-                                col_ac_edit, col_ac_del = st.columns([1, 1])
-                                
-                                with col_ac_edit:
-                                    pop_edit_ac = st.popover("✏ Edit Ação")
-                                    with pop_edit_ac:
-                                        with st.form(f"form_edit_acao_{r_id}_{seq}"):
-                                            edit_nome_ac = st.text_input("Ação", value=nome_acao)
-                                            
-                                            idx_carater = ["Preventivo", "Corretivo", "Compensatório"].index(carater) if carater in ["Preventivo", "Corretivo", "Compensatório"] else 0
-                                            edit_carater = st.selectbox("Caráter da Ação", ["Preventivo", "Corretivo", "Compensatório"], index=idx_carater)
-                                            
-                                            edit_obj = st.text_area("Objetivo da Ação", value=acao_item['objetivo_acao'])
-                                            edit_resp = st.text_input("Responsável pela Implementação", value=acao_item['nome_responsavel_implementacao'])
-                                            edit_como = st.text_area("Como será Implementada", value=acao_item['como_sera_implementada'])
-                                            
-                                            d_i = datetime.strptime(acao_item['previsao_data_inicio'], "%Y-%m-%d").date() if acao_item.get('previsao_data_inicio') else datetime.now().date()
-                                            d_f = datetime.strptime(acao_item['previsao_data_conclusao'], "%Y-%m-%d").date() if acao_item.get('previsao_data_conclusao') else datetime.now().date()
-                                            
-                                            edit_dt_i = st.date_input("Previsão Início", value=d_i, format="DD/MM/YYYY")
-                                            edit_dt_f = st.date_input("Previsão Conclusão", value=d_f, format="DD/MM/YYYY")
-                                            
-                                            if st.form_submit_button("💾 Salvar Alterações"):
-                                                if edit_dt_f < edit_dt_i:
-                                                    st.error("A data de conclusão não pode ser anterior à data de início.")
-                                                else:
-                                                    supabase.table("acoes_tratamento").update({
-                                                        "acao": edit_nome_ac,
-                                                        "carater_acao": edit_carater,
-                                                        "objetivo_acao": edit_obj,
-                                                        "nome_responsavel_implementacao": edit_resp,
-                                                        "como_sera_implementada": edit_como,
-                                                        "previsao_data_inicio": edit_dt_i.strftime("%Y-%m-%d"),
-                                                        "previsao_data_conclusao": edit_dt_f.strftime("%Y-%m-%d")
-                                                    }).eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
-                                                    
-                                                    st.success("Ação atualizada!")
-                                                    st.rerun()
-
-                                with col_ac_del:
-                                    pop_del_ac = st.popover("🗑️ Excluir Ação")
-                                    with pop_del_ac:
-                                        st.warning("Deseja remover esta ação de mitigação?")
-                                        if st.button("Confirmar Exclusão", key=f"btn_del_ac_{r_id}_{seq}"):
-                                            try:
-                                                supabase.table("acoes_tratamento").delete().eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
-                                                recalcular_e_atualizar_status_risco(r_id)
-                                                st.success("Ação removida e status do risco atualizado!")
-                                                st.rerun()
-                                            except Exception as e:
-                                                st.error(f"Erro ao excluir ação: {e}")
-                else:
-                    st.info("Nenhuma ação de tratamento/mitigação cadastrada até o momento.")
-            except Exception as e:
-                st.error(f"Erro ao carregar ações de tratamento: {e}")
-                
-        with tab_nova_acao:
-            if not is_gestor:
-                st.warning("Seu perfil de usuário possui acesso apenas de leitura.")
-            else:
-                try:
-                    res_riscos_db = supabase.table("riscos").select("id, evento, unidade").order("id").execute().data or []
-                    res_unid_db = supabase.table("unidades").select("sigla, nome_extenso").order("sigla").execute().data or []
-                except Exception:
-                    res_riscos_db, res_unid_db = [], []
-                    
-                if not res_riscos_db:
-                    st.warning("⚠️ É necessário ter pelo menos um Risco cadastrado no sistema para criar um Plano de Tratamento.")
-                else:
-                    mapa_riscos = {f"Risco #{r['id']} - {r['evento'] if r['evento'] else 'Sem Risco'}" : (r['id'], r['unidade']) for r in res_riscos_db}
-                    
-                    opcoes_unid_siglas = [u['sigla'] for u in res_unid_db] if res_unid_db else ["S/U"]
-
-                    risco_selecionado_label = st.selectbox("Selecione o Risco Mapeado*", options=list(mapa_riscos.keys()))
-                    id_risco_sel, unidade_origem_risco = mapa_riscos[risco_selecionado_label]
-                    
-                    try:
-                        res_seq = supabase.table("acoes_tratamento").select("numero_sequencial").eq("risco_id", id_risco_sel).order("numero_sequencial", desc=True).limit(1).execute()
-                        prox_seq = (res_seq.data[0]["numero_sequencial"] + 1) if res_seq.data else 1
-                    except Exception:
-                        prox_seq = 1
-                        
-                    st.info(f"📌 Esta será a **Ação nº {prox_seq}** associada ao **Risco #{id_risco_sel}**.")
-
-                    with st.form("form_cadastrar_acao_tratamento", clear_on_submit=True):
-                        col_a1, col_a2 = st.columns(2)
-                        with col_a1:
-                            acao_input = st.text_input("Ação de Mitigação*", placeholder="Ex: Implantar rotina diária de backup automatizado")
-                            carater_sel = st.selectbox("Caráter da Ação*", options=["Preventivo", "Corretivo", "Compensatório"])
-                            unidade_resp_sel = st.selectbox("Unidade Responsável pela Ação*", options=opcoes_unid_siglas)
-                        with col_a2:
-                            nome_resp_input = st.text_input("Nome do Responsável pela Implementação*", value=usr_atual["nome"])
-                            dt_inicio = st.date_input("Previsão da Data do Início*", datetime.now(), format="DD/MM/YYYY")
-                            dt_conclusao = st.date_input("Previsão da Data da Conclusão*", datetime.now(), format="DD/MM/YYYY")
-
-                        objetivo_input = st.text_area("Objetivo da Ação*", placeholder="O que se pretende alcançar com esta ação?")
-                        como_input = st.text_area("Como será Implementada a Ação*", placeholder="Descreva o passo a passo...")
-
-                        st.caption("* Campos de preenchimento obrigatório.")
-                        submitted_acao = st.form_submit_button("💾 Salvar Ação de Tratamento")
-
-                        if submitted_acao:
-                            if not acao_input or not objetivo_input or not nome_resp_input or not como_input:
-                                st.warning("Por favor, preencha todos os campos obrigatórios do formulário.")
-                            elif dt_conclusao < dt_inicio:
-                                st.error("A Previsão da Data de Conclusão não pode ser anterior à Data do Início.")
-                            else:
-                                dados_nova_acao = {
-                                    "risco_id": id_risco_sel,
-                                    "numero_sequencial": prox_seq,
-                                    "acao": acao_input,
-                                    "carater_acao": carater_sel,
-                                    "objetivo_acao": objetivo_input,
-                                    "unidade_responsavel": unidade_resp_sel,
-                                    "nome_responsavel_implementacao": nome_resp_input,
-                                    "como_sera_implementada": como_input,
-                                    "previsao_data_inicio": dt_inicio.strftime("%Y-%m-%d"),
-                                    "previsao_data_conclusao": dt_conclusao.strftime("%Y-%m-%d"),
-                                    "status_acao": "Pendente"
-                                }
-                                try:
-                                    supabase.table("acoes_tratamento").insert(dados_nova_acao).execute()
-                                    
-                                    dados_mov_inicial = {
-                                        "risco_id": id_risco_sel,
-                                        "numero_sequencial": prox_seq,
-                                        "status_anterior": None,
-                                        "status_novo": "Pendente",
-                                        "descricao_avanco": "Ação cadastrada e aguardando início de implementação.",
-                                        "percentual_conclusao": 0,
-                                        "unidade_responsavel": unidade_resp_sel,
-                                        "usuario_responsavel": nome_resp_input
-                                    }
-                                    supabase.table("movimentacoes_acoes").insert(dados_mov_inicial).execute()
-
-                                    dados_tramitacao_acao = {
-                                        "risco_id": id_risco_sel,
-                                        "unidade_origem": unidade_origem_risco or unidade_resp_sel,
-                                        "unidade_destino": unidade_resp_sel,
-                                        "usuario_remetente": usr_atual["nome"],
-                                        "parecer_observacao": f"Ação nº {prox_seq} registrada e atribuída a {nome_resp_input}."
-                                    }
-                                    supabase.table("tramitacoes").insert(dados_tramitacao_acao).execute()
-
-                                    supabase.table("riscos").update({"situacao_status": "Em tratamento"}).eq("id", id_risco_sel).execute()
-
-                                    # --- ENVIO DO E-MAIL DE NOVA AÇÃO ---
-                                    emails_dest = obter_emails_unidade_ou_usuario(unidade_sigla=unidade_resp_sel, nome_usuario=nome_resp_input)
-                                    if emails_dest:
-                                        assunto_e = f"🛡️ [SIGER] Nova Ação de Mitigação Atribuída - Risco #{id_risco_sel} (Ação {prox_seq})"
-                                        corpo_html = f"""
-                                        <h3>Nova Ação de Mitigação Atribuída</h3>
-                                        <p>Olá,</p>
-                                        <p>Uma nova ação foi vinculada ao Risco <b>#{id_risco_sel}</b> e atribuída para a sua unidade (<b>{unidade_resp_sel}</b>).</p>
-                                        <ul>
-                                            <li><b>Ação:</b> {acao_input}</li>
-                                            <li><b>Responsável:</b> {nome_resp_input}</li>
-                                            <li><b>Prazo Conclusão:</b> {dt_conclusao.strftime('%d/%m/%Y')}</li>
-                                        </ul>
-                                        <p>Acesse o SIGER para acompanhar a demanda.</p>
-                                        """
-                                        enviar_email_notificacao_siger(emails_dest, assunto_e, corpo_html)
-
-                                    st.success(f"✅ Ação nº {prox_seq} cadastrada e notificação por e-mail enviada!")
-                                    st.rerun()
-                                except Exception as e:
-                                    st.error(f"Erro ao salvar ação no banco de dados: {e}")
-
-# ---------------------------------------------------------
-# PÁGINA: CADASTROS
-# ---------------------------------------------------------
-elif st.session_state.pagina_atual == "Cadastros":
-    st.title("📝 Módulo de Cadastros")
-    sub = st.session_state.sub_pagina_atual or "Riscos"
-    
-    if sub == "Unidades" and is_admin:
-        st.subheader("🏢 Cadastramento de Unidades / Setores Institucionais")
-        tab_list_unid, tab_novo_unid = st.tabs(["🔍 Unidades Cadastradas", "➕ Nova Unidade"])
-        
-        with tab_list_unid:
-            try:
-                resposta_unid = supabase.table("unidades").select("*").order("sigla").execute()
-                dados_unid = resposta_unid.data
-                
-                if dados_unid:
-                    st.write(f"Total de unidades cadastradas: **{len(dados_unid)}**")
-                    for item in dados_unid:
-                        sigla_item = str(item['sigla']).strip()
-                        nome_item = item.get('nome_extenso', '')
-                        tipo_exibicao = item.get('tipo_unidade', 'Não informado')
-                        
-                        with st.expander(f"📍 **{sigla_item}** | {nome_item} ({tipo_exibicao})"):
-                            col_info, col_acoes = st.columns([3, 1])
-                            with col_info:
-                                st.write(f"**Sigla:** {sigla_item}")
-                                st.write(f"**Nome por Extenso:** {nome_item}")
-                                st.write(f"**Tipo da Unidade:** {tipo_exibicao}")
-                            
-                            with col_acoes:
-                                modal_edit = st.popover("✏️ Editar")
-                                with modal_edit:
-                                    st.markdown("### Editar Unidade")
-                                    with st.form(f"form_edit_unid_{sigla_item}"):
-                                        edit_nome = st.text_input("Nome Extenso", value=nome_item)
-                                        val_atual = item.get('tipo_unidade')
-                                        idx_tipo = TIPOS_UNIDADE_OPCOES.index(val_atual) if val_atual in TIPOS_UNIDADE_OPCOES else 0
-                                        edit_tipo = st.selectbox("Tipo da Unidade*", options=TIPOS_UNIDADE_OPCOES, index=idx_tipo)
-                                        
-                                        if st.form_submit_button("💾 Salvar Alterações"):
-                                            try:
-                                                supabase.table("unidades").update({
-                                                    "nome_extenso": edit_nome,
-                                                    "tipo_unidade": edit_tipo
-                                                }).eq("sigla", sigla_item).execute()
-                                                st.toast("Unidade atualizada com sucesso!", icon="✅")
-                                                st.rerun()
-                                            except Exception as e:
-                                                st.error(f"Erro ao atualizar: {e}")
-
-                                modal_del = st.popover("🗑️ Excluir")
-                                with modal_del:
-                                    st.warning(f"Tem certeza que deseja excluir a unidade '{sigla_item}'?")
-                                    if st.button("Confirmar Exclusão", key=f"btn_del_unid_{sigla_item}"):
-                                        try:
-                                            res_riscos = supabase.table("riscos").select("id").eq("unidade", sigla_item).execute()
-                                            if res_riscos.data and len(res_riscos.data) > 0:
-                                                st.error(f"❌ Impossível excluir '{sigla_item}'. Existem {len(res_riscos.data)} risco(s) vinculados.")
-                                            else:
-                                                supabase.table("unidades").delete().eq("sigla", sigla_item).execute()
-                                                st.toast(f"Unidade '{sigla_item}' excluída!", icon="🗑")
-                                                st.rerun()
-                                        except Exception as e:
-                                            st.error(f"Erro ao tentar excluir: {e}")
-                else:
-                    st.info("Nenhuma unidade cadastrada.")
-            except Exception as e:
-                st.error(f"Erro ao carregar unidades: {e}")
-                
-        with tab_novo_unid:
-            with st.form("form_cadastrar_unidade", clear_on_submit=True):
-                col_u1, col_u2 = st.columns(2)
-                with col_u1:
-                    sigla = st.text_input("Sigla da Unidade*", placeholder="Ex: PRAE, PRPGP, CCSH, REITORIA").upper().strip()
-                    nome_extenso = st.text_input("Nome da Unidade por Extenso*", placeholder="Ex: Pró-Reitoria de Assuntos Estudantis")
-                with col_u2:
-                    tipo_unidade_sel = st.selectbox("Tipo da Unidade*", options=TIPOS_UNIDADE_OPCOES)
-                
-                submitted_unid = st.form_submit_button("💾 Salvar Unidade")
-                
-                if submitted_unid:
-                    if not sigla or not nome_extenso:
-                        st.warning("Por favor, preencha a Sigla e o Nome por Extenso.")
-                    else:
-                        try:
-                            supabase.table("unidades").insert({
-                                "sigla": sigla,
-                                "nome_extenso": nome_extenso,
-                                "tipo_unidade": tipo_unidade_sel
-                            }).execute()
-                            st.toast(f"✅ Unidade '{sigla}' registrada!", icon="🎉")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Erro ao salvar unidade: {e}")
-
-    elif sub == "Objetivos Estratégicos" and is_admin:
-        st.subheader("🎯 Cadastramento de Objetivos Estratégicos (PDI)")
-        tab_oe_list, tab_oe_novo = st.tabs(["🔍 Objetivos Cadastrados", "➕ Novo Objetivo Estratégico"])
-        
-        with tab_oe_list:
-            try:
-                res_oe = supabase.table("objetivos_estrategicos").select("*").order("codigo").execute()
-                dados_oe = res_oe.data or []
-                
-                if dados_oe:
-                    st.write(f"Total de objetivos estratégicos cadastrados: **{len(dados_oe)}**")
-                    for item in dados_oe:
-                        cod_item = str(item['codigo']).strip()
-                        desc_item = item.get('descricao', '')
-                        desafio_item = item.get('desafio', '')
-                        dimensao_item = item.get('dimensao', '')
-                        
-                        with st.expander(f"🎯 **{cod_item}** | {desc_item[:80]}..."):
-                            st.write(f"**Código:** {cod_item}")
-                            st.write(f"**Descrição:** {desc_item}")
-                            st.write(f"**Desafio:** {desafio_item}")
-                            st.write(f"**Dimensão:** {dimensao_item}")
-                            
-                            col_info, col_acoes = st.columns([1, 1])
-                            with col_info:
-                                pop_edit = st.popover("✏️ Editar")
-                                with pop_edit:
-                                    st.markdown("### Editar Objetivo Estratégico")
-                                    with st.form(f"form_edit_oe_{cod_item}"):
-                                        e_desc = st.text_area("Descrição", value=desc_item)
-                                        e_desafio = st.text_area("Desafio", value=desafio_item)
-                                        e_dimensao = st.text_input("Dimensão", value=dimensao_item)
-                                        
-                                        if st.form_submit_button("💾 Salvar Alterações"):
-                                            try:
-                                                supabase.table("objetivos_estrategicos").update({
-                                                    "descricao": e_desc,
-                                                    "desafio": e_desafio,
-                                                    "dimensao": e_dimensao
-                                                }).eq("codigo", cod_item).execute()
-                                                st.success("Objetivo Estratégico atualizado!")
-                                                st.rerun()
-                                            except Exception as e:
-                                                st.error(f"Erro ao atualizar objetivo estratégico: {e}")
-
-                            with col_acoes:
-                                pop_del = st.popover("🗑️ Excluir")
-                                with pop_del:
-                                    st.warning(f"Deseja excluir o objetivo '{cod_item}'?")
-                                    if st.button("Confirmar Exclusão", key=f"btn_del_oe_{cod_item}"):
-                                        try:
-                                            res_vinc = supabase.table("riscos").select("id").eq("objetivo_estrategico", cod_item).execute()
-                                            if res_vinc.data and len(res_vinc.data) > 0:
-                                                st.error(f"❌ Impossível excluir. Existem {len(res_vinc.data)} risco(s) vinculados a este objetivo.")
-                                            else:
-                                                supabase.table("objetivos_estrategicos").delete().eq("codigo", cod_item).execute()
-                                                st.success(f"Objetivo '{cod_item}' excluído com sucesso!")
-                                                st.rerun()
-                                        except Exception as e:
-                                            st.error(f"Erro ao excluir objetivo estratégico: {e}")
-                else:
-                    st.info("Nenhum objetivo estratégico cadastrado no banco de dados.")
-            except Exception as e:
-                st.error(f"Erro ao carregar objetivos estratégicos: {e}")
-
-        with tab_oe_novo:
-            with st.form("form_cadastrar_oe", clear_on_submit=True):
-                col_oe1, col_oe2 = st.columns([1, 2])
-                with col_oe1:
-                    new_codigo = st.text_input("Código*", placeholder="Ex: OE01, OE-02").upper().strip()
-                    new_dimensao = st.text_input("Dimensão*", placeholder="Ex: Governança, Ensino, Infraestrutura")
-                with col_oe2:
-                    new_descricao = st.text_area("Descrição*", placeholder="Descreva o Objetivo Estratégico...")
-                
-                new_desafio = st.text_area("Desafio*", placeholder="Descreva o Desafio associado...")
-                
-                submitted_oe = st.form_submit_button("💾 Salvar Objetivo Estratégico")
-                
-                if submitted_oe:
-                    if not new_codigo or not new_descricao or not new_desafio or not new_dimensao:
-                        st.warning("Por favor, preencha todos os campos do formulário.")
-                    else:
-                        try:
-                            supabase.table("objetivos_estrategicos").insert({
-                                "codigo": new_codigo,
-                                "descricao": new_descricao,
-                                "desafio": new_desafio,
-                                "dimensao": new_dimensao
-                            }).execute()
-                            st.success(f"✅ Objetivo Estratégico '{new_codigo}' cadastrado com sucesso!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Erro ao cadastrar objetivo estratégico: {e}")
-
-    elif sub == "Categorias de Risco" and is_admin:
-        st.subheader("🏷️ Gestão de Categorias de Risco")
-        tab_cat_list, tab_cat_nova = st.tabs(["🔍 Categorias Cadastradas", "➕ Nova Categoria"])
-        
-        with tab_cat_list:
-            try:
-                res_cat = supabase.table("categorias_riscos").select("*").order("tipo").execute()
-                dados_cat = res_cat.data or []
-                
-                if dados_cat:
-                    st.write(f"Total de categorias registradas: **{len(dados_cat)}**")
-                    for c_item in dados_cat:
-                        cid = c_item["id"]
-                        ctipo = c_item.get("tipo", "")
-                        csub = c_item.get("sub_tipo", "")
-                        cdet = c_item.get("detalhamento", "")
-                        
-                        with st.expander(f"🏷️ **{ctipo}** / {csub}"):
-                            st.write(f"**Tipo:** {ctipo}")
-                            st.write(f"**Subtipo:** {csub}")
-                            st.write(f"**Detalhamento:** {cdet or '-'}")
-                            st.caption(f"Criado em: {formatar_data_hora_br(c_item.get('criado_em'))}")
-                            
-                            col_c_edit, col_c_del = st.columns([1, 1])
-                            with col_c_edit:
-                                pop_edit_cat = st.popover("✏️ Editar")
-                                with pop_edit_cat:
-                                    with st.form(f"form_edit_cat_{cid}"):
-                                        e_tipo = st.text_input("Tipo", value=ctipo)
-                                        e_sub = st.text_input("Subtipo", value=csub)
-                                        e_det = st.text_area("Detalhamento", value=cdet)
-                                        
-                                        if st.form_submit_button("💾 Salvar Alterações"):
-                                            try:
-                                                supabase.table("categorias_riscos").update({
-                                                    "tipo": e_tipo,
-                                                    "sub_tipo": e_sub,
-                                                    "detalhamento": e_det
-                                                }).eq("id", cid).execute()
-                                                st.success("Categoria atualizada!")
-                                                st.rerun()
-                                            except Exception as e:
-                                                st.error(f"Erro ao atualizar categoria: {e}")
-
-                            with col_c_del:
-                                pop_del_cat = st.popover("🗑️ Excluir")
-                                with pop_del_cat:
-                                    st.warning(f"Deseja excluir a categoria '{ctipo} / {csub}'?")
-                                    if st.button("Confirmar Exclusão", key=f"btn_del_cat_{cid}"):
-                                        try:
-                                            res_vinc_c = supabase.table("riscos").select("id").eq("categoria_risco", cid).execute()
-                                            if res_vinc_c.data and len(res_vinc_c.data) > 0:
-                                                st.error(f"❌ Impossível excluir. Existem {len(res_vinc_c.data)} risco(s) vinculados a esta categoria.")
-                                            else:
-                                                supabase.table("categorias_riscos").delete().eq("id", cid).execute()
-                                                st.success("Categoria excluída com sucesso!")
-                                                st.rerun()
-                                        except Exception as e:
-                                            st.error(f"Erro ao excluir categoria: {e}")
-                else:
-                    st.info("Nenhuma categoria cadastrada.")
-            except Exception as e:
-                st.error(f"Erro ao carregar categorias de risco: {e}")
-                
-        with tab_cat_nova:
-            with st.form("form_nova_categoria", clear_on_submit=True):
-                col_cat1, col_cat2 = st.columns(2)
-                with col_cat1:
-                    new_tipo = st.text_input("Tipo*", placeholder="Ex: Operacional, Financeiro, Estratégico")
-                with col_cat2:
-                    new_sub_tipo = st.text_input("Subtipo*", placeholder="Ex: Gestão Orçamentária, Recursos Humanos")
-                
-                new_detalhamento = st.text_area("Detalhamento", placeholder="Descrição detalhada dos riscos abrangidos nesta categoria...")
-                
-                if st.form_submit_button("💾 Salvar Categoria"):
-                    if not new_tipo or not new_sub_tipo:
-                        st.warning("Preencha o Tipo e o Subtipo da categoria.")
-                    else:
-                        try:
-                            supabase.table("categorias_riscos").insert({
-                                "tipo": new_tipo,
-                                "sub_tipo": new_sub_tipo,
-                                "detalhamento": new_detalhamento
-                            }).execute()
-                            st.success("✅ Categoria de risco registrada com sucesso!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Erro ao cadastrar categoria: {e}")
-
-    elif sub == "Identidade Visual" and is_admin:
-        st.subheader("🖼️ Configuração de Identidade Visual e Logotipos")
-        st.caption("Personalize os logotipos exibidos no sistema enviando imagens diretamente para o armazenamento.")
-        
-        col_v1, col_v2, col_v3 = st.columns(3)
-        
-        def salvar_logo_storage_e_config(file_obj, key_config, file_name):
-            try:
-                bytes_data = file_obj.getvalue()
-                bucket = supabase.storage.from_("identidade_visual")
-                
-                try:
-                    bucket.remove([file_name])
-                except Exception:
-                    pass
-                
-                bucket.upload(file_name, bytes_data, {"content-type": file_obj.type})
-                public_url = bucket.get_public_url(file_name)
-                
-                supabase.table("configuracoes").upsert({
-                    "chave": key_config,
-                    "valor": public_url
-                }, on_conflict="chave").execute()
-                
-                return True, public_url
-            except Exception as e:
-                return False, str(e)
-
-        with col_v1:
-            st.markdown("##### 1. Logotipo Completo SIGER")
-            if url_logo_siger:
-                st.image(url_logo_siger, use_container_width=True)
-            else:
-                st.info("Logotipo completo padrão ativo.")
-                
-            up_siger = st.file_uploader("Enviar novo logo completo (PNG/JPG)", type=["png", "jpg", "jpeg"], key="up_siger")
-            if up_siger and st.button("💾 Atualizar Logo SIGER"):
-                ok, res_url = salvar_logo_storage_e_config(up_siger, "url_logo_siger", "logo_siger.png")
-                if ok:
-                    st.success("Logo completo atualizado com sucesso!")
-                    st.rerun()
-                else:
-                    st.error(f"Erro ao salvar imagem: {res_url}")
-
-        with col_v2:
-            st.markdown("##### 2. Logotipo Reduzido / Ícone (Favicon)")
-            if url_logo_reduzido:
-                st.image(url_logo_reduzido, width=100)
-            else:
-                st.info("Ícone reduzido padrão ativo.")
-                
-            up_red = st.file_uploader("Enviar novo ícone reduzido (PNG/JPG)", type=["png", "jpg", "jpeg"], key="up_red")
-            if up_red and st.button("💾 Atualizar Logo Reduzido"):
-                ok, res_url = salvar_logo_storage_e_config(up_red, "url_logo_reduzido", "logo_reduzido.png")
-                if ok:
-                    st.success("Logo reduzido atualizado com sucesso!")
-                    st.rerun()
-                else:
-                    st.error(f"Erro ao salvar imagem: {res_url}")
-
-        with col_v3:
-            st.markdown("##### 3. Logotipo da Instituição")
-            if url_logo_instituicao:
-                st.image(url_logo_instituicao, use_container_width=True)
-            else:
-                st.info("Nenhum logotipo institucional cadastrado.")
-                
-            up_inst = st.file_uploader("Enviar logo institucional (PNG/JPG)", type=["png", "jpg", "jpeg"], key="up_inst")
-            if up_inst and st.button("💾 Atualizar Logo Institucional"):
-                ok, res_url = salvar_logo_storage_e_config(up_inst, "url_logo_instituicao", "logo_instituicao.png")
-                if ok:
-                    st.success("Logo institucional atualizado com sucesso!")
-                    st.rerun()
-                else:
-                    st.error(f"Erro ao salvar imagem: {res_url}")
-
-    elif sub == "Documentos da Biblioteca" and is_admin:
-        st.subheader("📚 Cadastramento de Documentos e Normativas na Biblioteca")
-        tab_b_list, tab_b_novo = st.tabs(["🔍 Documentos Cadastrados", "➕ Enviar Novo Documento PDF"])
-        
-        with tab_b_list:
-            try:
-                res_docs = supabase.table("biblioteca").select("*").order("id", desc=True).execute()
-                list_docs = res_docs.data or []
-                
-                if list_docs:
-                    st.write(f"Total de documentos na biblioteca: **{len(list_docs)}**")
-                    for d in list_docs:
-                        doc_id = d["id"]
-                        d_titulo = d.get("titulo", "Sem título")
-                        d_desc = d.get("descricao", "")
-                        d_url = d.get("url_publica", "#")
-                        d_arq = d.get("nome_arquivo", "")
-                        
-                        with st.expander(f"📄 **{d_titulo}**"):
-                            st.write(f"**Descrição:** {d_desc or 'Sem descrição'}")
-                            st.write(f"**Nome do Arquivo:** {d_arq}")
-                            st.caption(f"Data do Upload: {formatar_data_hora_br(d.get('data_upload'))}")
-                            
-                            col_b_act1, col_b_act2 = st.columns([1, 1])
-                            with col_b_act1:
-                                st.link_button("📥 Abrir / Download PDF", d_url)
-                            with col_b_act2:
-                                pop_del_doc = st.popover("🗑 Excluir Documento")
-                                with pop_del_doc:
-                                    st.warning(f"Deseja remover o documento '{d_titulo}'?")
-                                    if st.button("Confirmar Exclusão", key=f"btn_del_doc_{doc_id}"):
-                                        try:
-                                            if d_arq:
-                                                try:
-                                                    supabase.storage.from_("biblioteca_documentos").remove([d_arq])
-                                                except Exception:
-                                                    pass
-                                            supabase.table("biblioteca").delete().eq("id", doc_id).execute()
-                                            st.success("Documento excluído com sucesso!")
-                                            st.rerun()
-                                        except Exception as e:
-                                            st.error(f"Erro ao excluir documento: {e}")
-                else:
-                    st.info("Nenhum documento cadastrado na biblioteca.")
-            except Exception as e:
-                st.error(f"Erro ao carregar biblioteca de documentos: {e}")
-
-        with tab_b_novo:
-            with st.form("form_upload_doc_biblioteca", clear_on_submit=True):
-                doc_titulo = st.text_input("Título do Documento / Normativa*")
-                doc_desc = st.text_area("Descrição do Conteúdo")
-                doc_file = st.file_uploader("Selecione o arquivo PDF*", type=["pdf"])
-                
-                if st.form_submit_button("📤 Salvar e Publicar Documento"):
-                    if not doc_titulo or not doc_file:
-                        st.warning("Preencha o título e selecione um arquivo PDF.")
-                    else:
-                        try:
-                            nome_arquivo_saneado = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{doc_file.name.replace(' ', '_')}"
-                            bytes_pdf = doc_file.getvalue()
-                            
-                            bucket_bib = supabase.storage.from_("biblioteca_documentos")
-                            bucket_bib.upload(nome_arquivo_saneado, bytes_pdf, {"content-type": "application/pdf"})
-                            public_url_pdf = bucket_bib.get_public_url(nome_arquivo_saneado)
-                            
-                            supabase.table("biblioteca").insert({
-                                "titulo": doc_titulo,
-                                "descricao": doc_desc,
-                                "nome_arquivo": nome_arquivo_saneado,
-                                "url_publica": public_url_pdf,
-                                "data_upload": datetime.now().isoformat()
-                            }).execute()
-                            
-                            st.success("✅ Documento publicado com sucesso na biblioteca!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Erro ao enviar documento para a biblioteca: {e}")
-
-    elif sub == "Texto da Tela Inicial" and is_admin:
-        st.subheader("✍ Edição do Texto da Tela Inicial")
-        st.caption("Altere a mensagem de boas-vindas apresentada na página inicial do sistema.")
-        
-        texto_atual = ""
-        try:
-            res_txt = supabase.table("configuracoes").select("valor").eq("chave", "texto_pagina_inicial").execute()
-            if res_txt.data and len(res_txt.data) > 0:
-                texto_atual = res_txt.data[0]["valor"]
-        except Exception as e:
-            st.error(f"Erro ao carregar texto atual: {e}")
-
-        with st.form("form_edit_texto_inicial"):
-            novo_texto_home = st.text_area(
-                "Texto de Boas-Vindas e Apresentação (Suporta tags HTML como <b>, <br>, <i>)*", 
-                value=texto_atual, 
-                height=250
-            )
-            
-            if st.form_submit_button("💾 Salvar Texto da Tela Inicial"):
-                try:
-                    supabase.table("configuracoes").upsert({
-                        "chave": "texto_pagina_inicial",
-                        "valor": novo_texto_home
-                    }, on_conflict="chave").execute()
-                    
-                    st.success("✅ Texto da tela inicial atualizado com sucesso!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao salvar texto inicial: {e}")
-
-    elif sub == "Riscos" and is_gestor:
-        st.subheader("📋 Gestão e Cadastro de Riscos Institucionais")
+    # 1. TELA: RISCOS
+    if sub_gr == "Riscos" and is_gestor:
+        st.title("📋 Riscos")
         tab1, tab2 = st.tabs(["🔍 Riscos Cadastrados", "➕ Novo Risco"])
         
         with tab1:
@@ -2077,7 +1317,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         if st.form_submit_button("💾 Salvar Alterações"):
                                             novo_nivel = e_prob * e_imp
     
-                                            # 1. Atualiza o cadastro do risco
                                             supabase.table("riscos").update({
                                                 "evento": e_evento,
                                                 "causa": e_causa,
@@ -2089,7 +1328,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                                                 "situacao_status": e_sit
                                             }).eq("id", r_item['id']).execute()
     
-                                            # 2. Grava o novo nó na tabela de histórico para alimentar o gráfico
                                             dados_avaliac = {
                                                 "risco_id": r_item['id'],
                                                 "probabilidade": e_prob,
@@ -2102,7 +1340,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                             }
                                             supabase.table("avaliacoes_risco").insert(dados_avaliac).execute()
     
-                                            st.success("✅ Risco reavaliado e novo ponto registrado na Evolução Histórica!")
+                                            st.success("✅ Risco reavaliado e novo ponto registrado!")
                                             st.rerun()
 
                             with col_r_del:
@@ -2116,6 +1354,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                             st.rerun()
                                         except Exception as e:
                                             st.error(f"Erro ao excluir: {e}")
+
                             with col_r_enc:
                                 if st_risco != "Encerrado":
                                     pop_enc_cad = st.popover("🔒 Encerrar Formalmente")
@@ -2146,7 +1385,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                                         }
                                                         supabase.table("tramitacoes").insert(dados_tram_enc).execute()
 
-                                                        st.success("✅ Risco encerrado formalmente com justificativa e responsável registrados!")
+                                                        st.success("✅ Risco encerrado formalmente!")
                                                         st.rerun()
                                                     except Exception as e_enc:
                                                         st.error(f"Erro ao encerrar risco: {e_enc}")
@@ -2243,6 +1482,661 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao salvar o risco no banco de dados: {e}")
+
+    # 2. TELA: REAVALIAÇÃO DO NÍVEL DE RISCO
+    elif sub_gr == "Reavaliação do Nível de Risco" and is_gestor:
+        st.title("🎯 Reavaliação do Nível de Risco")
+        st.caption("Atualize a probabilidade e o impacto do risco com base na efetividade das ações executadas.")
+
+        try:
+            res_riscos = supabase.table("riscos").select("*").order("id", desc=True).execute()
+            lista_riscos = res_riscos.data or []
+        except Exception as e:
+            st.error(f"Erro ao carregar lista de riscos: {e}")
+            lista_riscos = []
+
+        if not lista_riscos:
+            st.info("Nenhum risco cadastrado para reavaliação.")
+        else:
+            mapa_riscos_reav = {f"Risco #{r['id']} | {r['unidade']} - {r['evento'][:60]}...": r for r in lista_riscos}
+            risco_sel_label = st.selectbox("🎯 Selecione o Risco para Reavaliar:", list(mapa_riscos_reav.keys()))
+            risco_obj = mapa_riscos_reav[risco_sel_label]
+            r_id = risco_obj["id"]
+
+            st.divider()
+
+            col_inf1, col_inf2 = st.columns([2, 1])
+            with col_inf1:
+                st.markdown(f"### 🛡️ Risco #{r_id}: {risco_obj.get('evento')}")
+                st.markdown(f"**Unidade:** `{risco_obj.get('unidade')}` | **Gestor:** `{risco_obj.get('gestor_risco', '-')}`")
+                st.markdown(f"**Causa:** {risco_obj.get('causa', '-')}")
+                st.markdown(f"**Consequência:** {risco_obj.get('consequencia', '-')}")
+
+            with col_inf2:
+                p_at = int(risco_obj.get("probabilidade") or 1)
+                i_at = int(risco_obj.get("impacto") or 1)
+                n_at = int(risco_obj.get("nivel_risco") or (p_at * i_at))
+                cor_n = "🔴 Crítico" if n_at >= 15 else "🟡 Médio" if n_at >= 8 else "🟢 Baixo"
+
+                st.info(f"""
+                📊 **Situação Atual do Risco:**
+                * **Probabilidade:** {p_at} / 5
+                * **Impacto:** {i_at} / 5
+                * **Nível de Risco:** **{n_at}** ({cor_n})
+                """)
+
+            st.divider()
+
+            st.markdown("### 📝 Formulário de Reavaliação")
+            with st.form(f"form_reavaliar_dedicado_{r_id}"):
+                col_sl1, col_sl2 = st.columns(2)
+                with col_sl1:
+                    p_nova = st.slider("Nova Probabilidade (1 a 5)*", 1, 5, value=p_at)
+                with col_sl2:
+                    i_novo = st.slider("Novo Impacto (1 a 5)*", 1, 5, value=i_at)
+
+                just_reav = st.text_area(
+                    "Justificativa da Reavaliação*", 
+                    placeholder="Descreva as razões técnicas, ações implementadas ou evidências que justificam a alteração da nota..."
+                )
+
+                novo_nivel_calc = p_nova * i_novo
+                cor_novo_n = "🔴 Crítico" if novo_nivel_calc >= 15 else "🟡 Médio" if novo_nivel_calc >= 8 else "🟢 Baixo"
+                st.caption(f"⚡ **Novo Nível do Risco Calculado:** `{novo_nivel_calc}` ({cor_novo_n})")
+
+                btn_sub_reav = st.form_submit_button("💾 Confirmar e Gravar Nova Avaliação")
+
+            if btn_sub_reav:
+                if not just_reav.strip():
+                    st.warning("Preencha a justificativa da reavaliação.")
+                else:
+                    try:
+                        novo_nivel_calc = p_nova * i_novo
+
+                        supabase.table("riscos").update({
+                            "probabilidade": p_nova,
+                            "impacto": i_novo
+                        }).eq("id", r_id).execute()
+
+                        supabase.table("avaliacoes_risco").insert({
+                            "risco_id": r_id,
+                            "probabilidade": p_nova,
+                            "impacto": i_novo,
+                            "data_avaliacao": datetime.now().isoformat(),
+                            "usuario_avaliador": usr_atual["nome"],
+                            "tipo_avaliacao": "Reavaliação Periódica",
+                            "justificativa": just_reav.strip()
+                        }).execute()
+
+                        st.toast(f"✅ Risco #{r_id} reavaliado com sucesso para Nível {novo_nivel_calc}!", icon="🎉")
+                        st.success(f"✅ Risco #{r_id} reavaliado com sucesso para Nível {novo_nivel_calc}!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao salvar reavaliação: {e}")
+
+    # 3. TELA: AÇÕES DE TRATAMENTO
+    else:
+        st.title("📋 Ações de Tratamento")
+        
+        tab_list_acoes, tab_nova_acao = st.tabs(["🔍 Ações Cadastradas", "➕ Cadastrar Nova Ação de Tratamento"])
+        
+        with tab_list_acoes:
+            try:
+                res_acoes = supabase.table("acoes_tratamento").select("*, riscos(id, evento, unidade)").order("risco_id").order("numero_sequencial").execute()
+                
+                if res_acoes.data:
+                    st.write(f"Total de ações de tratamento registradas: **{len(res_acoes.data)}**")
+                    
+                    for acao_item in res_acoes.data:
+                        r_id = acao_item["risco_id"]
+                        seq = acao_item["numero_sequencial"]
+                        carater = acao_item["carater_acao"]
+                        nome_acao = acao_item["acao"]
+                        
+                        dados_risco_rel = acao_item.get("riscos") or {}
+                        evento_txt = dados_risco_rel.get("evento", "Não especificado")
+                        
+                        badge_carater = "🟢" if carater == "Preventivo" else "🟡" if carater == "Corretivo" else "🔵"
+                        
+                        dt_inicio_fmt = formatar_data_br(acao_item.get('previsao_data_inicio'))
+                        dt_conclusao_fmt = formatar_data_br(acao_item.get('previsao_data_conclusao'))
+                        
+                        with st.expander(f"{badge_carater} Risco #{r_id} | Ação {seq}: {nome_acao}"):
+                            st.markdown(f"**Risco:** {evento_txt}")
+                            st.markdown(f"**Caráter da Ação:** {carater}")
+                            st.markdown(f"**Status da Ação:** `{acao_item.get('status_acao', 'Pendente')}`")
+                            st.markdown(f"**Objetivo da Ação:** {acao_item['objetivo_acao']}")
+                            st.markdown(f"**Unidade Responsável:** {acao_item['unidade_responsavel']}")
+                            st.markdown(f"**Responsável pela Implementação:** {acao_item['nome_responsavel_implementacao']}")
+                            st.markdown(f"**Como será Implementada:** {acao_item['como_sera_implementada']}")
+                            st.markdown(f"**Período de Execução:** {dt_inicio_fmt} até {dt_conclusao_fmt}")
+                            
+                            if is_gestor:
+                                col_ac_edit, col_ac_del = st.columns([1, 1])
+                                
+                                with col_ac_edit:
+                                    pop_edit_ac = st.popover("✏ Edit Ação")
+                                    with pop_edit_ac:
+                                        with st.form(f"form_edit_acao_{r_id}_{seq}"):
+                                            edit_nome_ac = st.text_input("Ação", value=nome_acao)
+                                            
+                                            idx_carater = ["Preventivo", "Corretivo", "Compensatório"].index(carater) if carater in ["Preventivo", "Corretivo", "Compensatório"] else 0
+                                            edit_carater = st.selectbox("Caráter da Ação", ["Preventivo", "Corretivo", "Compensatório"], index=idx_carater)
+                                            
+                                            edit_obj = st.text_area("Objetivo da Ação", value=acao_item['objetivo_acao'])
+                                            edit_resp = st.text_input("Responsável pela Implementação", value=acao_item['nome_responsavel_implementacao'])
+                                            edit_como = st.text_area("Como será Implementada", value=acao_item['como_sera_implementada'])
+                                            
+                                            d_i = datetime.strptime(acao_item['previsao_data_inicio'], "%Y-%m-%d").date() if acao_item.get('previsao_data_inicio') else datetime.now().date()
+                                            d_f = datetime.strptime(acao_item['previsao_data_conclusao'], "%Y-%m-%d").date() if acao_item.get('previsao_data_conclusao') else datetime.now().date()
+                                            
+                                            edit_dt_i = st.date_input("Previsão Início", value=d_i, format="DD/MM/YYYY")
+                                            edit_dt_f = st.date_input("Previsão Conclusão", value=d_f, format="DD/MM/YYYY")
+                                            
+                                            if st.form_submit_button("💾 Salvar Alterações"):
+                                                if edit_dt_f < edit_dt_i:
+                                                    st.error("A data de conclusão não pode ser anterior à data de início.")
+                                                else:
+                                                    supabase.table("acoes_tratamento").update({
+                                                        "acao": edit_nome_ac,
+                                                        "carater_acao": edit_carater,
+                                                        "objetivo_acao": edit_obj,
+                                                        "nome_responsavel_implementacao": edit_resp,
+                                                        "como_sera_implementada": edit_como,
+                                                        "previsao_data_inicio": edit_dt_i.strftime("%Y-%m-%d"),
+                                                        "previsao_data_conclusao": edit_dt_f.strftime("%Y-%m-%d")
+                                                    }).eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
+                                                    
+                                                    st.success("Ação atualizada!")
+                                                    st.rerun()
+
+                                with col_ac_del:
+                                    pop_del_ac = st.popover("🗑️ Excluir Ação")
+                                    with pop_del_ac:
+                                        st.warning("Deseja remover esta ação de tratamento?")
+                                        if st.button("Confirmar Exclusão", key=f"btn_del_ac_{r_id}_{seq}"):
+                                            try:
+                                                supabase.table("acoes_tratamento").delete().eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
+                                                recalcular_e_atualizar_status_risco(r_id)
+                                                st.success("Ação removida e status do risco atualizado!")
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Erro ao excluir ação: {e}")
+                else:
+                    st.info("Nenhuma ação de tratamento cadastrada até o momento.")
+            except Exception as e:
+                st.error(f"Erro ao carregar ações de tratamento: {e}")
+                
+        with tab_nova_acao:
+            if not is_gestor:
+                st.warning("Seu perfil de usuário possui acesso apenas de leitura.")
+            else:
+                try:
+                    res_riscos_db = supabase.table("riscos").select("id, evento, unidade").order("id").execute().data or []
+                    res_unid_db = supabase.table("unidades").select("sigla, nome_extenso").order("sigla").execute().data or []
+                except Exception:
+                    res_riscos_db, res_unid_db = [], []
+                    
+                if not res_riscos_db:
+                    st.warning("⚠️ É necessário ter pelo menos um Risco cadastrado no sistema para criar um Plano de Tratamento.")
+                else:
+                    mapa_riscos = {f"Risco #{r['id']} - {r['evento'] if r['evento'] else 'Sem Risco'}" : (r['id'], r['unidade']) for r in res_riscos_db}
+                    
+                    opcoes_unid_siglas = [u['sigla'] for u in res_unid_db] if res_unid_db else ["S/U"]
+
+                    risco_selecionado_label = st.selectbox("Selecione o Risco Mapeado*", options=list(mapa_riscos.keys()))
+                    id_risco_sel, unidade_origem_risco = mapa_riscos[risco_selecionado_label]
+                    
+                    try:
+                        res_seq = supabase.table("acoes_tratamento").select("numero_sequencial").eq("risco_id", id_risco_sel).order("numero_sequencial", desc=True).limit(1).execute()
+                        prox_seq = (res_seq.data[0]["numero_sequencial"] + 1) if res_seq.data else 1
+                    except Exception:
+                        prox_seq = 1
+                        
+                    st.info(f"📌 Esta será a **Ação nº {prox_seq}** associada ao **Risco #{id_risco_sel}**.")
+
+                    with st.form("form_cadastrar_acao_tratamento", clear_on_submit=True):
+                        col_a1, col_a2 = st.columns(2)
+                        with col_a1:
+                            acao_input = st.text_input("Ação de Tratamento*", placeholder="Ex: Implantar rotina diária de backup automatizado")
+                            carater_sel = st.selectbox("Caráter da Ação*", options=["Preventivo", "Corretivo", "Compensatório"])
+                            unidade_resp_sel = st.selectbox("Unidade Responsável pela Ação*", options=opcoes_unid_siglas)
+                        with col_a2:
+                            nome_resp_input = st.text_input("Nome do Responsável pela Implementação*", value=usr_atual["nome"])
+                            dt_inicio = st.date_input("Previsão da Data do Início*", datetime.now(), format="DD/MM/YYYY")
+                            dt_conclusao = st.date_input("Previsão da Data da Conclusão*", datetime.now(), format="DD/MM/YYYY")
+
+                        objetivo_input = st.text_area("Objetivo da Ação*", placeholder="O que se pretende alcançar com esta ação?")
+                        como_input = st.text_area("Como será Implementada a Ação*", placeholder="Descreva o passo a passo...")
+
+                        st.caption("* Campos de preenchimento obrigatório.")
+                        submitted_acao = st.form_submit_button("💾 Salvar Ação de Tratamento")
+
+                        if submitted_acao:
+                            if not acao_input or not objetivo_input or not nome_resp_input or not como_input:
+                                st.warning("Por favor, preencha todos os campos obrigatórios do formulário.")
+                            elif dt_conclusao < dt_inicio:
+                                st.error("A Previsão da Data de Conclusão não pode ser anterior à Data do Início.")
+                            else:
+                                dados_nova_acao = {
+                                    "risco_id": id_risco_sel,
+                                    "numero_sequencial": prox_seq,
+                                    "acao": acao_input,
+                                    "carater_acao": carater_sel,
+                                    "objetivo_acao": objetivo_input,
+                                    "unidade_responsavel": unidade_resp_sel,
+                                    "nome_responsavel_implementacao": nome_resp_input,
+                                    "como_sera_implementada": como_input,
+                                    "previsao_data_inicio": dt_inicio.strftime("%Y-%m-%d"),
+                                    "previsao_data_conclusao": dt_conclusao.strftime("%Y-%m-%d"),
+                                    "status_acao": "Pendente"
+                                }
+                                try:
+                                    supabase.table("acoes_tratamento").insert(dados_nova_acao).execute()
+                                    
+                                    dados_mov_inicial = {
+                                        "risco_id": id_risco_sel,
+                                        "numero_sequencial": prox_seq,
+                                        "status_anterior": None,
+                                        "status_novo": "Pendente",
+                                        "descricao_avanco": "Ação cadastrada e aguardando início de implementação.",
+                                        "percentual_conclusao": 0,
+                                        "unidade_responsavel": unidade_resp_sel,
+                                        "usuario_responsavel": nome_resp_input
+                                    }
+                                    supabase.table("movimentacoes_acoes").insert(dados_mov_inicial).execute()
+
+                                    dados_tramitacao_acao = {
+                                        "risco_id": id_risco_sel,
+                                        "unidade_origem": unidade_origem_risco or unidade_resp_sel,
+                                        "unidade_destino": unidade_resp_sel,
+                                        "usuario_remetente": usr_atual["nome"],
+                                        "parecer_observacao": f"Ação nº {prox_seq} registrada e atribuída a {nome_resp_input}."
+                                    }
+                                    supabase.table("tramitacoes").insert(dados_tramitacao_acao).execute()
+
+                                    supabase.table("riscos").update({"situacao_status": "Em tratamento"}).eq("id", id_risco_sel).execute()
+
+                                    emails_dest = obter_emails_unidade_ou_usuario(unidade_sigla=unidade_resp_sel, nome_usuario=nome_resp_input)
+                                    if emails_dest:
+                                        assunto_e = f"🛡️ [SIGER] Nova Ação de Tratamento Atribuída - Risco #{id_risco_sel} (Ação {prox_seq})"
+                                        corpo_html = f"""
+                                        <h3>Nova Ação de Tratamento Atribuída</h3>
+                                        <p>Olá,</p>
+                                        <p>Uma nova ação foi vinculada ao Risco <b>#{id_risco_sel}</b> e atribuída para a sua unidade (<b>{unidade_resp_sel}</b>).</p>
+                                        <ul>
+                                            <li><b>Ação:</b> {acao_input}</li>
+                                            <li><b>Responsável:</b> {nome_resp_input}</li>
+                                            <li><b>Prazo Conclusão:</b> {dt_conclusao.strftime('%d/%m/%Y')}</li>
+                                        </ul>
+                                        <p>Acesse o SIGER para acompanhar a demanda.</p>
+                                        """
+                                        enviar_email_notificacao_siger(emails_dest, assunto_e, corpo_html)
+
+                                    st.success(f"✅ Ação nº {prox_seq} cadastrada e notificação por e-mail enviada!")
+                                    st.rerun()
+                                except Exception as e:
+                                    st.error(f"Erro ao salvar ação no banco de dados: {e}")
+
+# ---------------------------------------------------------
+# PÁGINA: CADASTROS
+# ---------------------------------------------------------
+elif st.session_state.pagina_atual == "Cadastros":
+    sub = st.session_state.sub_pagina_atual or "Unidades"
+    
+    # 1. SUBPÁGINA: UNIDADES
+    if sub == "Unidades" and is_admin:
+        st.title("🏢 Unidades")
+        tab_list_unid, tab_novo_unid = st.tabs(["🔍 Unidades Cadastradas", "➕ Nova Unidade"])
+        
+        with tab_list_unid:
+            try:
+                resposta_unid = supabase.table("unidades").select("*").order("sigla").execute()
+                dados_unid = resposta_unid.data
+                
+                if dados_unid:
+                    st.write(f"Total de unidades cadastradas: **{len(dados_unid)}**")
+                    for item in dados_unid:
+                        sigla_item = str(item['sigla']).strip()
+                        nome_item = item.get('nome_extenso', '')
+                        tipo_exibicao = item.get('tipo_unidade', 'Não informado')
+                        
+                        with st.expander(f"📍 **{sigla_item}** | {nome_item} ({tipo_exibicao})"):
+                            col_info, col_acoes = st.columns([3, 1])
+                            with col_info:
+                                st.write(f"**Sigla:** {sigla_item}")
+                                st.write(f"**Nome por Extenso:** {nome_item}")
+                                st.write(f"**Tipo da Unidade:** {tipo_exibicao}")
+                            
+                            with col_acoes:
+                                modal_edit = st.popover("✏️ Editar")
+                                with modal_edit:
+                                    st.markdown("### Editar Unidade")
+                                    with st.form(f"form_edit_unid_{sigla_item}"):
+                                        edit_nome = st.text_input("Nome Extenso", value=nome_item)
+                                        val_atual = item.get('tipo_unidade')
+                                        idx_tipo = TIPOS_UNIDADE_OPCOES.index(val_atual) if val_atual in TIPOS_UNIDADE_OPCOES else 0
+                                        edit_tipo = st.selectbox("Tipo da Unidade*", options=TIPOS_UNIDADE_OPCOES, index=idx_tipo)
+                                        
+                                        if st.form_submit_button("💾 Salvar Alterações"):
+                                            try:
+                                                supabase.table("unidades").update({
+                                                    "nome_extenso": edit_nome,
+                                                    "tipo_unidade": edit_tipo
+                                                }).eq("sigla", sigla_item).execute()
+                                                st.toast("Unidade atualizada com sucesso!", icon="✅")
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Erro ao atualizar: {e}")
+
+                                modal_del = st.popover("🗑️ Excluir")
+                                with modal_del:
+                                    st.warning(f"Tem certeza que deseja excluir a unidade '{sigla_item}'?")
+                                    if st.button("Confirmar Exclusão", key=f"btn_del_unid_{sigla_item}"):
+                                        try:
+                                            res_riscos = supabase.table("riscos").select("id").eq("unidade", sigla_item).execute()
+                                            if res_riscos.data and len(res_riscos.data) > 0:
+                                                st.error(f"❌ Impossível excluir '{sigla_item}'. Existem {len(res_riscos.data)} risco(s) vinculados.")
+                                            else:
+                                                supabase.table("unidades").delete().eq("sigla", sigla_item).execute()
+                                                st.toast(f"Unidade '{sigla_item}' excluída!", icon="🗑")
+                                                st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Erro ao tentar excluir: {e}")
+                else:
+                    st.info("Nenhuma unidade cadastrada.")
+            except Exception as e:
+                st.error(f"Erro ao carregar unidades: {e}")
+                
+        with tab_novo_unid:
+            with st.form("form_cadastrar_unidade", clear_on_submit=True):
+                col_u1, col_u2 = st.columns(2)
+                with col_u1:
+                    sigla = st.text_input("Sigla da Unidade*", placeholder="Ex: PRAE, PRPGP, CCSH, REITORIA").upper().strip()
+                    nome_extenso = st.text_input("Nome da Unidade por Extenso*", placeholder="Ex: Pró-Reitoria de Assuntos Estudantis")
+                with col_u2:
+                    tipo_unidade_sel = st.selectbox("Tipo da Unidade*", options=TIPOS_UNIDADE_OPCOES)
+                
+                submitted_unid = st.form_submit_button("💾 Salvar Unidade")
+                
+                if submitted_unid:
+                    if not sigla or not nome_extenso:
+                        st.warning("Por favor, preencha a Sigla e o Nome por Extenso.")
+                    else:
+                        try:
+                            supabase.table("unidades").insert({
+                                "sigla": sigla,
+                                "nome_extenso": nome_extenso,
+                                "tipo_unidade": tipo_unidade_sel
+                            }).execute()
+                            st.toast(f"✅ Unidade '{sigla}' registrada!", icon="🎉")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao salvar unidade: {e}")
+
+    # 2. SUBPÁGINA: OBJETIVOS ESTRATÉGICOS
+    elif sub == "Objetivos Estratégicos" and is_admin:
+        st.title("🎯 Objetivos Estratégicos")
+        tab_oe_list, tab_oe_novo = st.tabs(["🔍 Objetivos Cadastrados", "➕ Novo Objetivo Estratégico"])
+        
+        with tab_oe_list:
+            try:
+                res_oe = supabase.table("objetivos_estrategicos").select("*").order("codigo").execute()
+                dados_oe = res_oe.data or []
+                
+                if dados_oe:
+                    st.write(f"Total de objetivos estratégicos cadastrados: **{len(dados_oe)}**")
+                    for item in dados_oe:
+                        cod_item = str(item['codigo']).strip()
+                        desc_item = item.get('descricao', '')
+                        desafio_item = item.get('desafio', '')
+                        dimensao_item = item.get('dimensao', '')
+                        
+                        with st.expander(f"🎯 **{cod_item}** | {desc_item[:80]}..."):
+                            st.write(f"**Código:** {cod_item}")
+                            st.write(f"**Descrição:** {desc_item}")
+                            st.write(f"**Desafio:** {desafio_item}")
+                            st.write(f"**Dimensão:** {dimensao_item}")
+                            
+                            col_info, col_acoes = st.columns([1, 1])
+                            with col_info:
+                                pop_edit = st.popover("✏️ Editar")
+                                with pop_edit:
+                                    st.markdown("### Editar Objetivo Estratégico")
+                                    with st.form(f"form_edit_oe_{cod_item}"):
+                                        e_desc = st.text_area("Descrição", value=desc_item)
+                                        e_desafio = st.text_area("Desafio", value=desafio_item)
+                                        e_dimensao = st.text_input("Dimensão", value=dimensao_item)
+                                        
+                                        if st.form_submit_button("💾 Salvar Alterações"):
+                                            try:
+                                                supabase.table("objetivos_estrategicos").update({
+                                                    "descricao": e_desc,
+                                                    "desafio": e_desafio,
+                                                    "dimensao": e_dimensao
+                                                }).eq("codigo", cod_item).execute()
+                                                st.success("Objetivo Estratégico atualizado!")
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Erro ao atualizar objetivo estratégico: {e}")
+
+                            with col_acoes:
+                                pop_del = st.popover("🗑️ Excluir")
+                                with pop_del:
+                                    st.warning(f"Deseja excluir o objetivo '{cod_item}'?")
+                                    if st.button("Confirmar Exclusão", key=f"btn_del_oe_{cod_item}"):
+                                        try:
+                                            res_vinc = supabase.table("riscos").select("id").eq("objetivo_estrategico", cod_item).execute()
+                                            if res_vinc.data and len(res_vinc.data) > 0:
+                                                st.error(f"❌ Impossível excluir. Existem {len(res_vinc.data)} risco(s) vinculados a este objetivo.")
+                                            else:
+                                                supabase.table("objetivos_estrategicos").delete().eq("codigo", cod_item).execute()
+                                                st.success(f"Objetivo '{cod_item}' excluído com sucesso!")
+                                                st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Erro ao excluir objetivo estratégico: {e}")
+                else:
+                    st.info("Nenhum objetivo estratégico cadastrado no banco de dados.")
+            except Exception as e:
+                st.error(f"Erro ao carregar objetivos estratégicos: {e}")
+
+        with tab_oe_novo:
+            with st.form("form_cadastrar_oe", clear_on_submit=True):
+                col_oe1, col_oe2 = st.columns([1, 2])
+                with col_oe1:
+                    new_codigo = st.text_input("Código*", placeholder="Ex: OE01, OE-02").upper().strip()
+                    new_dimensao = st.text_input("Dimensão*", placeholder="Ex: Governança, Ensino, Infraestrutura")
+                with col_oe2:
+                    new_descricao = st.text_area("Descrição*", placeholder="Descreva o Objetivo Estratégico...")
+                
+                new_desafio = st.text_area("Desafio*", placeholder="Descreva o Desafio associado...")
+                
+                submitted_oe = st.form_submit_button("💾 Salvar Objetivo Estratégico")
+                
+                if submitted_oe:
+                    if not new_codigo or not new_descricao or not new_desafio or not new_dimensao:
+                        st.warning("Por favor, preencha todos os campos do formulário.")
+                    else:
+                        try:
+                            supabase.table("objetivos_estrategicos").insert({
+                                "codigo": new_codigo,
+                                "descricao": new_descricao,
+                                "desafio": new_desafio,
+                                "dimensao": new_dimensao
+                            }).execute()
+                            st.success(f"✅ Objetivo Estratégico '{new_codigo}' cadastrado com sucesso!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao cadastrar objetivo estratégico: {e}")
+
+    # 3. SUBPÁGINA: CATEGORIAS DE RISCO
+    elif sub == "Categorias de Risco" and is_admin:
+        st.title("🏷️ Categorias de Risco")
+        tab_cat_list, tab_cat_nova = st.tabs(["🔍 Categorias Cadastradas", "➕ Nova Categoria"])
+        
+        with tab_cat_list:
+            try:
+                res_cat = supabase.table("categorias_riscos").select("*").order("tipo").execute()
+                dados_cat = res_cat.data or []
+                
+                if dados_cat:
+                    st.write(f"Total de categorias registradas: **{len(dados_cat)}**")
+                    for c_item in dados_cat:
+                        cid = c_item["id"]
+                        ctipo = c_item.get("tipo", "")
+                        csub = c_item.get("sub_tipo", "")
+                        cdet = c_item.get("detalhamento", "")
+                        
+                        with st.expander(f"🏷️ **{ctipo}** / {csub}"):
+                            st.write(f"**Tipo:** {ctipo}")
+                            st.write(f"**Subtipo:** {csub}")
+                            st.write(f"**Detalhamento:** {cdet or '-'}")
+                            st.caption(f"Criado em: {formatar_data_hora_br(c_item.get('criado_em'))}")
+                            
+                            col_c_edit, col_c_del = st.columns([1, 1])
+                            with col_c_edit:
+                                pop_edit_cat = st.popover("✏️ Editar")
+                                with pop_edit_cat:
+                                    with st.form(f"form_edit_cat_{cid}"):
+                                        e_tipo = st.text_input("Tipo", value=ctipo)
+                                        e_sub = st.text_input("Subtipo", value=csub)
+                                        e_det = st.text_area("Detalhamento", value=cdet)
+                                        
+                                        if st.form_submit_button("💾 Salvar Alterações"):
+                                            try:
+                                                supabase.table("categorias_riscos").update({
+                                                    "tipo": e_tipo,
+                                                    "sub_tipo": e_sub,
+                                                    "detalhamento": e_det
+                                                }).eq("id", cid).execute()
+                                                st.success("Categoria atualizada!")
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Erro ao atualizar categoria: {e}")
+
+                            with col_c_del:
+                                pop_del_cat = st.popover("🗑️ Excluir")
+                                with pop_del_cat:
+                                    st.warning(f"Deseja excluir a categoria '{ctipo} / {csub}'?")
+                                    if st.button("Confirmar Exclusão", key=f"btn_del_cat_{cid}"):
+                                        try:
+                                            res_vinc_c = supabase.table("riscos").select("id").eq("categoria_risco", cid).execute()
+                                            if res_vinc_c.data and len(res_vinc_c.data) > 0:
+                                                st.error(f"❌ Impossível excluir. Existem {len(res_vinc_c.data)} risco(s) vinculados a esta categoria.")
+                                            else:
+                                                supabase.table("categorias_riscos").delete().eq("id", cid).execute()
+                                                st.success("Categoria excluída com sucesso!")
+                                                st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Erro ao excluir categoria: {e}")
+                else:
+                    st.info("Nenhuma categoria cadastrada.")
+            except Exception as e:
+                st.error(f"Erro ao carregar categorias de risco: {e}")
+                
+        with tab_cat_nova:
+            with st.form("form_nova_categoria", clear_on_submit=True):
+                col_cat1, col_cat2 = st.columns(2)
+                with col_cat1:
+                    new_tipo = st.text_input("Tipo*", placeholder="Ex: Operacional, Financeiro, Estratégico")
+                with col_cat2:
+                    new_sub_tipo = st.text_input("Subtipo*", placeholder="Ex: Gestão Orçamentária, Recursos Humanos")
+                
+                new_detalhamento = st.text_area("Detalhamento", placeholder="Descrição detalhada dos riscos abrangidos nesta categoria...")
+                
+                if st.form_submit_button("💾 Salvar Categoria"):
+                    if not new_tipo or not new_sub_tipo:
+                        st.warning("Preencha o Tipo e o Subtipo da categoria.")
+                    else:
+                        try:
+                            supabase.table("categorias_riscos").insert({
+                                "tipo": new_tipo,
+                                "sub_tipo": new_sub_tipo,
+                                "detalhamento": new_detalhamento
+                            }).execute()
+                            st.success("✅ Categoria de risco registrada com sucesso!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao cadastrar categoria: {e}")
+
+    # 4. SUBPÁGINA: DOCUMENTOS DA BIBLIOTECA
+    elif sub == "Documentos da Biblioteca" and is_admin:
+        st.title("📚 Documentos da Biblioteca")
+        tab_b_list, tab_b_novo = st.tabs(["🔍 Documentos Cadastrados", "➕ Enviar Novo Documento PDF"])
+        
+        with tab_b_list:
+            try:
+                res_docs = supabase.table("biblioteca").select("*").order("id", desc=True).execute()
+                list_docs = res_docs.data or []
+                
+                if list_docs:
+                    st.write(f"Total de documentos na biblioteca: **{len(list_docs)}**")
+                    for d in list_docs:
+                        doc_id = d["id"]
+                        d_titulo = d.get("titulo", "Sem título")
+                        d_desc = d.get("descricao", "")
+                        d_url = d.get("url_publica", "#")
+                        d_arq = d.get("nome_arquivo", "")
+                        
+                        with st.expander(f"📄 **{d_titulo}**"):
+                            st.write(f"**Descrição:** {d_desc or 'Sem descrição'}")
+                            st.write(f"**Nome do Arquivo:** {d_arq}")
+                            st.caption(f"Data do Upload: {formatar_data_hora_br(d.get('data_upload'))}")
+                            
+                            col_b_act1, col_b_act2 = st.columns([1, 1])
+                            with col_b_act1:
+                                st.link_button("📥 Abrir / Download PDF", d_url)
+                            with col_b_act2:
+                                pop_del_doc = st.popover("🗑 Excluir Documento")
+                                with pop_del_doc:
+                                    st.warning(f"Deseja remover o documento '{d_titulo}'?")
+                                    if st.button("Confirmar Exclusão", key=f"btn_del_doc_{doc_id}"):
+                                        try:
+                                            if d_arq:
+                                                try:
+                                                    supabase.storage.from_("biblioteca_documentos").remove([d_arq])
+                                                except Exception:
+                                                    pass
+                                            supabase.table("biblioteca").delete().eq("id", doc_id).execute()
+                                            st.success("Documento excluído com sucesso!")
+                                            st.rerun()
+                                        except Exception as e:
+                                            st.error(f"Erro ao excluir documento: {e}")
+                else:
+                    st.info("Nenhum documento cadastrado na biblioteca.")
+            except Exception as e:
+                st.error(f"Erro ao carregar biblioteca de documentos: {e}")
+
+        with tab_b_novo:
+            with st.form("form_upload_doc_biblioteca", clear_on_submit=True):
+                doc_titulo = st.text_input("Título do Documento / Normativa*")
+                doc_desc = st.text_area("Descrição do Conteúdo")
+                doc_file = st.file_uploader("Selecione o arquivo PDF*", type=["pdf"])
+                
+                if st.form_submit_button("📤 Salvar e Publicar Documento"):
+                    if not doc_titulo or not doc_file:
+                        st.warning("Preencha o título e selecione um arquivo PDF.")
+                    else:
+                        try:
+                            nome_arquivo_saneado = f"{datetime.now().strftime('%Y%m%d_%H%M%S')}_{doc_file.name.replace(' ', '_')}"
+                            bytes_pdf = doc_file.getvalue()
+                            
+                            bucket_bib = supabase.storage.from_("biblioteca_documentos")
+                            bucket_bib.upload(nome_arquivo_saneado, bytes_pdf, {"content-type": "application/pdf"})
+                            public_url_pdf = bucket_bib.get_public_url(nome_arquivo_saneado)
+                            
+                            supabase.table("biblioteca").insert({
+                                "titulo": doc_titulo,
+                                "descricao": doc_desc,
+                                "nome_arquivo": nome_arquivo_saneado,
+                                "url_publica": public_url_pdf,
+                                "data_upload": datetime.now().isoformat()
+                            }).execute()
+                            
+                            st.success("✅ Documento publicado com sucesso na biblioteca!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao enviar documento para a biblioteca: {e}")
 
 # ---------------------------------------------------------
 # PÁGINA: MONITORAMENTO E ACOMPANHAMENTO 360° (ETAPA 3 REFORMULADA)
@@ -2432,30 +2326,428 @@ elif st.session_state.pagina_atual == "Monitoramento":
             st.info("Nenhuma ação de mitigação cadastrada para este risco até o momento.")
 
 # ---------------------------------------------------------
-# PÁGINA: DASHBOARDS / PAINEL GERAL EXECUTIVO (ETAPA 4)
+# PÁGINA: DASHBOARDS
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Dashboards":
-    st.title("📊 Painel Geral Executivo (Visão Institucional)")
-    st.caption("Visão estratégica de governança e monitoramento integrado de exposição a riscos.")
+    sub_dash = st.session_state.sub_pagina_atual or "Acompanhamento de Riscos"
 
-    # 1. CARREGAMENTO DOS DADOS BASE DO SUPABASE
-    try:
-        res_r = supabase.table("riscos").select("*").execute()
-        df_riscos_base = pd.DataFrame(res_r.data or [])
+    # 1. TELA: ACOMPANHAMENTO DE RISCOS
+    if sub_dash == "Acompanhamento de Riscos":
+        st.title("📌 Acompanhamento de Riscos")
+        st.caption("Painel gerencial do risco selecionado com métricas, matriz 5x5, evolução histórica e ações de mitigação.")
         
-        res_a = supabase.table("acoes_tratamento").select("*").execute()
-        df_acoes_base = pd.DataFrame(res_a.data or [])
+        try:
+            res_riscos = supabase.table("riscos").select("*").order("id", desc=True).execute()
+            lista_riscos = res_riscos.data or []
+        except Exception as e:
+            st.error(f"Erro ao carregar lista de riscos: {e}")
+            lista_riscos = []
 
-        res_cat_db = supabase.table("categorias_riscos").select("id, tipo, sub_tipo").execute().data or []
-        mapa_cat_nomes = {c["id"]: f"{c['tipo']} / {c['sub_tipo']}" for c in res_cat_db}
-    except Exception as e:
-        st.error(f"Erro ao carregar dados do banco de dados: {e}")
-        df_riscos_base = pd.DataFrame()
-        df_acoes_base = pd.DataFrame()
-        mapa_cat_nomes = {}
+        if not lista_riscos:
+            st.info("Nenhum risco cadastrado para acompanhamento.")
+        else:
+            mapa_riscos_mon = {f"Risco #{r['id']} | {r['unidade']} - {r['evento'][:55]}...": r for r in lista_riscos}
+            risco_sel_label = st.selectbox("🎯 Selecione o Risco para Análise Painel 360°:", list(mapa_riscos_mon.keys()))
+            risco_obj = mapa_riscos_mon[risco_sel_label]
+            r_id = risco_obj["id"]
 
-    if not df_riscos_base.empty and "categoria_risco" in df_riscos_base.columns:
-        df_riscos_base["nome_categoria"] = df_riscos_base["categoria_risco"].map(mapa_cat_nomes).fillna("Não Categorizado")
+            # Carregamento das Ações de Tratamento do Risco
+            try:
+                res_ac_mon = supabase.table("acoes_tratamento").select("*").eq("risco_id", r_id).order("numero_sequencial").execute()
+                df_ac_mon = pd.DataFrame(res_ac_mon.data or [])
+            except Exception:
+                df_ac_mon = pd.DataFrame()
+
+            # Carregamento do Histórico de Avaliações (avaliacoes_risco)
+            try:
+                res_hist = supabase.table("avaliacoes_risco").select("*").eq("risco_id", r_id).order("created_at", desc=False).execute()
+                df_hist_eval = pd.DataFrame(res_hist.data or [])
+            except Exception:
+                df_hist_eval = pd.DataFrame()
+
+            # Cálculo das Métricas e Indicadores Gerenciais via calculos_siger.py
+            data_prox_rev = risco_obj.get("proxima_revisao") or risco_obj.get("data_proxima_revisao")
+            sit_revisao = calcular_situacao_revisao_risco(data_prox_rev)
+            
+            tot_acoes_r = len(df_ac_mon)
+            if not df_ac_mon.empty:
+                acoes_concluidas_r = sum(1 for _, row in df_ac_mon.iterrows() if row.get("status_status") == "Concluída" or row.get("status_acao") == "Concluída")
+                acoes_atrasadas_r = sum(
+                    1 for _, row in df_ac_mon.iterrows()
+                    if calcular_situacao_prazo_acao(row.get("status_acao"), row.get("previsao_data_conclusao")) == "⚠️ Atrasada"
+                )
+                iet_r = calcular_iet(df_ac_mon)
+                icp_r = calcular_icp(df_ac_mon)
+                pct_conc_r = round(float((acoes_concluidas_r / tot_acoes_r) * 100), 2) if tot_acoes_r > 0 else 0.0
+                itr_r = calcular_itr(iet_r, pct_conc_r, icp_r)
+            else:
+                acoes_concluidas_r = 0
+                acoes_atrasadas_r = 0
+                iet_r = 0.0
+                icp_r = 100.0
+                pct_conc_r = 0.0
+                itr_r = 0.0
+
+            iar_info = calcular_iar_risco(
+                nivel_risco=risco_obj.get("nivel_risco", 1),
+                acoes_atrasadas=acoes_atrasadas_r,
+                total_acoes=tot_acoes_r,
+                situacao_revisao=sit_revisao
+            )
+
+            st.divider()
+
+            # CABEÇALHO 360° E CARDS DE INDICADORES
+            col_hdr1, col_hdr2 = st.columns([2.5, 1.5])
+            with col_hdr1:
+                st.markdown(f"### 🛡️ Risco #{r_id}: {risco_obj.get('evento')}")
+                st.markdown(f"**Unidade Responsável:** `{risco_obj.get('unidade')}` | **Gestor:** `{risco_obj.get('gestor_risco', '-')}`")
+                st.markdown(f"**Causa:** {risco_obj.get('causa', '-')}")
+                st.markdown(f"**Consequência:** {risco_obj.get('consequencia', '-')}")
+                
+            with col_hdr2:
+                st.info(f"""
+                📅 **Data de Identificação:** {formatar_data_br(risco_obj.get('data_identificacao'))}  
+                🔄 **Periodicidade:** {risco_obj.get('periodicidade_revisao', 'Não informada')}  
+                📆 **Próxima Revisão:** {formatar_data_br(data_prox_rev)} (`{sit_revisao}`)
+                """)
+                       
+            st.markdown("#### 📊 Grid de KPIs e Indicadores Gerenciais")
+            
+            nivel_val = risco_obj.get('nivel_risco', 1)
+            cor_nivel_str = "🔴 Crítico" if nivel_val >= 15 else "🟡 Médio" if nivel_val >= 8 else "🟢 Baixo"
+
+            kpi_c1, kpi_c2, kpi_c3, kpi_c4, kpi_c5, kpi_c6, kpi_c7 = st.columns(7)
+            kpi_c1.metric("Nível do Risco", f"{nivel_val}", cor_nivel_str)
+            kpi_c2.metric("Total Ações", tot_acoes_r)
+            kpi_c3.metric("Concluídas", acoes_concluidas_r)
+            kpi_c4.metric("Atrasadas", acoes_atrasadas_r)
+            kpi_c5.metric("IET (Execução)", f"{iet_r}%")
+            kpi_c6.metric("ICP (Prazo)", f"{icp_r}%")
+            kpi_c7.metric("ITR (Tratamento)", f"{itr_r}%")
+
+            st.divider()
+
+            # MATRIZ 5X5, HISTÓRICO E ALERTAS
+            col_sec1, col_sec2 = st.columns([1.2, 1.3])
+
+            with col_sec1:
+                st.markdown("### 🎲 Matriz de Risco 5x5 Individual")
+                st.caption("Destaque dinâmico na célula ocupada pelo risco (Probabilidade x Impacto).")
+                prob_atual = int(risco_obj.get("probabilidade") or 1)
+                imp_atual = int(risco_obj.get("impacto") or 1)
+                
+                renderizar_matriz_risco_5x5(prob_atual, imp_atual, r_id)
+
+            with col_sec2:
+                st.markdown("### 📈 Evolução Histórica das Avaliações")
+                
+                if not df_hist_eval.empty:
+                    df_chart = df_hist_eval.copy()
+                    col_dt = 'created_at' if 'created_at' in df_chart.columns else 'data_avaliacao'
+                    df_chart['Data'] = pd.to_datetime(df_chart[col_dt]).dt.strftime('%d/%m %H:%M')
+                    df_chart_display = df_chart[['Data', 'nivel_risco', 'probabilidade', 'impacto']].rename(
+                        columns={'nivel_risco': 'Nível de Risco'}
+                    ).set_index('Data')
+                    
+                    st.line_chart(df_chart_display['Nível de Risco'])
+                else:
+                    st.caption("Nenhum histórico de reavaliações gravado na tabela `avaliacoes_risco`. Exibindo ponto atual:")
+                    data_ident_str = formatar_data_br(risco_obj.get('data_identificacao'))
+                    df_ponto_unico = pd.DataFrame({
+                        "Data": [data_ident_str],
+                        "Nível de Risco": [nivel_val]
+                    }).set_index("Data")
+                    st.line_chart(df_ponto_unico)
+
+                st.markdown("### ⚠️ Pontos de Atenção e Alertas Automáticos")
+                
+                alertas = []
+                if nivel_val >= 15 and tot_acoes_r == 0:
+                    alertas.append("🔴 **Risco Crítico sem Ações:** O risco possui nível crítico (≥ 15) mas nenhuma ação de mitigação cadastrada.")
+                if sit_revisao == "Atrasada":
+                    alertas.append("⏰ **Revisão Temporal Atrasada:** A data da próxima revisão do risco expirou.")
+                if acoes_atrasadas_r > 0:
+                    alertas.append(f"⚠️ **Ações de Mitigação Atrasadas:** Existem {acoes_atrasadas_r} ação(ões) com prazo de conclusão vencido.")
+                if iet_r < 50.0 and tot_acoes_r > 0:
+                    alertas.append(f"📉 **Baixa Execução do Tratamento:** O Índice de Execução do Tratamento (IET) está em apenas {iet_r}%.")
+
+                if alertas:
+                    for alt in alertas:
+                        st.warning(alt)
+                else:
+                    st.success("✅ **Nenhum ponto de atenção crítico detectado.** O acompanhamento do risco está em conformidade com as metas.")
+
+            st.divider()
+
+            # TABELA E BARRA DE PROGRESSO DAS AÇÕES
+            st.markdown("### 🛡️ Planos de Ação e Progresso das Mitigações")
+            
+            if not df_ac_mon.empty:
+                df_tabela_exib = []
+                for _, ac in df_ac_mon.iterrows():
+                    seq = ac.get("numero_sequencial")
+                    nome_ac = ac.get("acao")
+                    carater_ac = ac.get("carater_acao", "Preventivo")
+                    resp_ac = ac.get("nome_responsavel_implementacao", "-")
+                    st_ac = ac.get("status_acao", "Pendente")
+                    pct_exec = ac.get("percentual_execucao") or ac.get("percentual_conclusao") or 0
+                    dt_fim = formatar_data_br(ac.get("previsao_data_conclusao"))
+                    
+                    txt_badge, _ = obter_badge_prazo(ac.get("previsao_data_conclusao"), st_ac)
+                    barra_ascii = gerar_barra_progresso_ascii(pct_exec)
+
+                    df_tabela_exib.append({
+                        "Ação nº": seq,
+                        "Descrição da Ação": nome_ac,
+                        "Caráter": carater_ac,
+                        "Responsável": resp_ac,
+                        "Status": st_ac,
+                        "Previsão Conclusão": dt_fim,
+                        "Situação Prazo": txt_badge,
+                        "Barra de Progresso": barra_ascii
+                    })
+
+                df_exib_final = pd.DataFrame(df_tabela_exib)
+                st.dataframe(df_exib_final, use_container_width=True)
+
+                with st.expander("🕒 Linha do Tempo Visual e Tramitações Históricas"):
+                    renderizar_timeline_risco(r_id)
+            else:
+                st.info("Nenhuma ação de mitigação cadastrada para este risco até o momento.")
+
+    # 2. TELA: PAINEL GERAL
+    elif sub_dash == "Painel Geral":
+        st.title("📈 Painel Geral")
+        st.caption("Visão estratégica de governança e monitoramento integrado de exposição a riscos.")
+
+        # CARREGAMENTO DOS DADOS BASE DO SUPABASE
+        try:
+            res_r = supabase.table("riscos").select("*").execute()
+            df_riscos_base = pd.DataFrame(res_r.data or [])
+            
+            res_a = supabase.table("acoes_tratamento").select("*").execute()
+            df_acoes_base = pd.DataFrame(res_a.data or [])
+
+            res_cat_db = supabase.table("categorias_riscos").select("id, tipo, sub_tipo").execute().data or []
+            mapa_cat_nomes = {c["id"]: f"{c['tipo']} / {c['sub_tipo']}" for c in res_cat_db}
+        except Exception as e:
+            st.error(f"Erro ao carregar dados do banco de dados: {e}")
+            df_riscos_base = pd.DataFrame()
+            df_acoes_base = pd.DataFrame()
+            mapa_cat_nomes = {}
+
+        if not df_riscos_base.empty and "categoria_risco" in df_riscos_base.columns:
+            df_riscos_base["nome_categoria"] = df_riscos_base["categoria_risco"].map(mapa_cat_nomes).fillna("Não Categorizado")
+
+        # BARRA SUPERIOR DE FILTROS GLOBAIS
+        with st.expander("🔍 Filtros Globais do Painel Executivo", expanded=True):
+            f_col1, f_col2, f_col3, f_col4, f_col5, f_col6 = st.columns(6)
+
+            with f_col1:
+                opts_unid = ["Todas"] + sorted(list(df_riscos_base["unidade"].dropna().unique())) if not df_riscos_base.empty else ["Todas"]
+                filtro_unid = st.selectbox("🏢 Unidade", opts_unid)
+
+            with f_col2:
+                opts_oe = ["Todos"] + sorted(list(df_riscos_base["objetivo_estrategico"].dropna().unique())) if not df_riscos_base.empty else ["Todos"]
+                filtro_oe = st.selectbox("🎯 Obj. Estratégico", opts_oe)
+
+            with f_col3:
+                opts_cat = ["Todas"] + sorted(list(df_riscos_base["nome_categoria"].dropna().unique())) if not df_riscos_base.empty else ["Todas"]
+                filtro_cat = st.selectbox("🏷️ Categoria", opts_cat)
+
+            with f_col4:
+                opts_nivel = ["Todos", "🔴 Crítico (≥ 15)", "🟡 Médio (8 - 14)", "🟢 Baixo (1 - 7)"]
+                filtro_nivel = st.selectbox("⚡ Nível de Risco", opts_nivel)
+
+            with f_col5:
+                opts_st = ["Todos"] + sorted(list(df_riscos_base["situacao_status"].dropna().unique())) if not df_riscos_base.empty else ["Todos"]
+                filtro_st = st.selectbox("📌 Status Risco", opts_st)
+
+            with f_col6:
+                st.write("")
+                st.write("")
+                if st.button("🧹 Limpar Filtros", use_container_width=True):
+                    st.rerun()
+
+            f_dt1, f_dt2 = st.columns(2)
+            with f_dt1:
+                dt_inicio_filtro = st.date_input("Data Inicial", value=date(2020, 1, 1), format="DD/MM/YYYY")
+            with f_dt2:
+                dt_fim_filtro = st.date_input("Data Final", value=date.today(), format="DD/MM/YYYY")
+
+        # APLICAÇÃO DOS FILTROS NO DATAFRAME DE RISCOS
+        df_r_filtrado = df_riscos_base.copy()
+
+        if not df_r_filtrado.empty:
+            if filtro_unid != "Todas":
+                df_r_filtrado = df_r_filtrado[df_r_filtrado["unidade"] == filtro_unid]
+            if filtro_oe != "Todos":
+                df_r_filtrado = df_r_filtrado[df_r_filtrado["objetivo_estrategico"] == filtro_oe]
+            if filtro_cat != "Todas":
+                df_r_filtrado = df_r_filtrado[df_r_filtrado["nome_categoria"] == filtro_cat]
+            if filtro_st != "Todos":
+                df_r_filtrado = df_r_filtrado[df_r_filtrado["situacao_status"] == filtro_st]
+            
+            if filtro_nivel == "🔴 Crítico (≥ 15)":
+                df_r_filtrado = df_r_filtrado[df_r_filtrado["nivel_risco"] >= 15]
+            elif filtro_nivel == "🟡 Médio (8 - 14)":
+                df_r_filtrado = df_r_filtrado[(df_r_filtrado["nivel_risco"] >= 8) & (df_r_filtrado["nivel_risco"] < 15)]
+            elif filtro_nivel == "🟢 Baixo (1 - 7)":
+                df_r_filtrado = df_r_filtrado[df_r_filtrado["nivel_risco"] < 8]
+
+            if "data_identificacao" in df_r_filtrado.columns:
+                df_r_filtrado["dt_ident_conv"] = pd.to_datetime(df_r_filtrado["data_identificacao"], errors='coerce').dt.date
+                df_r_filtrado = df_r_filtrado[
+                    (df_r_filtrado["dt_ident_conv"].isna()) | 
+                    ((df_r_filtrado["dt_ident_conv"] >= dt_inicio_filtro) & (df_r_filtrado["dt_ident_conv"] <= dt_fim_filtro))
+                ]
+
+        ids_riscos_filtrados = df_r_filtrado["id"].tolist() if not df_r_filtrado.empty else []
+        df_a_filtrado = df_acoes_base[df_acoes_base["risco_id"].isin(ids_riscos_filtrados)].copy() if not df_acoes_base.empty else pd.DataFrame()
+
+        st.divider()
+
+        # CARDS DE EXPOSIÇÃO E KPIS INSTITUCIONAIS
+        tot_riscos_f = len(df_r_filtrado)
+        criticos_f = sum(1 for _, r in df_r_filtrado.iterrows() if r.get("nivel_risco", 0) >= 15) if not df_r_filtrado.empty else 0
+        exposicao_agregada_tot = df_r_filtrado["nivel_risco"].sum() if not df_r_filtrado.empty else 0
+
+        riscos_com_acao = df_a_filtrado["risco_id"].unique() if not df_a_filtrado.empty else []
+        riscos_sem_tratamento = sum(1 for r_id in ids_riscos_filtrados if r_id not in riscos_com_acao)
+
+        if not df_a_filtrado.empty:
+            total_acoes_f = len(df_a_filtrado)
+            acoes_atrasadas_f = sum(
+                1 for _, row in df_a_filtrado.iterrows()
+                if calcular_situacao_prazo_acao(row.get("status_acao"), row.get("previsao_data_conclusao")) == "⚠️ Atrasada"
+            )
+            pct_acoes_atrasadas = round((acoes_atrasadas_f / total_acoes_f) * 100, 1) if total_acoes_f > 0 else 0.0
+        else:
+            pct_acoes_atrasadas = 0.0
+
+        kpi_col1, kpi_col2, kpi_col3, kpi_col4, kpi_col5 = st.columns(5)
+        kpi_col1.metric("Total de Riscos", tot_riscos_f)
+        kpi_col2.metric("Riscos Críticos (≥ 15)", criticos_f, delta_color="inverse")
+        kpi_col3.metric("Exposição Agregada (∑ Nível)", exposicao_agregada_tot)
+        kpi_col4.metric("Riscos sem Tratamento", riscos_sem_tratamento)
+        kpi_col5.metric("% Ações Atrasadas", f"{pct_acoes_atrasadas}%")
+
+        st.divider()
+
+        # MATRIZ 5X5 CONSOLIDADA E DISTRIBUIÇÕES
+        col_matriz, col_graficos = st.columns([1.2, 1.8])
+
+        with col_matriz:
+            st.markdown("### 🎲 Matriz de Riscos 5x5 Consolidada")
+            st.caption("Distribuição volumétrica de riscos na matriz institucional.")
+            renderizar_matriz_risco_5x5_consolidada(df_r_filtrado)
+
+        with col_graficos:
+            st.markdown("### 📊 Distribuição Estratégica dos Riscos")
+            
+            tab_g_cat, tab_g_oe, tab_g_unid = st.tabs(["🏷️ Por Categoria", "🎯 Por Objetivo Estratégico", "🏢 Por Unidade"])
+
+            with tab_g_cat:
+                if not df_r_filtrado.empty:
+                    df_cat_chart = df_r_filtrado["nome_categoria"].value_counts().reset_index()
+                    df_cat_chart.columns = ["Categoria", "Quantidade"]
+                    st.bar_chart(df_cat_chart.set_index("Categoria"))
+                else:
+                    st.info("Sem dados para exibir gráficos.")
+
+            with tab_g_oe:
+                if not df_r_filtrado.empty:
+                    df_oe_chart = df_r_filtrado["objetivo_estrategico"].fillna("Não Informado").value_counts().reset_index()
+                    df_oe_chart.columns = ["Objetivo Estratégico", "Quantidade"]
+                    st.bar_chart(df_oe_chart.set_index("Objetivo Estratégico"))
+                else:
+                    st.info("Sem dados para exibir gráficos.")
+
+            with tab_g_unid:
+                if not df_r_filtrado.empty:
+                    df_unid_chart = df_r_filtrado["unidade"].value_counts().reset_index()
+                    df_unid_chart.columns = ["Unidade", "Quantidade"]
+                    st.bar_chart(df_unid_chart.set_index("Unidade"))
+                else:
+                    st.info("Sem dados para exibir gráficos.")
+
+        st.divider()
+
+        # TABELA DE TOP RISCOS PRIORITÁRIOS & ALERTAS GLOBAIS
+        col_top, col_alertas_gl = st.columns([1.8, 1.2])
+
+        with col_top:
+            st.markdown("### 🔝 Ranking de Riscos Prioritários (Ordenado por IAR)")
+            st.caption("Fórmula de priorização do IAR considera Nível do Risco, Ações Atrasadas e Revisão Temporal.")
+
+            if not df_r_filtrado.empty:
+                top_riscos_lista = []
+                
+                for _, r_item in df_r_filtrado.iterrows():
+                    r_id_f = r_item["id"]
+                    n_val = r_item.get("nivel_risco", 1)
+                    
+                    df_ac_r = df_a_filtrado[df_a_filtrado["risco_id"] == r_id_f] if not df_a_filtrado.empty else pd.DataFrame()
+                    tot_ac_r = len(df_ac_r)
+                    atrasadas_ac_r = sum(
+                        1 for _, row in df_ac_r.iterrows()
+                        if calcular_situacao_prazo_acao(row.get("status_acao"), row.get("previsao_data_conclusao")) == "⚠️ Atrasada"
+                    ) if not df_ac_r.empty else 0
+
+                    sit_rev_r = calcular_situacao_revisao_risco(r_item.get("proxima_revisao"))
+
+                    iar_dados = calcular_iar_risco(
+                        nivel_risco=n_val,
+                        acoes_atrasadas=atrasadas_ac_r,
+                        total_acoes=tot_ac_r,
+                        situacao_revisao=sit_rev_r
+                    )
+
+                    iar_valor = iar_dados.get("iar") or iar_dados.get("iar_score") or iar_dados.get("score") or 0.0
+                    prioridade_txt = iar_dados.get("prioridade") or iar_dados.get("nivel_prioridade") or "Normal"
+
+                    top_riscos_lista.append({
+                        "ID": r_id_f,
+                        "Risco": r_item.get("evento", "Sem evento"),
+                        "Unidade": r_item.get("unidade"),
+                        "Nível": n_val,
+                        "Ações (Tot/Atr)": f"{tot_ac_r} / {atrasadas_ac_r}",
+                        "IAR (Pontuação)": iar_valor,
+                        "Prioridade": prioridade_txt,
+                        "Status": r_item.get("situacao_status")
+                    })
+
+                df_top_final = pd.DataFrame(top_riscos_lista).sort_values(by="IAR (Pontuação)", ascending=False)
+                st.dataframe(df_top_final, use_container_width=True, hide_index=True)
+            else:
+                st.info("Nenhum risco encontrado para exibição no ranking.")
+
+        with col_alertas_gl:
+            st.markdown("### 🚨 Alertas Institucionais")
+            
+            if not df_r_filtrado.empty:
+                df_exp_unidades = calcular_exposicao_agregada(df_r_filtrado, agrupar_por="unidade")
+                df_exp_unidades.columns = ["Unidade", "Total Riscos", "Soma Nível Risco", "Média Nível Risco", "Riscos Críticos"]
+                
+                unidades_criticas = df_exp_unidades[df_exp_unidades["Riscos Críticos"] > 0]
+                unidades_alta_exp = df_exp_unidades[df_exp_unidades["Soma Nível Risco"] >= 30]
+
+                if not unidades_criticas.empty:
+                    for _, u_row in unidades_criticas.iterrows():
+                        st.error(f"🔴 **{u_row['Unidade']}**: Concentra {u_row['Riscos Críticos']} risco(s) crítico(s) (Nível ≥ 15).")
+                
+                if not unidades_alta_exp.empty:
+                    for _, u_row in unidades_alta_exp.iterrows():
+                        st.warning(f"⚠️ **{u_row['Unidade']}**: Alta Exposição Agregada totalizando ∑ {u_row['Soma Nível Risco']} pontos.")
+
+                if pct_acoes_atrasadas > 25.0:
+                    st.error(f"⏰ **Alerta Global de Prazos**: {pct_acoes_atrasadas}% do plano de tratamento global está atrasado.")
+
+                if unidades_criticas.empty and unidades_alta_exp.empty and pct_acoes_atrasadas <= 25.0:
+                    st.success("✅ **Governança Estável**: Nenhuma alta concentração crítica de risco detectada no momento.")
+            else:
+                st.info("Sem dados suficientes para gerar alertas institucionais.")
 
     # ---------------------------------------------------------
     # BARRA SUPERIOR DE FILTROS GLOBAIS
