@@ -183,10 +183,15 @@ st.markdown("""
         padding-top: 0rem !important;
     }
 
-    /* Alinha TODOS os botões da barra lateral à esquerda */
-    section[data-testid="stSidebar"] div.stButton > button {
+    /* FORÇA ALINHAMENTO À ESQUERDA EM ABSOLUTAMENTE TODOS OS BOTÕES DA BARRA LATERAL */
+    section[data-testid="stSidebar"] button,
+    section[data-testid="stSidebar"] button p,
+    section[data-testid="stSidebar"] div.stButton > button,
+    section[data-testid="stSidebar"] div[data-testid="stExpander"] div.stButton > button {
         text-align: left !important;
         justify-content: flex-start !important;
+        display: flex !important;
+        align-items: center !important;
     }
 
     section[data-testid="stSidebar"] div[data-testid="stImage"] {
@@ -236,8 +241,6 @@ st.markdown("""
         padding: 8px 12px !important;
         margin-bottom: 4px !important;
         width: 100% !important;
-        text-align: left !important;
-        justify-content: flex-start !important;
         border: 1px solid #001733 !important;
     }
     .btn-inicio-sidebar button:hover {
@@ -246,8 +249,6 @@ st.markdown("""
     }
     
     section[data-testid="stSidebar"] div[data-testid="stExpander"] div.stButton > button {
-        text-align: left !important;
-        justify-content: flex-start !important;
         width: calc(100% - 20px) !important;
         margin-left: 20px !important;
         border: none !important;
