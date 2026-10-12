@@ -738,9 +738,6 @@ st.sidebar.divider()
 
 st.sidebar.markdown(f"👤 **{usr_atual['nome']}**")
 st.sidebar.caption(f"Perfil: `{perfil_usr}` | Unidade: `{usr_atual['unidade'] or 'Todas'}`")
-if st.sidebar.button("🚪 Sair / Logout", use_container_width=True, key="btn_logout_top"):
-    st.session_state.usuario_logado = None
-    st.rerun()
 
 st.sidebar.divider()
 
@@ -764,13 +761,19 @@ st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 st.sidebar.divider()
 
+# 2. Expander Administração
 if is_admin:
     with st.sidebar.expander("⚙ Administração", expanded=False):
         if st.button("👥 Usuários e Permissões", key="btn_adm_usr", use_container_width=True):
-            navegar_para("Administração do Sistema", "Usuários")
+            navegar_para("Administração do Sistema", "Usuários e Permissões")
+        if st.button("🖼️ Identidade Visual", key="btn_adm_id_vis", use_container_width=True):
+            navegar_para("Administração do Sistema", "Identidade Visual")
+        if st.button("✍ Texto da Tela Inicial", key="btn_adm_txt", use_container_width=True):
+            navegar_para("Administração do Sistema", "Texto da Tela Inicial")
         if st.button("🔧 Configurações Gerais", key="btn_adm_cfg", use_container_width=True):
-            navegar_para("Administração do Sistema", "Configurações")
+            navegar_para("Administração do Sistema", "Configurações Gerais")
 
+# 3. Expander Cadastros
 with st.sidebar.expander("📝 Cadastros", expanded=False):
     if is_admin:
         if st.button("🏢 Unidades", key="btn_cad_unid", use_container_width=True):
@@ -779,35 +782,38 @@ with st.sidebar.expander("📝 Cadastros", expanded=False):
             navegar_para("Cadastros", "Objetivos Estratégicos")
         if st.button("🏷️ Categorias de Risco", key="btn_cad_cat", use_container_width=True):
             navegar_para("Cadastros", "Categorias de Risco")
-        if st.button("🖼️ Identidade Visual", key="btn_cad_id_vis", use_container_width=True):
-            navegar_para("Cadastros", "Identidade Visual")
         if st.button("📚 Documentos da Biblioteca", key="btn_cad_doc_bib", use_container_width=True):
             navegar_para("Cadastros", "Documentos da Biblioteca")
-        if st.button("✍ Texto da Tela Inicial", key="btn_cad_txt", use_container_width=True):
-            navegar_para("Cadastros", "Texto da Tela Inicial")
-            
+
+# 4. Expander Gestão de Riscos (antigo Planos de Tratamento)
+with st.sidebar.expander("🛡️ Gestão de Riscos", expanded=False):
     if is_gestor:
-        if st.button("📋 Riscos", key="btn_cad_risco", use_container_width=True):
-            navegar_para("Cadastros", "Riscos")
-
-with st.sidebar.expander("🛡️ Planos de Tratamento", expanded=False):
-    if st.button("📋 Ações de Mitigação", key="btn_pt_acoes", use_container_width=True):
-        navegar_para("Planos de Tratamento", "Ações")
+        if st.button("📋 Riscos", key="btn_gr_riscos", use_container_width=True):
+            navegar_para("Gestão de Riscos", "Riscos")
+    if st.button("📋 Ações de Tratamento", key="btn_gr_acoes", use_container_width=True):
+        navegar_para("Gestão de Riscos", "Ações de Tratamento")
     if is_gestor:
-        if st.button("🎯 Reavaliar Nível do Risco", key="btn_pt_reavaliar", use_container_width=True):
-            navegar_para("Planos de Tratamento", "Reavaliar Risco")
+        if st.button("🎯 Reavaliação do Nível de Risco", key="btn_gr_reavaliar", use_container_width=True):
+            navegar_para("Gestão de Riscos", "Reavaliação do Nível de Risco")
 
-with st.sidebar.expander("🔄 Monitoramento", expanded=False):
-    if st.button("📌 Acompanhamento de Riscos", key="btn_mon_acomp", use_container_width=True):
-        navegar_para("Monitoramento", "Acompanhamento")
-
+# 5 e 6. Expander Dashboards (incorporou Acompanhamento de Riscos)
 with st.sidebar.expander("📊 Dashboards", expanded=False):
+    if st.button("📌 Acompanhamento de Riscos", key="btn_dash_acomp", use_container_width=True):
+        navegar_para("Dashboards", "Acompanhamento de Riscos")
     if st.button("📈 Painel Geral", key="btn_dash_geral", use_container_width=True):
         navegar_para("Dashboards", "Painel Geral")
 
+# 7. Expander Biblioteca
 with st.sidebar.expander("📚 Biblioteca", expanded=False):
     if st.button("📄 Documentos e Normativas", key="btn_bib_doc", use_container_width=True):
-        navegar_para("Biblioteca", "Documentos")
+        navegar_para("Biblioteca", "Documentos e Normativas")
+
+st.sidebar.divider()
+
+# 1. Botão Sair / Logout posicionado por último na barra lateral
+if st.sidebar.button("🚪 Sair / Logout", use_container_width=True, key="btn_logout_bottom"):
+    st.session_state.usuario_logado = None
+    st.rerun()
 
 # ---------------------------------------------------------
 # PÁGINA: INÍCIO
