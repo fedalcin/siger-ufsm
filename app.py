@@ -57,17 +57,28 @@ def obter_configuracoes_smtp():
 def obter_emails_unidade_ou_usuario(unidade_sigla=None, nome_usuario=None):
     emails = []
     try:
-        if nome_usuario:
+        # 1. Busca e-mail de usuário específico (caso tenha sido selecionado um nome específico)
+        if nome_usuario and nome_usuario not in ["Toda a Unidade", "Todos os Servidores / Gestores"]:
             res_usr = supabase.table("usuarios").select("email").ilike("nome", f"%{nome_usuario.strip()}%").eq("ativo", True).execute()
             if res_usr.data:
                 emails.extend([u["email"] for u in res_usr.data if u.get("email")])
 
+        # 2. Busca e-mails da Unidade (E-mail geral do Setor + E-mails de todos os usuários do setor)
         if unidade_sigla and unidade_sigla != "S/U":
-            res_unid = supabase.table("usuarios").select("email").eq("unidade_sigla", unidade_sigla).eq("ativo", True).execute()
-            if res_unid.data:
-                emails.extend([u["email"] for u in res_unid.data if u.get("email")])
+            # E-mail institucional do setor cadastrado na tabela 'unidades'
+            res_u_email = supabase.table("unidades").select("email_unidade").eq("sigla", unidade_sigla).execute()
+            if res_u_email.data:
+                em_sec = res_u_email.data[0].get("email_unidade")
+                if em_sec:
+                    emails.append(em_sec.strip())
+
+            # E-mails de todos os usuários ativos vinculados a esta unidade
+            res_unid_usrs = supabase.table("usuarios").select("email").eq("unidade_sigla", unidade_sigla).eq("ativo", True).execute()
+            if res_unid_usrs.data:
+                emails.extend([u["email"] for u in res_unid_usrs.data if u.get("email")])
+
     except Exception as e:
-        print(f"Erro ao buscar e-mails: {e}")
+        print(f"Erro ao buscar e-mails para notificação: {e}")
         
     return list(set(emails))
 
@@ -1152,7 +1163,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
     with col_filtro2:
         st.write("")
         st.write("")
-        st.info(f"Exibindo pendências para **{unidade_ativa}**")
+        st.info(f"Exibindo demandas sob gestão da unidade **{unidade_ativa}**")
 
     st.divider()
 
@@ -1195,11 +1206,26 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
             
             dados_risco = acao_item.get("riscos") or {}
             evento_risco = dados_risco.get("evento", "Não especificado")
-            gestor_risco = dados_risco.get("gestor_risco", "Gestor do Risco")
+            gestor_risco_origem = dados_risco.get("gestor_risco", "Não informado")
             unidade_risco_origem = dados_risco.get("unidade", unidade_ativa)
             situacao_risco = dados_risco.get("situacao_status", "Identificado")
             
-            txt_badge_prazo, tipo_badge_prazo = obter_badge_prazo(acao_item.get("previsao_data_conclusao"), status_ac)
+            # Busca a última tramitação para saber QUEM enviou esta demanda para a unidade atual
+            ultimo_remetente_txt = "Registro Inicial"
+            try:
+                res_u_tram = supabase.table("tramitacoes")\
+                    .select("usuario_remetente, unidade_origem, data_tramitacao")\
+                    .eq("risco_id", r_id)\
+                    .order("id", desc=True)\
+                    .limit(1)\
+                    .execute()
+                if res_u_tram.data:
+                    tram_d = res_u_tram.data[0]
+                    ultimo_remetente_txt = f"{tram_d.get('usuario_remetente')} ({tram_d.get('unidade_origem')})"
+            except Exception:
+                pass
+
+            txt_badge_prazo, _ = obter_badge_prazo(acao_item.get("previsao_data_conclusao"), status_ac)
             badge_nova_txt = "🔵 Nova | " if (exibe_badge_nova and status_ac == "Pendente") else ""
             titulo_card = f"{badge_nova_txt}Risco #{r_id} ({situacao_risco}) | Ação {seq} | {txt_badge_prazo} | {nome_acao}"
 
@@ -1209,13 +1235,15 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                 with c_det1:
                     st.markdown(f"**Evento de Risco:** {evento_risco}")
                     st.markdown(f"**Status Atual do Risco:** `{situacao_risco}`")
-                    st.markdown(f"**Ação:** {nome_acao}")
+                    st.markdown(f"**Ação de Tratamento:** {nome_acao}")
                     st.markdown(f"**Objetivo:** {acao_item.get('objetivo_acao', '-')}")
                     st.markdown(f"**Como Executar:** {acao_item.get('como_sera_implementada', '-')}")
                     
                 with c_det2:
                     st.markdown(f"**Caráter:** `{carater}`")
-                    st.markdown(f"**Responsável:** {acao_item.get('nome_responsavel_implementacao', '-')}")
+                    st.markdown(f"🛡️ **Gestor do Risco:** `{gestor_risco_origem}` ({unidade_risco_origem})")
+                    st.markdown(f"👤 **Responsável pela Ação:** `{acao_item.get('nome_responsavel_implementacao', 'Toda a Unidade')}`")
+                    st.markdown(f"📩 **Último Remetente:** `{ultimo_remetente_txt}`")
                     st.markdown(f"**Previsão Início:** {formatar_data_br(acao_item.get('previsao_data_inicio'))}")
                     st.markdown(f"**Previsão Conclusão:** {formatar_data_br(acao_item.get('previsao_data_conclusao'))}")
                     
@@ -1251,6 +1279,12 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                         with pop_atuar:
                             st.markdown(f"### Atuação na Ação nº {seq} (Risco #{r_id})")
                             
+                            # Carrega lista dinâmica de usuários cadastrados para o dropdown de destinatário
+                            try:
+                                res_u_dest = supabase.table("usuarios").select("nome, unidade_sigla").eq("ativo", True).execute().data or []
+                            except Exception:
+                                res_u_dest = []
+
                             with st.form(f"form_wf_atuacao_{r_id}_{seq}"):
                                 st.markdown("##### 1. Progresso e Status da Ação")
                                 novo_pct = st.slider("Percentual de Execução Concluído", 0, 100, value=int(pct_atual), step=5, key=f"sld_pct_{r_id}_{seq}")
@@ -1259,30 +1293,37 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                 idx_st_wf = opcoes_status_wf.index(status_ac) if status_ac in opcoes_status_wf else 1
                                 novo_status_ac = st.selectbox("Novo Status da Ação", opcoes_status_wf, index=idx_st_wf, key=f"sb_st_{r_id}_{seq}")
                                 
-                                st.markdown("##### 2. Descrição das Atividades Realizadas / Parecer Técnico")
+                                st.markdown("##### 2. Relato de Avanço / Parecer Técnico")
                                 desc_avanco_wf = st.text_area(
                                     "Relato de Avanço / Evidências / Justificativa*", 
-                                    placeholder="Descreva as medidas adotadas, prazos pactuados...",
+                                    placeholder="Descreva as medidas adotadas, providências tomadas...",
                                     key=f"txt_av_{r_id}_{seq}"
                                 )
                                 
-                                st.markdown("##### 3. Tramitação da Demanda")
+                                st.markdown("##### 3. Encaminhamento e Tramitação")
                                 col_t_wf1, col_t_wf2 = st.columns(2)
                                 with col_t_wf1:
                                     idx_dest = opcoes_unid.index(unidade_risco_origem) if unidade_risco_origem in opcoes_unid else 0
-                                    unid_destino_wf = st.selectbox("Encaminhar/Tramitar Para Unidade*", opcoes_unid, index=idx_dest, key=f"sb_dest_{r_id}_{seq}")
+                                    unid_destino_wf = st.selectbox("Encaminhar Para Unidade*", opcoes_unid, index=idx_dest, key=f"sb_dest_{r_id}_{seq}")
+                                
                                 with col_t_wf2:
-                                    resp_destino_wf = st.text_input("Nome do Destinatário / Responsável*", value=gestor_risco, key=f"txt_resp_dest_{r_id}_{seq}")
+                                    # Filtra servidores da unidade selecionada + opção genérica 'Toda a Unidade'
+                                    usrs_da_unidade = [u["nome"] for u in res_u_dest if u.get("unidade_sigla") == unid_destino_wf]
+                                    opts_resp_dest = ["Toda a Unidade"] + sorted(usrs_da_unidade)
+                                    resp_destino_wf = st.selectbox("Destinatário / Responsável Especifico", opts_resp_dest, key=f"sb_resp_dest_{r_id}_{seq}")
                                     
-                                remetente_wf = st.text_input("Seu Nome (Servidor Remetente)*", value=usr_atual["nome"], key=f"txt_rem_{r_id}_{seq}")
+                                # Remetente fixo do usuário logado (Apenas Leitura)
+                                st.text_input("Remetente (Seu Usuário)", value=usr_atual["nome"], disabled=True, key=f"txt_rem_dis_{r_id}_{seq}")
                                 
                                 btn_enviar_wf = st.form_submit_button("🚀 Gravar Avanço e Tramitar Demanda")
                                 
                                 if btn_enviar_wf:
-                                    if not desc_avanco_wf or not remetente_wf or not resp_destino_wf:
-                                        st.warning("Por favor, preencha o relato do avanço, seu nome e o destinatário.")
+                                    if not desc_avanco_wf.strip():
+                                        st.warning("Por favor, preencha o relato do avanço / parecer técnico.")
                                     else:
                                         try:
+                                            remetente_efetivo = usr_atual["nome"]
+
                                             supabase.table("acoes_tratamento").update({
                                                 "status_acao": novo_status_ac,
                                                 "percentual_conclusao": novo_pct,
@@ -1306,27 +1347,27 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                                 "risco_id": r_id,
                                                 "unidade_origem": unidade_ativa,
                                                 "unidade_destino": unid_destino_wf,
-                                                "usuario_remetente": remetente_wf,
+                                                "usuario_remetente": remetente_efetivo,
                                                 "parecer_observacao": desc_avanco_wf
                                             }
                                             supabase.table("tramitacoes").insert(dados_tram_wf).execute()
 
                                             recalcular_e_atualizar_status_risco(r_id)
 
-                                            # --- ENVIO DO E-MAIL DE TRAMITAÇÃO ---
+                                            # ENVIO DE E-MAIL AUTOMÁTICO PARA A UNIDADE E USUÁRIO DESTINO
                                             emails_dest = obter_emails_unidade_ou_usuario(unidade_sigla=unid_destino_wf, nome_usuario=resp_destino_wf)
                                             if emails_dest:
                                                 assunto_e = f"💬 [SIGER] Tramitação de Demanda - Risco #{r_id} (Ação {seq})"
                                                 corpo_html = f"""
                                                 <h3>Tramitação de Demanda no SIGER</h3>
                                                 <p>Olá,</p>
-                                                <p>A ação nº <b>{seq}</b> do Risco <b>#{r_id}</b> foi tramitada por <b>{remetente_wf}</b> ({unidade_ativa}) para a sua unidade (<b>{unid_destino_wf}</b>).</p>
+                                                <p>A ação nº <b>{seq}</b> do Risco <b>#{r_id}</b> foi tramitada por <b>{remetente_efetivo}</b> ({unidade_ativa}) para a sua unidade (<b>{unid_destino_wf}</b>).</p>
                                                 <ul>
                                                     <li><b>Status:</b> {novo_status_ac} ({novo_pct}%)</li>
-                                                    <li><b>Responsável Destino:</b> {resp_destino_wf}</li>
-                                                    <li><b>Relato/Parecer:</b> {desc_avanco_wf}</li>
+                                                    <li><b>Destinatário Atribuído:</b> {resp_destino_wf}</li>
+                                                    <li><b>Relato / Parecer:</b> {desc_avanco_wf}</li>
                                                 </ul>
-                                                <p>Acesse a Caixa de Entrada do SIGER para visualizar.</p>
+                                                <p>Acesse a Caixa de Entrada do SIGER para acompanhar a demanda.</p>
                                                 """
                                                 enviar_email_notificacao_siger(emails_dest, assunto_e, corpo_html)
 
@@ -1343,19 +1384,21 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                             st.warning("⚠️ O encerramento formal finaliza o acompanhamento deste risco.")
             
                             with st.form(f"form_encerrar_risco_{r_id}_{seq}"):
-                                resp_encerramento = st.text_input("Responsável pelo Encerramento*", value=usr_atual["nome"], key=f"txt_resp_enc_{r_id}_{seq}")
+                                st.text_input("Responsável pelo Encerramento", value=usr_atual["nome"], disabled=True, key=f"txt_resp_enc_dis_{r_id}_{seq}")
                                 justificativa_enc = st.text_area("Justificativa e Parecer Final*", placeholder="Descreva os motivos...", key=f"txt_just_enc_{r_id}_{seq}")
                 
                                 if st.form_submit_button("🏁 Confirmar Encerramento Formal"):
-                                    if not justificativa_enc.strip() or not resp_encerramento.strip():
-                                        st.warning("Preencha o responsável e a justificativa para encerrar.")
+                                    if not justificativa_enc.strip():
+                                        st.warning("Preencha a justificativa para encerrar.")
                                     else:
                                         try:
                                             dt_agora_iso = datetime.now().isoformat()
+                                            resp_enc_efetivo = usr_atual["nome"]
+
                                             supabase.table("riscos").update({
                                                 "situacao_status": "Encerrado",
                                                 "data_encerramento": dt_agora_iso,
-                                                "usuario_encerramento": resp_encerramento.strip(),
+                                                "usuario_encerramento": resp_enc_efetivo,
                                                 "justificativa_encerramento": justificativa_enc.strip()
                                             }).eq("id", r_id).execute()
                             
@@ -1363,7 +1406,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                                 "risco_id": r_id,
                                                 "unidade_origem": unidade_ativa,
                                                 "unidade_destino": unidade_ativa,
-                                                "usuario_remetente": resp_encerramento.strip(),
+                                                "usuario_remetente": resp_enc_efetivo,
                                                 "parecer_observacao": f"🔒 ENCERRAMENTO FORMAL DO RISCO: {justificativa_enc.strip()}"
                                             }
                                             supabase.table("tramitacoes").insert(dados_tram_enc).execute()
@@ -1905,7 +1948,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Cadastros":
     sub = st.session_state.sub_pagina_atual or "Unidades"
-    
+
     # 1. SUBPÁGINA: UNIDADES
     if sub == "Unidades" and is_admin:
         st.title("🏢 Unidades")
@@ -1922,6 +1965,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                         sigla_item = str(item['sigla']).strip()
                         nome_item = item.get('nome_extenso', '')
                         tipo_exibicao = item.get('tipo_unidade', 'Não informado')
+                        email_item = item.get('email_unidade', '')
                         
                         with st.expander(f"📍 **{sigla_item}** | {nome_item} ({tipo_exibicao})"):
                             col_info, col_acoes = st.columns([3, 1])
@@ -1929,6 +1973,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                                 st.write(f"**Sigla:** {sigla_item}")
                                 st.write(f"**Nome por Extenso:** {nome_item}")
                                 st.write(f"**Tipo da Unidade:** {tipo_exibicao}")
+                                st.write(f"**E-mail da Unidade:** `{email_item or 'Não informado'}`")
                             
                             with col_acoes:
                                 modal_edit = st.popover("✏️ Editar")
@@ -1939,12 +1984,14 @@ elif st.session_state.pagina_atual == "Cadastros":
                                         val_atual = item.get('tipo_unidade')
                                         idx_tipo = TIPOS_UNIDADE_OPCOES.index(val_atual) if val_atual in TIPOS_UNIDADE_OPCOES else 0
                                         edit_tipo = st.selectbox("Tipo da Unidade*", options=TIPOS_UNIDADE_OPCOES, index=idx_tipo)
+                                        edit_email = st.text_input("E-mail Institucional da Unidade", value=email_item, placeholder="setor@instituicao.edu.br")
                                         
                                         if st.form_submit_button("💾 Salvar Alterações"):
                                             try:
                                                 supabase.table("unidades").update({
                                                     "nome_extenso": edit_nome,
-                                                    "tipo_unidade": edit_tipo
+                                                    "tipo_unidade": edit_tipo,
+                                                    "email_unidade": edit_email.strip().lower() if edit_email else None
                                                 }).eq("sigla", sigla_item).execute()
                                                 st.toast("Unidade atualizada com sucesso!", icon="✅")
                                                 st.rerun()
@@ -1978,6 +2025,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                     nome_extenso = st.text_input("Nome da Unidade por Extenso*", placeholder="Ex: Pró-Reitoria de Assuntos Estudantis")
                 with col_u2:
                     tipo_unidade_sel = st.selectbox("Tipo da Unidade*", options=TIPOS_UNIDADE_OPCOES)
+                    email_unid_input = st.text_input("E-mail Institucional da Unidade", placeholder="Ex: prae@instituicao.edu.br")
                 
                 submitted_unid = st.form_submit_button("💾 Salvar Unidade")
                 
@@ -1989,7 +2037,8 @@ elif st.session_state.pagina_atual == "Cadastros":
                             supabase.table("unidades").insert({
                                 "sigla": sigla,
                                 "nome_extenso": nome_extenso,
-                                "tipo_unidade": tipo_unidade_sel
+                                "tipo_unidade": tipo_unidade_sel,
+                                "email_unidade": email_unid_input.strip().lower() if email_unid_input else None
                             }).execute()
                             st.toast(f"✅ Unidade '{sigla}' registrada!", icon="🎉")
                             st.rerun()
