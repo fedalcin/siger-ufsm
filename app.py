@@ -183,12 +183,6 @@ st.markdown("""
         padding-top: 0rem !important;
     }
 
-    /* Alinha TODOS os botões da barra lateral à esquerda */
-    section[data-testid="stSidebar"] div.stButton > button {
-        text-align: left !important;
-        justify-content: flex-start !important;
-    }
-
     section[data-testid="stSidebar"] div[data-testid="stImage"] {
         margin-top: 0rem !important;
         margin-bottom: 0rem !important;
@@ -199,12 +193,14 @@ st.markdown("""
         margin-top: 0.4rem !important;
         margin-bottom: 0.4rem !important;
     }
+    
     section[data-testid="stSidebar"] h3 {
         padding-top: 0rem !important;
         margin-top: 0rem !important;
         margin-bottom: 0.3rem !important;
     }
     
+    /* Cabeçalhos dos Expanders na Sidebar */
     section[data-testid="stSidebar"] div[data-testid="stExpander"] details summary {
         background-color: #002147 !important;
         color: #ffffff !important;
@@ -228,6 +224,7 @@ st.markdown("""
         fill: #ffffff !important;
     }
 
+    /* Botões Início e Caixa de Entrada */
     .btn-inicio-sidebar button {
         background-color: #002147 !important;
         color: #ffffff !important;
@@ -236,34 +233,47 @@ st.markdown("""
         padding: 8px 12px !important;
         margin-bottom: 4px !important;
         width: 100% !important;
-        text-align: left !important;
-        justify-content: flex-start !important;
         border: 1px solid #001733 !important;
     }
     .btn-inicio-sidebar button:hover {
         background-color: #003366 !important;
         color: #ffffff !important;
     }
-    
-    section[data-testid="stSidebar"] div[data-testid="stExpander"] div.stButton > button {
-        text-align: left !important;
+
+    /* Regra geral para o container dos botões da Sidebar */
+    section[data-testid="stSidebar"] div.stButton > button {
+        display: flex !important;
         justify-content: flex-start !important;
+        align-items: center !important;
+    }
+
+    /* Botões do Menu Interno (dentro dos Expanders) */
+    section[data-testid="stSidebar"] div[data-testid="stExpander"] div.stButton > button {
         width: calc(100% - 20px) !important;
         margin-left: 20px !important;
         border: none !important;
         background-color: #f8f9fa !important;
         color: #333333 !important;
-        padding-left: 10px !important;
+        padding: 6px 10px !important;
         margin-top: 2px !important;
         margin-bottom: 2px !important;
         border-radius: 4px !important;
         border-left: 3px solid #002147 !important;
     }
+
     section[data-testid="stSidebar"] div[data-testid="stExpander"] div.stButton > button:hover {
         background-color: #e2e8f0 !important;
         color: #002147 !important;
         font-weight: bold !important;
         border-left: 4px solid #003366 !important;
+    }
+
+    /* REGRA CHAVE: Força o alinhamento à esquerda em todos os elementos de texto internos do Streamlit */
+    section[data-testid="stSidebar"] div.stButton > button * {
+        text-align: left !important;
+        justify-content: flex-start !important;
+        margin-left: 0 !important;
+        width: 100% !important;
     }
     
     section[data-testid="stSidebar"] div[data-testid="stExpander"] {
