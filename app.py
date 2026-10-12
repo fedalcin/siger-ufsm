@@ -1279,19 +1279,29 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                         with pop_atuar:
                             st.markdown(f"### Atuação na Ação nº {seq} (Risco #{r_id})")
                             
-                            # Carrega lista completa de usuários ativos cadastrados
+                            # Seleção da Unidade Destino FORA do form para permitir dinamismo
+                            idx_dest_def = opcoes_unid.index(unidade_risco_origem) if unidade_risco_origem in opcoes_unid else 0
+                            unid_destino_wf = st.selectbox(
+                                "Encaminhar Para Unidade*", 
+                                opcoes_unid, 
+                                index=idx_dest_def, 
+                                key=f"sb_dest_out_{r_id}_{seq}"
+                            )
+
+                            # Carrega ESTRITAMENTE os usuários ativos vinculados à unidade selecionada
                             try:
-                                res_u_dest = supabase.table("usuarios").select("nome, unidade_sigla").eq("ativo", True).order("nome").execute().data or []
+                                res_u_dest = supabase.table("usuarios")\
+                                    .select("nome")\
+                                    .eq("unidade_sigla", unid_destino_wf)\
+                                    .eq("ativo", True)\
+                                    .order("nome")\
+                                    .execute().data or []
                             except Exception:
                                 res_u_dest = []
 
-                            # Monta opções fechadas do selectbox
-                            opts_resp_dest = ["Toda a Unidade"]
-                            for u_item in res_u_dest:
-                                u_nome = u_item.get("nome")
-                                u_sig = u_item.get("unidade_sigla") or "Sem Unidade"
-                                if u_nome:
-                                    opts_resp_dest.append(f"{u_nome} ({u_sig})")
+                            # Monta lista restrita aos servidores da unidade
+                            usrs_filtrados = [u["nome"] for u in res_u_dest if u.get("nome")]
+                            opts_resp_dest = ["Toda a Unidade"] + usrs_filtrados
 
                             with st.form(f"form_wf_atuacao_{r_id}_{seq}"):
                                 st.markdown("##### 1. Progresso e Status da Ação")
@@ -1311,11 +1321,10 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                 st.markdown("##### 3. Encaminhamento e Tramitação")
                                 col_t_wf1, col_t_wf2 = st.columns(2)
                                 with col_t_wf1:
-                                    idx_dest = opcoes_unid.index(unidade_risco_origem) if unidade_risco_origem in opcoes_unid else 0
-                                    unid_destino_wf = st.selectbox("Encaminhar Para Unidade*", opcoes_unid, index=idx_dest, key=f"sb_dest_{r_id}_{seq}")
+                                    st.text_input("Unidade Destino Selecionada", value=unid_destino_wf, disabled=True, key=f"txt_unid_dis_{r_id}_{seq}")
                                 
                                 with col_t_wf2:
-                                    resp_destino_sel = st.selectbox(
+                                    resp_destino_wf = st.selectbox(
                                         "Destinatário / Responsável Específico*", 
                                         options=opts_resp_dest, 
                                         index=0, 
@@ -1333,14 +1342,8 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                     else:
                                         try:
                                             remetente_efetivo = usr_atual["nome"]
-
-                                            # Extração correta do nome do destinatário
-                                            if resp_destino_sel == "Toda a Unidade":
-                                                resp_destino_final = "Toda a Unidade"
-                                                nome_para_email = None
-                                            else:
-                                                resp_destino_final = resp_destino_sel.rsplit(" (", 1)[0]
-                                                nome_para_email = resp_destino_final
+                                            resp_destino_final = resp_destino_wf
+                                            nome_para_email = None if resp_destino_final == "Toda a Unidade" else resp_destino_final
 
                                             supabase.table("acoes_tratamento").update({
                                                 "status_acao": novo_status_ac,
