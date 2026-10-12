@@ -860,60 +860,13 @@ if st.session_state.pagina_atual == "Início":
 # PÁGINA: ADMINISTRAÇÃO DO SISTEMA
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Administração do Sistema" and is_admin:
-    sub = st.session_state.sub_pagina_atual or "Usuários"
+    sub = st.session_state.sub_pagina_atual or "Usuários e Permissões"
     
-    if sub == "Configurações":
-        st.title("🔧 Configurações Gerais do Sistema")
-        st.subheader("📧 Servidor de E-mail para Envio de Notificações (SMTP)")
-        st.caption("Cadastre as credenciais do servidor de e-mail institucional para envio automatizado de alertas aos usuários.")
-
-        cfg_smtp = {}
-        try:
-            res_cfg = supabase.table("configuracoes").select("chave, valor").like("chave", "smtp_%").execute()
-            if res_cfg.data:
-                cfg_smtp = {item["chave"]: item["valor"] for item in res_cfg.data}
-        except Exception as e:
-            st.error(f"Erro ao carregar configurações de e-mail: {e}")
-
-        with st.form("form_config_smtp"):
-            c_s1, c_s2 = st.columns(2)
-            with c_s1:
-                smtp_servidor = st.text_input("Servidor SMTP*", value=cfg_smtp.get("smtp_server", "smtp.gmail.com"), placeholder="smtp.instituicao.edu.br")
-                smtp_porta = st.number_input("Porta SMTP*", value=int(cfg_smtp.get("smtp_port", 587)), step=1)
-            with c_s2:
-                smtp_email = st.text_input("E-mail Remetente*", value=cfg_smtp.get("smtp_email", ""), placeholder="siger-notificacoes@instituicao.edu.br")
-                
-                senha_salva_cripto = cfg_smtp.get("smtp_password", "")
-                senha_descriptografada = descriptografar_texto(senha_salva_cripto)
-                
-                smtp_senha = st.text_input("Senha do E-mail / App Password*", value=senha_descriptografada, type="password")
-
-            st.caption("🔒 *A senha é mantida de forma criptografada na tabela de configurações.*")
-            btn_salvar_smtp = st.form_submit_button("💾 Salvar Credenciais SMTP")
-
-        if btn_salvar_smtp:
-            if not smtp_servidor or not smtp_email or not smtp_senha:
-                st.warning("Preencha todos os campos obrigatórios da configuração SMTP.")
-            else:
-                try:
-                    senha_criptografada = criptografar_texto(smtp_senha)
-                    configs_para_salvar = [
-                        {"chave": "smtp_server", "valor": smtp_servidor.strip()},
-                        {"chave": "smtp_port", "valor": str(smtp_porta)},
-                        {"chave": "smtp_email", "valor": smtp_email.strip()},
-                        {"chave": "smtp_password", "valor": senha_criptografada}
-                    ]
-                    for item in configs_para_salvar:
-                        supabase.table("configuracoes").upsert(item, on_conflict="chave").execute()
-                        
-                    st.success("✅ Servidor de e-mail registrado e pronto para envio de notificações!")
-                    st.rerun()
-                except Exception as e:
-                    st.error(f"Erro ao salvar credenciais: {e}")
-
-    elif sub == "Usuários":
-
-        st.title("👥 Gestão de Usuários e Permissões")
+    # 1. SUBPÁGINA: USUÁRIOS E PERMISSÕES
+    if sub in ["Usuários e Permissões", "Usuários"]:
+        st.title("👥 Usuários e Permissões")
+        st.caption("Gerenciamento de acessos, perfis e permissões de usuários do sistema.")
+        
         tab_users_list, tab_user_new = st.tabs(["🔍 Usuários Cadastrados", "➕ Cadastrar Novo Usuário"])
         
         with tab_users_list:
@@ -999,6 +952,165 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and is_admin:
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao cadastrar usuário: {e}")
+
+    # 2. SUBPÁGINA: IDENTIDADE VISUAL
+    elif sub == "Identidade Visual":
+        st.title("🖼️ Identidade Visual")
+        st.caption("Personalize os logotipos exibidos no sistema enviando imagens diretamente para o armazenamento.")
+        
+        col_v1, col_v2, col_v3 = st.columns(3)
+        
+        def salvar_logo_storage_e_config(file_obj, key_config, file_name):
+            try:
+                bytes_data = file_obj.getvalue()
+                bucket = supabase.storage.from_("identidade_visual")
+                
+                try:
+                    bucket.remove([file_name])
+                except Exception:
+                    pass
+                
+                bucket.upload(file_name, bytes_data, {"content-type": file_obj.type})
+                public_url = bucket.get_public_url(file_name)
+                
+                supabase.table("configuracoes").upsert({
+                    "chave": key_config,
+                    "valor": public_url
+                }, on_conflict="chave").execute()
+                
+                return True, public_url
+            except Exception as e:
+                return False, str(e)
+
+        with col_v1:
+            st.markdown("##### 1. Logotipo Completo SIGER")
+            if url_logo_siger:
+                st.image(url_logo_siger, use_container_width=True)
+            else:
+                st.info("Logotipo completo padrão ativo.")
+                
+            up_siger = st.file_uploader("Enviar novo logo completo (PNG/JPG)", type=["png", "jpg", "jpeg"], key="up_siger")
+            if up_siger and st.button("💾 Atualizar Logo SIGER"):
+                ok, res_url = salvar_logo_storage_e_config(up_siger, "url_logo_siger", "logo_siger.png")
+                if ok:
+                    st.success("Logo completo atualizado com sucesso!")
+                    st.rerun()
+                else:
+                    st.error(f"Erro ao salvar imagem: {res_url}")
+
+        with col_v2:
+            st.markdown("##### 2. Logotipo Reduzido / Ícone (Favicon)")
+            if url_logo_reduzido:
+                st.image(url_logo_reduzido, width=100)
+            else:
+                st.info("Ícone reduzido padrão ativo.")
+                
+            up_red = st.file_uploader("Enviar novo ícone reduzido (PNG/JPG)", type=["png", "jpg", "jpeg"], key="up_red")
+            if up_red and st.button("💾 Atualizar Logo Reduzido"):
+                ok, res_url = salvar_logo_storage_e_config(up_red, "url_logo_reduzido", "logo_reduzido.png")
+                if ok:
+                    st.success("Logo reduzido atualizado com sucesso!")
+                    st.rerun()
+                else:
+                    st.error(f"Erro ao salvar imagem: {res_url}")
+
+        with col_v3:
+            st.markdown("##### 3. Logotipo da Instituição")
+            if url_logo_instituicao:
+                st.image(url_logo_instituicao, use_container_width=True)
+            else:
+                st.info("Nenhum logotipo institucional cadastrado.")
+                
+            up_inst = st.file_uploader("Enviar logo institucional (PNG/JPG)", type=["png", "jpg", "jpeg"], key="up_inst")
+            if up_inst and st.button("💾 Atualizar Logo Institucional"):
+                ok, res_url = salvar_logo_storage_e_config(up_inst, "url_logo_instituicao", "logo_instituicao.png")
+                if ok:
+                    st.success("Logo institucional atualizado com sucesso!")
+                    st.rerun()
+                else:
+                    st.error(f"Erro ao salvar imagem: {res_url}")
+
+    # 3. SUBPÁGINA: TEXTO DA TELA INICIAL
+    elif sub == "Texto da Tela Inicial":
+        st.title("✍ Texto da Tela Inicial")
+        st.caption("Altere a mensagem de boas-vindas apresentada na página inicial do sistema.")
+        
+        texto_atual = ""
+        try:
+            res_txt = supabase.table("configuracoes").select("valor").eq("chave", "texto_pagina_inicial").execute()
+            if res_txt.data and len(res_txt.data) > 0:
+                texto_atual = res_txt.data[0]["valor"]
+        except Exception as e:
+            st.error(f"Erro ao carregar texto atual: {e}")
+
+        with st.form("form_edit_texto_inicial"):
+            novo_texto_home = st.text_area(
+                "Texto de Boas-Vindas e Apresentação (Suporta tags HTML como <b>, <br>, <i>)*", 
+                value=texto_atual, 
+                height=250
+            )
+            
+            if st.form_submit_button("💾 Salvar Texto da Tela Inicial"):
+                try:
+                    supabase.table("configuracoes").upsert({
+                        "chave": "texto_pagina_inicial",
+                        "valor": novo_texto_home
+                    }, on_conflict="chave").execute()
+                    
+                    st.success("✅ Texto da tela inicial atualizado com sucesso!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao salvar texto inicial: {e}")
+
+    # 4. SUBPÁGINA: CONFIGURAÇÕES GERAIS
+    elif sub in ["Configurações Gerais", "Configurações"]:
+        st.title("🔧 Configurações Gerais")
+        st.subheader("📧 Servidor de E-mail para Envio de Notificações (SMTP)")
+        st.caption("Cadastre as credenciais do servidor de e-mail institucional para envio automatizado de alertas aos usuários.")
+
+        cfg_smtp = {}
+        try:
+            res_cfg = supabase.table("configuracoes").select("chave, valor").like("chave", "smtp_%").execute()
+            if res_cfg.data:
+                cfg_smtp = {item["chave"]: item["valor"] for item in res_cfg.data}
+        except Exception as e:
+            st.error(f"Erro ao carregar configurações de e-mail: {e}")
+
+        with st.form("form_config_smtp"):
+            c_s1, c_s2 = st.columns(2)
+            with c_s1:
+                smtp_servidor = st.text_input("Servidor SMTP*", value=cfg_smtp.get("smtp_server", "smtp.gmail.com"), placeholder="smtp.instituicao.edu.br")
+                smtp_porta = st.number_input("Porta SMTP*", value=int(cfg_smtp.get("smtp_port", 587)), step=1)
+            with c_s2:
+                smtp_email = st.text_input("E-mail Remetente*", value=cfg_smtp.get("smtp_email", ""), placeholder="siger-notificacoes@instituicao.edu.br")
+                
+                senha_salva_cripto = cfg_smtp.get("smtp_password", "")
+                senha_descriptografada = descriptografar_texto(senha_salva_cripto)
+                
+                smtp_senha = st.text_input("Senha do E-mail / App Password*", value=senha_descriptografada, type="password")
+
+            st.caption("🔒 *A senha é mantida de forma criptografada na tabela de configurações.*")
+            btn_salvar_smtp = st.form_submit_button("💾 Salvar Credenciais SMTP")
+
+        if btn_salvar_smtp:
+            if not smtp_servidor or not smtp_email or not smtp_senha:
+                st.warning("Preencha todos os campos obrigatórios da configuração SMTP.")
+            else:
+                try:
+                    senha_criptografada = criptografar_texto(smtp_senha)
+                    configs_para_salvar = [
+                        {"chave": "smtp_server", "valor": smtp_servidor.strip()},
+                        {"chave": "smtp_port", "valor": str(smtp_porta)},
+                        {"chave": "smtp_email", "valor": smtp_email.strip()},
+                        {"chave": "smtp_password", "valor": senha_criptografada}
+                    ]
+                    for item in configs_para_salvar:
+                        supabase.table("configuracoes").upsert(item, on_conflict="chave").execute()
+                        
+                    st.success("✅ Servidor de e-mail registrado e pronto para envio de notificações!")
+                    st.rerun()
+                except Exception as e:
+                    st.error(f"Erro ao salvar credenciais: {e}")
 
 # ---------------------------------------------------------
 # PÁGINA: CAIXA DE ENTRADA
@@ -2974,7 +3086,8 @@ elif st.session_state.pagina_atual == "Dashboards":
 # PÁGINA: BIBLIOTECA
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Biblioteca":
-    st.title("📚 Biblioteca de Documentos e Normativas")
+    st.title("📄 Documentos e Normativas")
+    st.caption("Acervo de normativas, manuais, diretrizes e documentos institucionais de gestão de riscos.")
     st.divider()
     
     try:
