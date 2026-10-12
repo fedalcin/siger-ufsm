@@ -2523,20 +2523,33 @@ elif st.session_state.pagina_atual == "Dashboards":
                 🔄 **Periodicidade:** {risco_obj.get('periodicidade_revisao', 'Não informada')}  
                 📆 **Próxima Revisão:** {formatar_data_br(data_prox_rev)} (`{sit_revisao}`)
                 """)
-                       
-            st.markdown("#### 📊 Grid de KPIs e Indicadores Gerenciais")
-            
-            nivel_val = risco_obj.get('nivel_risco', 1)
-            cor_nivel_str = "🔴 Crítico" if nivel_val >= 15 else "🟡 Médio" if nivel_val >= 8 else "🟢 Baixo"
 
-            kpi_c1, kpi_c2, kpi_c3, kpi_c4, kpi_c5, kpi_c6, kpi_c7 = st.columns(7)
-            kpi_c1.metric("Nível do Risco", f"{nivel_val}", cor_nivel_str)
-            kpi_c2.metric("Total Ações", tot_acoes_r)
-            kpi_c3.metric("Concluídas", acoes_concluidas_r)
-            kpi_c4.metric("Atrasadas", acoes_atrasadas_r)
-            kpi_c5.metric("IET (Execução)", f"{iet_r}%")
-            kpi_c6.metric("ICP (Prazo)", f"{icp_r}%")
-            kpi_c7.metric("ITR (Tratamento)", f"{itr_r}%")
+
+            st.markdown("#### 📊 Grid de Indicadores Gerenciais")
+        
+                    nivel_val = risco_obj.get('nivel_risco', 1)
+                    cor_nivel_str = "🔴 Crítico" if nivel_val >= 15 else "🟡 Médio" if nivel_val >= 8 else "🟢 Baixo"
+
+                    kpi_c1, kpi_c2, kpi_c3, kpi_c4, kpi_c5, kpi_c6, kpi_c7 = st.columns(7)
+                    kpi_c1.metric("Nível do Risco", f"{nivel_val}", cor_nivel_str)
+                    kpi_c2.metric("Total Ações", tot_acoes_r)
+                    kpi_c3.metric("Concluídas", acoes_concluidas_r)
+                    kpi_c4.metric("Atrasadas", acoes_atrasadas_r)
+                    kpi_c5.metric(
+                        "Execução do Tratamento", 
+                        f"{iet_r}%", 
+                        help="Índice de Execução do Tratamento: Mede o percentual médio de execução das ações de mitigação cadastradas.\n\nFórmula: (Soma do % de Conclusão das Ações / Total de Ações)"
+                    )
+                    kpi_c6.metric(
+                        "Cumprimento de Prazos", 
+                        f"{icp_r}%", 
+                        help="Índice de Cumprimento de Prazos: Avalia a proporção de ações que estão dentro do prazo previsto.\n\nFórmula: ((Ações no Prazo / Total de Ações) * 100)"
+                    )
+                    kpi_c7.metric(
+                        "Tratamento do Risco", 
+                        f"{itr_r}%", 
+                        help="Índice de Tratamento do Risco: Métrica consolidada que combina a taxa de execução, conclusão total e aderência aos prazos.\n\nFórmula: Ponderação entre Execução, Conclusão Total e Cumprimento de Prazos"
+                    )
 
             st.divider()
 
@@ -2790,50 +2803,53 @@ elif st.session_state.pagina_atual == "Dashboards":
         col_top, col_alertas_gl = st.columns([1.8, 1.2])
 
         with col_top:
-            st.markdown("### 🔝 Ranking de Riscos Prioritários (Ordenado por IAR)")
-            st.caption("Fórmula de priorização do IAR considera Nível do Risco, Ações Atrasadas e Revisão Temporal.")
+                st.markdown(
+                    "### 🔝 Ranking de Riscos Prioritários", 
+                    help="Fórmula de Priorização do Risco: Pontuação calculada com base no Nível do Risco, número de Ações Atrasadas, proporção de Tratamento e Situação da Revisão Temporal."
+                )
+                st.caption("Ordenado pela Pontuação de Priorização do Risco (nível de exposição, pendências e revisão temporal).")
 
-            if not df_r_filtrado.empty:
-                top_riscos_lista = []
+                if not df_r_filtrado.empty:
+                    top_riscos_lista = []
+            
+                    for _, r_item in df_r_filtrado.iterrows():
+                        r_id_f = r_item["id"]
+                        n_val = r_item.get("nivel_risco", 1)
                 
-                for _, r_item in df_r_filtrado.iterrows():
-                    r_id_f = r_item["id"]
-                    n_val = r_item.get("nivel_risco", 1)
-                    
-                    df_ac_r = df_a_filtrado[df_a_filtrado["risco_id"] == r_id_f] if not df_a_filtrado.empty else pd.DataFrame()
-                    tot_ac_r = len(df_ac_r)
-                    atrasadas_ac_r = sum(
-                        1 for _, row in df_ac_r.iterrows()
-                        if calcular_situacao_prazo_acao(row.get("status_acao"), row.get("previsao_data_conclusao")) == "⚠️ Atrasada"
-                    ) if not df_ac_r.empty else 0
+                        df_ac_r = df_a_filtrado[df_a_filtrado["risco_id"] == r_id_f] if not df_a_filtrado.empty else pd.DataFrame()
+                        tot_ac_r = len(df_ac_r)
+                        atrasadas_ac_r = sum(
+                            1 for _, row in df_ac_r.iterrows()
+                            if calcular_situacao_prazo_acao(row.get("status_acao"), row.get("previsao_data_conclusao")) == "⚠️ Atrasada"
+                        ) if not df_a_filtrado.empty else 0
 
-                    sit_rev_r = calcular_situacao_revisao_risco(r_item.get("proxima_revisao"))
+                        sit_rev_r = calcular_situacao_revisao_risco(r_item.get("proxima_revisao"))
 
-                    iar_dados = calcular_iar_risco(
-                        nivel_risco=n_val,
-                        acoes_atrasadas=atrasadas_ac_r,
-                        total_acoes=tot_ac_r,
-                        situacao_revisao=sit_rev_r
-                    )
+                        iar_dados = calcular_iar_risco(
+                            nivel_risco=n_val,
+                            acoes_atrasadas=atrasadas_ac_r,
+                            total_acoes=tot_ac_r,
+                            situacao_revisao=sit_rev_r
+                        )
 
-                    iar_valor = iar_dados.get("iar") or iar_dados.get("iar_score") or iar_dados.get("score") or 0.0
-                    prioridade_txt = iar_dados.get("prioridade") or iar_dados.get("nivel_prioridade") or "Normal"
+                        iar_valor = iar_dados.get("iar") or iar_dados.get("iar_score") or iar_dados.get("score") or 0.0
+                        prioridade_txt = iar_dados.get("prioridade") or iar_dados.get("nivel_prioridade") or "Normal"
 
-                    top_riscos_lista.append({
-                        "ID": r_id_f,
-                        "Risco": r_item.get("evento", "Sem evento"),
-                        "Unidade": r_item.get("unidade"),
-                        "Nível": n_val,
-                        "Ações (Tot/Atr)": f"{tot_ac_r} / {atrasadas_ac_r}",
-                        "IAR (Pontuação)": iar_valor,
-                        "Prioridade": prioridade_txt,
-                        "Status": r_item.get("situacao_status")
-                    })
+                        top_riscos_lista.append({
+                            "ID": r_id_f,
+                            "Risco": r_item.get("evento", "Sem evento"),
+                            "Unidade": r_item.get("unidade"),
+                            "Nível": n_val,
+                            "Ações (Tot/Atr)": f"{tot_ac_r} / {atrasadas_ac_r}",
+                            "Pontuação de Prioridade": iar_valor,
+                            "Prioridade": prioridade_txt,
+                            "Status": r_item.get("situacao_status")
+                        })
 
-                df_top_final = pd.DataFrame(top_riscos_lista).sort_values(by="IAR (Pontuação)", ascending=False)
-                st.dataframe(df_top_final, use_container_width=True, hide_index=True)
-            else:
-                st.info("Nenhum risco encontrado para exibição no ranking.")
+                    df_top_final = pd.DataFrame(top_riscos_lista).sort_values(by="Pontuação de Prioridade", ascending=False)
+                    st.dataframe(df_top_final, use_container_width=True, hide_index=True)
+                else:
+                    st.info("Nenhum risco encontrado para exibição no ranking.")
 
         with col_alertas_gl:
             st.markdown("### 🚨 Alertas Institucionais")
