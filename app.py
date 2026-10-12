@@ -1279,11 +1279,19 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                         with pop_atuar:
                             st.markdown(f"### Atuação na Ação nº {seq} (Risco #{r_id})")
                             
-                            # Carrega lista dinâmica de usuários cadastrados para o dropdown de destinatário
+                            # Carrega lista completa de usuários ativos cadastrados
                             try:
-                                res_u_dest = supabase.table("usuarios").select("nome, unidade_sigla").eq("ativo", True).execute().data or []
+                                res_u_dest = supabase.table("usuarios").select("nome, unidade_sigla").eq("ativo", True).order("nome").execute().data or []
                             except Exception:
                                 res_u_dest = []
+
+                            # Monta opções fechadas do selectbox
+                            opts_resp_dest = ["Toda a Unidade"]
+                            for u_item in res_u_dest:
+                                u_nome = u_item.get("nome")
+                                u_sig = u_item.get("unidade_sigla") or "Sem Unidade"
+                                if u_nome:
+                                    opts_resp_dest.append(f"{u_nome} ({u_sig})")
 
                             with st.form(f"form_wf_atuacao_{r_id}_{seq}"):
                                 st.markdown("##### 1. Progresso e Status da Ação")
@@ -1307,10 +1315,12 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                     unid_destino_wf = st.selectbox("Encaminhar Para Unidade*", opcoes_unid, index=idx_dest, key=f"sb_dest_{r_id}_{seq}")
                                 
                                 with col_t_wf2:
-                                    # Filtra servidores da unidade selecionada + opção genérica 'Toda a Unidade'
-                                    usrs_da_unidade = [u["nome"] for u in res_u_dest if u.get("unidade_sigla") == unid_destino_wf]
-                                    opts_resp_dest = ["Toda a Unidade"] + sorted(usrs_da_unidade)
-                                    resp_destino_wf = st.selectbox("Destinatário / Responsável Especifico", opts_resp_dest, key=f"sb_resp_dest_{r_id}_{seq}")
+                                    resp_destino_sel = st.selectbox(
+                                        "Destinatário / Responsável Específico*", 
+                                        options=opts_resp_dest, 
+                                        index=0, 
+                                        key=f"sb_resp_dest_{r_id}_{seq}"
+                                    )
                                     
                                 # Remetente fixo do usuário logado (Apenas Leitura)
                                 st.text_input("Remetente (Seu Usuário)", value=usr_atual["nome"], disabled=True, key=f"txt_rem_dis_{r_id}_{seq}")
@@ -1324,11 +1334,19 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                         try:
                                             remetente_efetivo = usr_atual["nome"]
 
+                                            # Extração correta do nome do destinatário
+                                            if resp_destino_sel == "Toda a Unidade":
+                                                resp_destino_final = "Toda a Unidade"
+                                                nome_para_email = None
+                                            else:
+                                                resp_destino_final = resp_destino_sel.rsplit(" (", 1)[0]
+                                                nome_para_email = resp_destino_final
+
                                             supabase.table("acoes_tratamento").update({
                                                 "status_acao": novo_status_ac,
                                                 "percentual_conclusao": novo_pct,
                                                 "unidade_responsavel": unid_destino_wf,
-                                                "nome_responsavel_implementacao": resp_destino_wf
+                                                "nome_responsavel_implementacao": resp_destino_final
                                             }).eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
                                             
                                             dados_mov_wf = {
@@ -1339,7 +1357,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                                 "descricao_avanco": desc_avanco_wf,
                                                 "percentual_conclusao": novo_pct,
                                                 "unidade_responsavel": unid_destino_wf,
-                                                "usuario_responsavel": resp_destino_wf
+                                                "usuario_responsavel": resp_destino_final
                                             }
                                             supabase.table("movimentacoes_acoes").insert(dados_mov_wf).execute()
 
@@ -1355,7 +1373,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                             recalcular_e_atualizar_status_risco(r_id)
 
                                             # ENVIO DE E-MAIL AUTOMÁTICO PARA A UNIDADE E USUÁRIO DESTINO
-                                            emails_dest = obter_emails_unidade_ou_usuario(unidade_sigla=unid_destino_wf, nome_usuario=resp_destino_wf)
+                                            emails_dest = obter_emails_unidade_ou_usuario(unidade_sigla=unid_destino_wf, nome_usuario=nome_para_email)
                                             if emails_dest:
                                                 assunto_e = f"💬 [SIGER] Tramitação de Demanda - Risco #{r_id} (Ação {seq})"
                                                 corpo_html = f"""
@@ -1364,7 +1382,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                                 <p>A ação nº <b>{seq}</b> do Risco <b>#{r_id}</b> foi tramitada por <b>{remetente_efetivo}</b> ({unidade_ativa}) para a sua unidade (<b>{unid_destino_wf}</b>).</p>
                                                 <ul>
                                                     <li><b>Status:</b> {novo_status_ac} ({novo_pct}%)</li>
-                                                    <li><b>Destinatário Atribuído:</b> {resp_destino_wf}</li>
+                                                    <li><b>Destinatário Atribuído:</b> {resp_destino_final}</li>
                                                     <li><b>Relato / Parecer:</b> {desc_avanco_wf}</li>
                                                 </ul>
                                                 <p>Acesse a Caixa de Entrada do SIGER para acompanhar a demanda.</p>
