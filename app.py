@@ -1249,7 +1249,8 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                     
                 st.divider()
                 
-                pct_atual = 0
+                # Leitura da porcentagem usando 'percentual_execucao' conforme seu schema SQL
+                pct_atual = acao_item.get("percentual_execucao") or 0
                 try:
                     res_ult_mov = supabase.table("movimentacoes_acoes")\
                         .select("percentual_conclusao, descricao_avanco, data_movimentacao")\
@@ -1261,13 +1262,13 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                     
                     if res_ult_mov.data:
                         mov = res_ult_mov.data[0]
-                        pct_atual = mov.get("percentual_conclusao", 0)
+                        pct_atual = mov.get("percentual_conclusao", pct_atual)
                         st.write(f"**Avanço Atual:** `{pct_atual}%`")
-                        st.progress(pct_atual / 100.0)
+                        st.progress(float(pct_atual) / 100.0)
                         st.caption(f"Última atualização ({formatar_data_hora_br(mov.get('data_movimentacao'))}): {mov.get('descricao_avanco')}")
                     else:
-                        st.write("**Avanço Atual:** `0%`")
-                        st.progress(0.0)
+                        st.write(f"**Avanço Atual:** `{pct_atual}%`")
+                        st.progress(float(pct_atual) / 100.0)
                 except Exception:
                     st.caption("Não foi possível carregar a última movimentação.")
 
@@ -1341,12 +1342,19 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                             resp_destino_final = resp_destino_wf
                                             nome_para_email = None if resp_destino_final == "Toda a Unidade" else resp_destino_final
 
-                                            supabase.table("acoes_tratamento").update({
+                                            # Atualização usando percentual_execucao conforme o schema da tabela
+                                            dados_update_acao = {
                                                 "status_acao": novo_status_ac,
-                                                "percentual_conclusao": novo_pct,
+                                                "percentual_execucao": novo_pct,
                                                 "unidade_responsavel": unid_destino_wf,
                                                 "nome_responsavel_implementacao": resp_destino_final
-                                            }).eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
+                                            }
+                                            
+                                            # Se o status for concluído, registra a data de conclusão efetiva
+                                            if novo_status_ac == "Concluída":
+                                                dados_update_acao["data_conclusao_efetiva"] = date.today().strftime("%Y-%m-%d")
+
+                                            supabase.table("acoes_tratamento").update(dados_update_acao).eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
                                             
                                             dados_mov_wf = {
                                                 "risco_id": r_id,
