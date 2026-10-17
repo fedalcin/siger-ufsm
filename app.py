@@ -388,10 +388,11 @@ def verificar_senha(senha_fornecida, senha_hash):
 def gerar_hash_senha(senha):
     return bcrypt.hashpw(senha.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
+# CÓDIGO ATUALIZADO DO ITEM 3:
 def realizar_login(email, senha):
     try:
         res = supabase.table("usuarios")\
-            .select("*, perfis(nome)")\
+            .select("*, perfis(nome, permissoes_json)")\
             .eq("email", email.strip().lower())\
             .eq("ativo", True)\
             .execute()
@@ -400,12 +401,14 @@ def realizar_login(email, senha):
             usr = res.data[0]
             hash_bd = usr.get("senha_hash")
             if verificar_senha(senha, hash_bd):
+                dados_perf = usr.get("perfis") or {}
                 st.session_state.usuario_logado = {
                     "id": usr["id"],
                     "nome": usr["nome"],
                     "email": usr["email"],
                     "unidade": usr.get("unidade_sigla"),
-                    "perfil": usr.get("perfis", {}).get("nome", "Leitor") if usr.get("perfis") else "Leitor"
+                    "perfil": dados_perf.get("nome", "Leitor"),
+                    "permissoes": dados_perf.get("permissoes_json") or {}
                 }
                 return True, "Login realizado com sucesso!"
             else:
@@ -778,74 +781,85 @@ def navegar_para(pagina, sub_pagina=None):
     st.session_state.pagina_atual = pagina
     st.session_state.sub_pagina_atual = sub_pagina
 
+# Mapeamento de permissões do usuário logado (Admin possui acesso total por padrão)
+perms = usr_atual.get("permissoes", {})
+
 st.sidebar.subheader("Menu Principal")
 
-# 1. Botões Superiores Globais
+# 1. Início e Caixa de Entrada
 st.sidebar.markdown('<div class="btn-inicio-sidebar">', unsafe_allow_html=True)
 if st.sidebar.button("🏠 Início", use_container_width=True, key="btn_inicio_top"):
     navegar_para("Início")
-if st.sidebar.button("📥 Caixa de Entrada", use_container_width=True, key="btn_cx_entrada_top"):
-    navegar_para("Caixa de Entrada")
+if is_admin or perms.get("cx_entrada", {}).get("ver", True):
+    if st.sidebar.button("📥 Caixa de Entrada", use_container_width=True, key="btn_cx_entrada_top"):
+        navegar_para("Caixa de Entrada")
 st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 st.sidebar.divider()
 
-# 2. Expander Administração (Apenas Admin)
-if is_admin:
+# 2. Expander Administração
+items_adm = [
+    ("👥 Usuários e Permissões", "Usuarios e Permissoes", "adm_usuarios"),
+    ("🔐 Perfis e Permissões", "Perfis e Permissões", "adm_perfis"),
+    ("🖼️ Identidade Visual", "Identidade Visual", "adm_id_visual"),
+    ("✍ Texto da Tela Inicial", "Texto da Tela Inicial", "adm_texto_home"),
+    ("🔧 Configurações Gerais", "Configurações Gerais", "adm_config_gerais")
+]
+items_adm_visiveis = [item for item in items_adm if is_admin or perms.get(item[2], {}).get("acesso", False)]
+
+if items_adm_visiveis:
     with st.sidebar.expander("⚙ Administração", expanded=False):
-        if st.button("👥 Usuários e Permissões", key="btn_adm_usr", use_container_width=True):
-            navegar_para("Administração do Sistema", "Usuários e Permissões")
-        if st.button("🖼️ Identidade Visual", key="btn_adm_id_vis", use_container_width=True):
-            navegar_para("Administração do Sistema", "Identidade Visual")
-        if st.button("✍ Texto da Tela Inicial", key="btn_adm_txt", use_container_width=True):
-            navegar_para("Administração do Sistema", "Texto da Tela Inicial")
-        if st.button("🔧 Configurações Gerais", key="btn_adm_cfg", use_container_width=True):
-            navegar_para("Administração do Sistema", "Configurações Gerais")
+        for label, sub_p, key_perm in items_adm_visiveis:
+            if st.button(label, key=f"btn_{key_perm}", use_container_width=True):
+                navegar_para("Administração do Sistema", sub_p)
 
-# 3. Expander Cadastros (Oculta se não houver permissão para subopções)
-if is_admin:
+# 3. Expander Cadastros
+items_cad = [
+    ("🏢 Unidades", "Unidades", "cad_unidades"),
+    ("🎯 Objetivos Estratégicos", "Objetivos Estratégicos", "cad_objetivos"),
+    ("🏷️ Categorias de Risco", "Categorias de Risco", "cad_categorias"),
+    ("📚 Documentos da Biblioteca", "Documentos da Biblioteca", "cad_doc_biblioteca")
+]
+items_cad_visiveis = [item for item in items_cad if is_admin or perms.get(item[2], {}).get("acesso", False)]
+
+if items_cad_visiveis:
     with st.sidebar.expander("📝 Cadastros", expanded=False):
-        if st.button("🏢 Unidades", key="btn_cad_unid", use_container_width=True):
-            navegar_para("Cadastros", "Unidades")
-        if st.button("🎯 Objetivos Estratégicos", key="btn_cad_oe", use_container_width=True):
-            navegar_para("Cadastros", "Objetivos Estratégicos")
-        if st.button("🏷️ Categorias de Risco", key="btn_cad_cat", use_container_width=True):
-            navegar_para("Cadastros", "Categorias de Risco")
-        if st.button("📚 Documentos da Biblioteca", key="btn_cad_doc_bib", use_container_width=True):
-            navegar_para("Cadastros", "Documentos da Biblioteca")
-        if st.button("🔐 Perfis e Permissões", key="btn_cad_perfis", use_container_width=True):
-            navegar_para("Cadastros", "Perfis e Permissões")
+        for label, sub_p, key_perm in items_cad_visiveis:
+            if st.button(label, key=f"btn_{key_perm}", use_container_width=True):
+                navegar_para("Cadastros", sub_p)
 
-# 4. Expander Gestão de Riscos (Oculta ou exibe opções baseadas em permissões)
-# Lê permissões específicas da sessão com fallback seguro
-pode_cadastrar_r = usr_atual.get("pode_cadastrar_risco", True) if not is_admin else True
-pode_reavaliar_r = usr_atual.get("pode_reavaliar", True) if not is_admin else True
+# 4. Expander Gestão de Riscos
+items_gr = [
+    ("📋 Riscos", "Riscos", "gr_riscos"),
+    ("📋 Ações de Tratamento", "Ações de Tratamento", "gr_acoes"),
+    ("🎯 Reavaliação do Nível de Risco", "Reavaliação do Nível de Risco", "gr_reavaliacao")
+]
+items_gr_visiveis = [item for item in items_gr if is_admin or perms.get(item[2], {}).get("acesso", False)]
 
-if is_gestor or pode_cadastrar_r or pode_reavaliar_r:
+if items_gr_visiveis:
     with st.sidebar.expander("🛡️ Gestão de Riscos", expanded=False):
-        if is_gestor or pode_cadastrar_r:
-            if st.button("📋 Riscos", key="btn_gr_riscos", use_container_width=True):
-                navegar_para("Gestão de Riscos", "Riscos")
-        
-        # Ações de tratamento sempre visíveis para acompanhamento
-        if st.button("📋 Ações de Tratamento", key="btn_gr_acoes", use_container_width=True):
-            navegar_para("Gestão de Riscos", "Ações de Tratamento")
-            
-        if is_gestor and pode_reavaliar_r:
-            if st.button("🎯 Reavaliação do Nível de Risco", key="btn_gr_reavaliar", use_container_width=True):
-                navegar_para("Gestão de Riscos", "Reavaliação do Nível de Risco")
+        for label, sub_p, key_perm in items_gr_visiveis:
+            if st.button(label, key=f"btn_{key_perm}", use_container_width=True):
+                navegar_para("Gestão de Riscos", sub_p)
 
 # 5. Expander Dashboards
-with st.sidebar.expander("📊 Dashboards", expanded=False):
-    if st.button("📌 Acompanhamento de Riscos", key="btn_dash_acomp", use_container_width=True):
-        navegar_para("Dashboards", "Acompanhamento de Riscos")
-    if st.button("📈 Painel Geral", key="btn_dash_geral", use_container_width=True):
-        navegar_para("Dashboards", "Painel Geral")
+items_dash = [
+    ("📌 Acompanhamento de Riscos", "Acompanhamento de Riscos", "dash_acomp"),
+    ("📈 Painel Geral", "Painel Geral", "dash_geral")
+]
+items_dash_visiveis = [item for item in items_dash if is_admin or perms.get(item[2], {}).get("acesso", False)]
+
+if items_dash_visiveis:
+    with st.sidebar.expander("📊 Dashboards", expanded=False):
+        for label, sub_p, key_perm in items_dash_visiveis:
+            if st.button(label, key=f"btn_{key_perm}", use_container_width=True):
+                navegar_para("Dashboards", sub_p)
 
 # 6. Expander Biblioteca
-with st.sidebar.expander("📚 Biblioteca", expanded=False):
-    if st.button("📄 Documentos e Normativas", key="btn_bib_doc", use_container_width=True):
-        navegar_para("Biblioteca", "Documentos e Normativas")
+if is_admin or perms.get("bib_normativas", {}).get("leitura", True):
+    with st.sidebar.expander("📚 Biblioteca", expanded=False):
+        if st.button("📄 Documentos e Normativas", key="btn_bib_doc", use_container_width=True):
+            navegar_para("Biblioteca", "Documentos e Normativas")
 
 st.sidebar.divider()
 
@@ -983,6 +997,169 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and is_admin:
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao cadastrar usuário: {e}")
+
+    # SUBPÁGINA: PERFIS E PERMISSÕES DE ACESSO
+    elif sub == "Perfis e Permissões" and is_admin:
+        st.title("🔐 Gerenciamento de Perfis e Permissões")
+        st.caption("Configure individualmente o nível de acesso e operação para cada um dos 15 itens de menu do SIGER.")
+
+        try:
+            res_perfis = supabase.table("perfis").select("*").order("id").execute()
+            lista_perfis = res_perfis.data or []
+        except Exception as e:
+            st.error(f"Erro ao carregar perfis: {e}")
+            lista_perfis = []
+
+        if lista_perfis:
+            mapa_p = {p["nome"]: p for p in lista_perfis}
+            perfil_sel_nome = st.selectbox("🎯 Selecione o Perfil para Configurar Permissões:", list(mapa_p.keys()))
+            perfil_obj = mapa_p[perfil_sel_nome]
+            p_id = perfil_obj["id"]
+            
+            # Matriz de permissões salva em JSONB no banco
+            m_perms = perfil_obj.get("permissoes_json") or {}
+
+            st.divider()
+
+            with st.form(f"form_matriz_perm_{p_id}"):
+                st.markdown("### ⚙️ 1. Módulo Administração")
+                c1, c2, c3, c4, c5 = st.columns(5)
+                
+                with c1:
+                    st.markdown("**👥 Usuários**")
+                    p_usr_acc = st.checkbox("Acessar", value=m_perms.get("adm_usuarios", {}).get("acesso", True), key=f"usr_acc_{p_id}")
+                    p_usr_inc = st.checkbox("Incluir", value=m_perms.get("adm_usuarios", {}).get("incluir", True), key=f"usr_inc_{p_id}")
+                    p_usr_alt = st.checkbox("Alterar", value=m_perms.get("adm_usuarios", {}).get("alterar", True), key=f"usr_alt_{p_id}")
+                    p_usr_exc = st.checkbox("Excluir", value=m_perms.get("adm_usuarios", {}).get("excluir", True), key=f"usr_exc_{p_id}")
+                
+                with c2:
+                    st.markdown("**🔐 Perfis**")
+                    p_prf_acc = st.checkbox("Acessar", value=m_perms.get("adm_perfis", {}).get("acesso", True), key=f"prf_acc_{p_id}")
+                    p_prf_inc = st.checkbox("Incluir", value=m_perms.get("adm_perfis", {}).get("incluir", True), key=f"prf_inc_{p_id}")
+                    p_prf_alt = st.checkbox("Alterar", value=m_perms.get("adm_perfis", {}).get("alterar", True), key=f"prf_alt_{p_id}")
+                    p_prf_exc = st.checkbox("Excluir", value=m_perms.get("adm_perfis", {}).get("excluir", True), key=f"prf_exc_{p_id}")
+
+                with c3:
+                    st.markdown("**🖼️ Identidade Visual**")
+                    p_idv_acc = st.checkbox("Acessar", value=m_perms.get("adm_id_visual", {}).get("acesso", True), key=f"idv_acc_{p_id}")
+                    p_idv_alt = st.checkbox("Alterar", value=m_perms.get("adm_id_visual", {}).get("alterar", True), key=f"idv_alt_{p_id}")
+
+                with c4:
+                    st.markdown("**✍ Texto Inicial**")
+                    p_txt_acc = st.checkbox("Acessar", value=m_perms.get("adm_texto_home", {}).get("acesso", True), key=f"txt_acc_{p_id}")
+                    p_txt_alt = st.checkbox("Alterar", value=m_perms.get("adm_texto_home", {}).get("alterar", True), key=f"txt_alt_{p_id}")
+
+                with c5:
+                    st.markdown("**🔧 Config. Gerais**")
+                    p_cfg_acc = st.checkbox("Acessar", value=m_perms.get("adm_config_gerais", {}).get("acesso", True), key=f"cfg_acc_{p_id}")
+                    p_cfg_alt = st.checkbox("Alterar", value=m_perms.get("adm_config_gerais", {}).get("alterar", True), key=f"cfg_alt_{p_id}")
+
+                st.divider()
+
+                st.markdown("### 📝 2. Módulo Cadastros")
+                c_c1, c_c2, c_c3, c_c4 = st.columns(4)
+                
+                with c_c1:
+                    st.markdown("**🏢 Unidades**")
+                    p_und_acc = st.checkbox("Acessar", value=m_perms.get("cad_unidades", {}).get("acesso", True), key=f"und_acc_{p_id}")
+                    p_und_inc = st.checkbox("Incluir", value=m_perms.get("cad_unidades", {}).get("incluir", True), key=f"und_inc_{p_id}")
+                    p_und_alt = st.checkbox("Alterar", value=m_perms.get("cad_unidades", {}).get("alterar", True), key=f"und_alt_{p_id}")
+                    p_und_exc = st.checkbox("Excluir", value=m_perms.get("cad_unidades", {}).get("excluir", True), key=f"und_exc_{p_id}")
+
+                with c_c2:
+                    st.markdown("**🎯 Obj. Estratégicos**")
+                    p_oe_acc = st.checkbox("Acessar", value=m_perms.get("cad_objetivos", {}).get("acesso", True), key=f"oe_acc_{p_id}")
+                    p_oe_inc = st.checkbox("Incluir", value=m_perms.get("cad_objetivos", {}).get("incluir", True), key=f"oe_inc_{p_id}")
+                    p_oe_alt = st.checkbox("Alterar", value=m_perms.get("cad_objetivos", {}).get("alterar", True), key=f"oe_alt_{p_id}")
+                    p_oe_exc = st.checkbox("Excluir", value=m_perms.get("cad_objetivos", {}).get("excluir", True), key=f"oe_exc_{p_id}")
+
+                with c_c3:
+                    st.markdown("**🏷️ Categorias**")
+                    p_cat_acc = st.checkbox("Acessar", value=m_perms.get("cad_categorias", {}).get("acesso", True), key=f"cat_acc_{p_id}")
+                    p_cat_inc = st.checkbox("Incluir", value=m_perms.get("cad_categorias", {}).get("incluir", True), key=f"cat_inc_{p_id}")
+                    p_cat_alt = st.checkbox("Alterar", value=m_perms.get("cad_categorias", {}).get("alterar", True), key=f"cat_alt_{p_id}")
+                    p_cat_exc = st.checkbox("Excluir", value=m_perms.get("cad_categorias", {}).get("excluir", True), key=f"cat_exc_{p_id}")
+
+                with c_c4:
+                    st.markdown("**📚 Doc. Biblioteca**")
+                    p_doc_acc = st.checkbox("Acessar", value=m_perms.get("cad_doc_biblioteca", {}).get("acesso", True), key=f"doc_acc_{p_id}")
+                    p_doc_inc = st.checkbox("Incluir PDF", value=m_perms.get("cad_doc_biblioteca", {}).get("incluir", True), key=f"doc_inc_{p_id}")
+                    p_doc_exc = st.checkbox("Excluir PDF", value=m_perms.get("cad_doc_biblioteca", {}).get("excluir", True), key=f"doc_exc_{p_id}")
+
+                st.divider()
+
+                st.markdown("### 🛡️ 3. Módulo Gestão de Riscos")
+                c_g1, c_g2, c_g3 = st.columns(3)
+                
+                with c_g1:
+                    st.markdown("**📋 Riscos**")
+                    p_rsk_acc = st.checkbox("Acessar", value=m_perms.get("gr_riscos", {}).get("acesso", True), key=f"rsk_acc_{p_id}")
+                    p_rsk_inc = st.checkbox("Incluir (Cadastrar)", value=m_perms.get("gr_riscos", {}).get("incluir", True), key=f"rsk_inc_{p_id}")
+                    p_rsk_alt = st.checkbox("Alterar (Editar)", value=m_perms.get("gr_riscos", {}).get("alterar", True), key=f"rsk_alt_{p_id}")
+                    p_rsk_exc = st.checkbox("Excluir", value=m_perms.get("gr_riscos", {}).get("excluir", True), key=f"rsk_exc_{p_id}")
+
+                with c_g2:
+                    st.markdown("**📋 Ações de Tratamento**")
+                    p_act_acc = st.checkbox("Acessar", value=m_perms.get("gr_acoes", {}).get("acesso", True), key=f"act_acc_{p_id}")
+                    p_act_inc = st.checkbox("Incluir Ação", value=m_perms.get("gr_acoes", {}).get("incluir", True), key=f"act_inc_{p_id}")
+                    p_act_alt = st.checkbox("Alterar Ação", value=m_perms.get("gr_acoes", {}).get("alterar", True), key=f"act_alt_{p_id}")
+                    p_act_exc = st.checkbox("Excluir Ação", value=m_perms.get("gr_acoes", {}).get("excluir", True), key=f"act_exc_{p_id}")
+
+                with c_g3:
+                    st.markdown("**🎯 Reavaliação de Risco**")
+                    p_rev_acc = st.checkbox("Acessar Menu", value=m_perms.get("gr_reavaliacao", {}).get("acesso", True), key=f"rev_acc_{p_id}")
+                    p_rev_alt = st.checkbox("Permitir Reavaliar", value=m_perms.get("gr_reavaliacao", {}).get("alterar", True), key=f"rev_alt_{p_id}")
+
+                st.divider()
+
+                st.markdown("### 📊 4. Módulo Dashboards & 📚 5. Biblioteca")
+                c_d1, c_d2, c_d3 = st.columns(3)
+
+                with c_d1:
+                    st.markdown("**📌 Acompanhamento**")
+                    p_d1_acc = st.checkbox("Acessar Dashboard", value=m_perms.get("dash_acomp", {}).get("acesso", True), key=f"d1_acc_{p_id}")
+                    p_d1_outras = st.toggle("Ver Outras Unidades", value=m_perms.get("dash_acomp", {}).get("ver_outras_unidades", True), key=f"d1_out_{p_id}")
+
+                with c_d2:
+                    st.markdown("**📈 Painel Geral**")
+                    p_d2_acc = st.checkbox("Acessar Painel", value=m_perms.get("dash_geral", {}).get("acesso", True), key=f"d2_acc_{p_id}")
+                    p_d2_outras = st.toggle("Ver Outras Unidades", value=m_perms.get("dash_geral", {}).get("ver_outras_unidades", True), key=f"d2_out_{p_id}")
+
+                with c_d3:
+                    st.markdown("**📄 Doc. e Normativas**")
+                    p_bib_read = st.toggle("Permitir Leitura/Download", value=m_perms.get("bib_normativas", {}).get("leitura", True), key=f"bib_rd_{p_id}")
+
+                st.write("")
+                btn_salvar_matriz = st.form_submit_button("💾 Salvar Matriz de Permissões do Perfil", use_container_width=True)
+
+                if btn_salvar_matriz:
+                    nova_matriz = {
+                        "adm_usuarios": {"acesso": p_usr_acc, "incluir": p_usr_inc, "alterar": p_usr_alt, "excluir": p_usr_exc},
+                        "adm_perfis": {"acesso": p_prf_acc, "incluir": p_prf_inc, "alterar": p_prf_alt, "excluir": p_prf_exc},
+                        "adm_id_visual": {"acesso": p_idv_acc, "alterar": p_idv_alt},
+                        "adm_texto_home": {"acesso": p_txt_acc, "alterar": p_txt_alt},
+                        "adm_config_gerais": {"acesso": p_cfg_acc, "alterar": p_cfg_alt},
+                        
+                        "cad_unidades": {"acesso": p_und_acc, "incluir": p_und_inc, "alterar": p_und_alt, "excluir": p_und_exc},
+                        "cad_objetivos": {"acesso": p_oe_acc, "incluir": p_oe_inc, "alterar": p_oe_alt, "excluir": p_oe_exc},
+                        "cad_categorias": {"acesso": p_cat_acc, "incluir": p_cat_inc, "alterar": p_cat_alt, "excluir": p_cat_exc},
+                        "cad_doc_biblioteca": {"acesso": p_doc_acc, "incluir": p_doc_inc, "excluir": p_doc_exc},
+                        
+                        "gr_riscos": {"acesso": p_rsk_acc, "incluir": p_rsk_inc, "alterar": p_rsk_alt, "excluir": p_rsk_exc},
+                        "gr_acoes": {"acesso": p_act_acc, "incluir": p_act_inc, "alterar": p_act_alt, "excluir": p_act_exc},
+                        "gr_reavaliacao": {"acesso": p_rev_acc, "alterar": p_rev_alt},
+                        
+                        "dash_acomp": {"acesso": p_d1_acc, "ver_outras_unidades": p_d1_outras},
+                        "dash_geral": {"acesso": p_d2_acc, "ver_outras_unidades": p_d2_outras},
+                        "bib_normativas": {"leitura": p_bib_read}
+                    }
+
+                    try:
+                        supabase.table("perfis").update({"permissoes_json": nova_matriz}).eq("id", p_id).execute()
+                        st.toast(f"✅ Permissões do perfil '{perfil_sel_nome}' atualizadas com sucesso!", icon="🎉")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao salvar matriz de permissões: {e}")
 
     # 2. SUBPÁGINA: IDENTIDADE VISUAL
     elif sub == "Identidade Visual":
