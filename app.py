@@ -2898,7 +2898,11 @@ elif st.session_state.pagina_atual == "Dashboards":
         kpi_col1, kpi_col2, kpi_col3, kpi_col4, kpi_col5 = st.columns(5)
         kpi_col1.metric("Total de Riscos", tot_riscos_f)
         kpi_col2.metric("Riscos Críticos (≥ 15)", criticos_f, delta_color="inverse")
-        kpi_col3.metric("Exposição Agregada (∑ Nível)", exposicao_agregada_tot)
+        kpi_col3.metric(
+            "Exposição Agregada (∑ Nível)", 
+            exposicao_agregada_tot,
+            help="Exposição Agregada (∑ Nível): Representa o somatório total do Nível de Risco (Probabilidade x Impacto) de todos os riscos mapeados dentro do filtro selecionado.\n\nFórmula: ∑ (Probabilidade × Impacto)"
+        )
         kpi_col4.metric("Riscos sem Tratamento", riscos_sem_tratamento)
         kpi_col5.metric("% Ações Atrasadas", f"{pct_acoes_atrasadas}%")
 
