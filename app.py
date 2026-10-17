@@ -780,6 +780,7 @@ def navegar_para(pagina, sub_pagina=None):
 
 st.sidebar.subheader("Menu Principal")
 
+# 1. Botões Superiores Globais
 st.sidebar.markdown('<div class="btn-inicio-sidebar">', unsafe_allow_html=True)
 if st.sidebar.button("🏠 Início", use_container_width=True, key="btn_inicio_top"):
     navegar_para("Início")
@@ -789,7 +790,7 @@ st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 st.sidebar.divider()
 
-# 2. Expander Administração
+# 2. Expander Administração (Apenas Admin)
 if is_admin:
     with st.sidebar.expander("⚙ Administração", expanded=False):
         if st.button("👥 Usuários e Permissões", key="btn_adm_usr", use_container_width=True):
@@ -801,9 +802,9 @@ if is_admin:
         if st.button("🔧 Configurações Gerais", key="btn_adm_cfg", use_container_width=True):
             navegar_para("Administração do Sistema", "Configurações Gerais")
 
-# 3. Expander Cadastros
-with st.sidebar.expander("📝 Cadastros", expanded=False):
-    if is_admin:
+# 3. Expander Cadastros (Oculta se não houver permissão para subopções)
+if is_admin:
+    with st.sidebar.expander("📝 Cadastros", expanded=False):
         if st.button("🏢 Unidades", key="btn_cad_unid", use_container_width=True):
             navegar_para("Cadastros", "Unidades")
         if st.button("🎯 Objetivos Estratégicos", key="btn_cad_oe", use_container_width=True):
@@ -812,33 +813,42 @@ with st.sidebar.expander("📝 Cadastros", expanded=False):
             navegar_para("Cadastros", "Categorias de Risco")
         if st.button("📚 Documentos da Biblioteca", key="btn_cad_doc_bib", use_container_width=True):
             navegar_para("Cadastros", "Documentos da Biblioteca")
+        if st.button("🔐 Perfis e Permissões", key="btn_cad_perfis", use_container_width=True):
+            navegar_para("Cadastros", "Perfis e Permissões")
 
-# 4. Expander Gestão de Riscos (antigo Planos de Tratamento)
-with st.sidebar.expander("🛡️ Gestão de Riscos", expanded=False):
-    if is_gestor:
-        if st.button("📋 Riscos", key="btn_gr_riscos", use_container_width=True):
-            navegar_para("Gestão de Riscos", "Riscos")
-    if st.button("📋 Ações de Tratamento", key="btn_gr_acoes", use_container_width=True):
-        navegar_para("Gestão de Riscos", "Ações de Tratamento")
-    if is_gestor:
-        if st.button("🎯 Reavaliação do Nível de Risco", key="btn_gr_reavaliar", use_container_width=True):
-            navegar_para("Gestão de Riscos", "Reavaliação do Nível de Risco")
+# 4. Expander Gestão de Riscos (Oculta ou exibe opções baseadas em permissões)
+# Lê permissões específicas da sessão com fallback seguro
+pode_cadastrar_r = usr_atual.get("pode_cadastrar_risco", True) if not is_admin else True
+pode_reavaliar_r = usr_atual.get("pode_reavaliar", True) if not is_admin else True
 
-# 5 e 6. Expander Dashboards (incorporou Acompanhamento de Riscos)
+if is_gestor or pode_cadastrar_r or pode_reavaliar_r:
+    with st.sidebar.expander("🛡️ Gestão de Riscos", expanded=False):
+        if is_gestor or pode_cadastrar_r:
+            if st.button("📋 Riscos", key="btn_gr_riscos", use_container_width=True):
+                navegar_para("Gestão de Riscos", "Riscos")
+        
+        # Ações de tratamento sempre visíveis para acompanhamento
+        if st.button("📋 Ações de Tratamento", key="btn_gr_acoes", use_container_width=True):
+            navegar_para("Gestão de Riscos", "Ações de Tratamento")
+            
+        if is_gestor and pode_reavaliar_r:
+            if st.button("🎯 Reavaliação do Nível de Risco", key="btn_gr_reavaliar", use_container_width=True):
+                navegar_para("Gestão de Riscos", "Reavaliação do Nível de Risco")
+
+# 5. Expander Dashboards
 with st.sidebar.expander("📊 Dashboards", expanded=False):
     if st.button("📌 Acompanhamento de Riscos", key="btn_dash_acomp", use_container_width=True):
         navegar_para("Dashboards", "Acompanhamento de Riscos")
     if st.button("📈 Painel Geral", key="btn_dash_geral", use_container_width=True):
         navegar_para("Dashboards", "Painel Geral")
 
-# 7. Expander Biblioteca
+# 6. Expander Biblioteca
 with st.sidebar.expander("📚 Biblioteca", expanded=False):
     if st.button("📄 Documentos e Normativas", key="btn_bib_doc", use_container_width=True):
         navegar_para("Biblioteca", "Documentos e Normativas")
 
 st.sidebar.divider()
 
-# 1. Botão Sair / Logout posicionado por último na barra lateral
 if st.sidebar.button("🚪 Sair / Logout", use_container_width=True, key="btn_logout_bottom"):
     st.session_state.usuario_logado = None
     st.rerun()
@@ -2333,6 +2343,67 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.rerun()
                         except Exception as e:
                             st.error(f"Erro ao enviar documento para a biblioteca: {e}")
+
+    # 5. SUBPÁGINA: PERFIS E PERMISSÕES
+    elif sub == "Perfis e Permissões" and is_admin:
+        st.title("🔐 Perfis de Acesso e Permissões")
+        st.caption("Configure os privilégios e escopos de acesso para cada perfil cadastrado no sistema.")
+
+        try:
+            res_perfis = supabase.table("perfis").select("*").order("id").execute()
+            lista_perfis = res_perfis.data or []
+        except Exception as e:
+            st.error(f"Erro ao carregar perfis: {e}")
+            lista_perfis = []
+
+        if lista_perfis:
+            for p in lista_perfis:
+                p_id = p["id"]
+                p_nome = p["nome"]
+                p_desc = p.get("descricao", "")
+                
+                perm_reavaliar = p.get("pode_reavaliar", True)
+                perm_ver_outras_unid = p.get("pode_ver_outras_unidades", True)
+                perm_cadastrar_risco = p.get("pode_cadastrar_risco", True)
+
+                with st.expander(f"🛡️ Perfil: **{p_nome}**"):
+                    st.write(f"**Descrição:** {p_desc or 'Sem descrição'}")
+                    
+                    with st.form(f"form_perm_perfil_{p_id}"):
+                        st.markdown("##### Regras e Escopo de Acesso")
+                        
+                        f_reavaliar = st.toggle(
+                            "Permitir Reavaliar Nível de Risco", 
+                            value=perm_reavaliar, 
+                            key=f"tog_reav_{p_id}"
+                        )
+                        
+                        f_ver_outras = st.toggle(
+                            "Visualizar Riscos de Outras Unidades", 
+                            value=perm_ver_outras_unid, 
+                            key=f"tog_ver_{p_id}"
+                        )
+
+                        f_cad_risco = st.toggle(
+                            "Permitir Mapear/Cadastrar Novos Riscos", 
+                            value=perm_cadastrar_risco, 
+                            key=f"tog_cad_{p_id}"
+                        )
+
+                        if st.form_submit_button("💾 Salvar Permissões do Perfil"):
+                            try:
+                                supabase.table("perfis").update({
+                                    "pode_reavaliar": f_reavaliar,
+                                    "pode_ver_outras_unidades": f_ver_outras,
+                                    "pode_cadastrar_risco": f_cad_risco
+                                }).eq("id", p_id).execute()
+                                
+                                st.toast(f"✅ Permissões do perfil '{p_nome}' atualizadas!", icon="🎉")
+                                st.rerun()
+                            except Exception as e:
+                                st.error(f"Erro ao atualizar permissões: {e}")
+        else:
+            st.info("Nenhum perfil encontrado no banco de dados.")
 
 # ---------------------------------------------------------
 # PÁGINA: DASHBOARDS
