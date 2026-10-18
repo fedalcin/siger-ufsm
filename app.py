@@ -1029,6 +1029,7 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
             
             perfil_obj = mapa_p[perfil_sel_nome]
             p_id = perfil_obj["id"]
+            eh_perfil_admin = (perfil_sel_nome == "Admin")
 
             # Reconsultar diretamente no banco para obter a matriz JSON fresca
             try:
@@ -1040,8 +1041,10 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
             if not isinstance(m_perms, dict):
                 m_perms = {}
 
-            # Helper para resgatar o valor real gravado no JSON do banco de dados
+            # Helper para resgatar o valor real do JSON (Trava True para Usuários e Perfis se for Admin)
             def def_perm(modulo, operacao, val_default=True):
+                if eh_perfil_admin and modulo in ["adm_usuarios", "adm_perfis"]:
+                    return True
                 mod_dict = m_perms.get(modulo)
                 if isinstance(mod_dict, dict) and operacao in mod_dict:
                     return bool(mod_dict[operacao])
@@ -1052,7 +1055,7 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
             # Sufixo único associado ao ID do perfil
             sfx = f"p{p_id}"
 
-            # Mapeamento dos valores default extraídos do JSON gravado no banco
+            # Mapeamento dos valores default
             keys_defaults = {
                 f"chk_usr_acc_{sfx}": def_perm("adm_usuarios", "acesso"),
                 f"chk_usr_inc_{sfx}": def_perm("adm_usuarios", "incluir"),
@@ -1111,17 +1114,17 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                 
                 with c1:
                     st.markdown("**👥 Usuários**")
-                    p_usr_acc = st.checkbox("Acessar Usuários", key=f"chk_usr_acc_{sfx}")
-                    p_usr_inc = st.checkbox("Incluir Usuários", key=f"chk_usr_inc_{sfx}")
-                    p_usr_alt = st.checkbox("Alterar Usuários", key=f"chk_usr_alt_{sfx}")
-                    p_usr_exc = st.checkbox("Excluir Usuários", key=f"chk_usr_exc_{sfx}")
+                    p_usr_acc = st.checkbox("Acessar Usuários", key=f"chk_usr_acc_{sfx}", disabled=eh_perfil_admin)
+                    p_usr_inc = st.checkbox("Incluir Usuários", key=f"chk_usr_inc_{sfx}", disabled=eh_perfil_admin)
+                    p_usr_alt = st.checkbox("Alterar Usuários", key=f"chk_usr_alt_{sfx}", disabled=eh_perfil_admin)
+                    p_usr_exc = st.checkbox("Excluir Usuários", key=f"chk_usr_exc_{sfx}", disabled=eh_perfil_admin)
                 
                 with c2:
                     st.markdown("**🔐 Perfis**")
-                    p_prf_acc = st.checkbox("Acessar Perfis", key=f"chk_prf_acc_{sfx}")
-                    p_prf_inc = st.checkbox("Incluir Perfis", key=f"chk_prf_inc_{sfx}")
-                    p_prf_alt = st.checkbox("Alterar Perfis", key=f"chk_prf_alt_{sfx}")
-                    p_prf_exc = st.checkbox("Excluir Perfis", key=f"chk_prf_exc_{sfx}")
+                    p_prf_acc = st.checkbox("Acessar Perfis", key=f"chk_prf_acc_{sfx}", disabled=eh_perfil_admin)
+                    p_prf_inc = st.checkbox("Incluir Perfis", key=f"chk_prf_inc_{sfx}", disabled=eh_perfil_admin)
+                    p_prf_alt = st.checkbox("Alterar Perfis", key=f"chk_prf_alt_{sfx}", disabled=eh_perfil_admin)
+                    p_prf_exc = st.checkbox("Excluir Perfis", key=f"chk_prf_exc_{sfx}", disabled=eh_perfil_admin)
 
                 with c3:
                     st.markdown("**🖼️ Identidade Visual**")
@@ -1217,9 +1220,20 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                 btn_salvar_matriz = st.form_submit_button("💾 Salvar Matriz de Permissões do Perfil", use_container_width=True)
 
                 if btn_salvar_matriz:
+                    # Força True para o Admin nas permissões críticas de Usuários e Perfis
+                    usr_acc_val = True if eh_perfil_admin else p_usr_acc
+                    usr_inc_val = True if eh_perfil_admin else p_usr_inc
+                    usr_alt_val = True if eh_perfil_admin else p_usr_alt
+                    usr_exc_val = True if eh_perfil_admin else p_usr_exc
+
+                    prf_acc_val = True if eh_perfil_admin else p_prf_acc
+                    prf_inc_val = True if eh_perfil_admin else p_prf_inc
+                    prf_alt_val = True if eh_perfil_admin else p_prf_alt
+                    prf_exc_val = True if eh_perfil_admin else p_prf_exc
+
                     nova_matriz = {
-                        "adm_usuarios": {"acesso": p_usr_acc, "incluir": p_usr_inc, "alterar": p_usr_alt, "excluir": p_usr_exc},
-                        "adm_perfis": {"acesso": p_prf_acc, "incluir": p_prf_inc, "alterar": p_prf_alt, "excluir": p_prf_exc},
+                        "adm_usuarios": {"acesso": usr_acc_val, "incluir": usr_inc_val, "alterar": usr_alt_val, "excluir": usr_exc_val},
+                        "adm_perfis": {"acesso": prf_acc_val, "incluir": prf_inc_val, "alterar": prf_alt_val, "excluir": prf_exc_val},
                         "adm_id_visual": {"acesso": p_idv_acc, "alterar": p_idv_alt},
                         "adm_texto_home": {"acesso": p_txt_acc, "alterar": p_txt_alt},
                         "adm_config_gerais": {"acesso": p_cfg_acc, "alterar": p_cfg_alt},
@@ -1244,7 +1258,7 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                         if not res_upd.data:
                             st.error("⚠️ O Supabase não permitiu salvar. Verifique se a Policy de UPDATE está criada no painel SQL do Supabase.")
                         else:
-                            # Limpa os estados em memória do perfil para forçar o recarregamento do novo JSON
+                            # Limpa os estados em memória para forçar a atualização imediata
                             for k_item in keys_defaults.keys():
                                 if k_item in st.session_state:
                                     del st.session_state[k_item]
