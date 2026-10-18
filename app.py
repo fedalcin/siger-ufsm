@@ -2033,98 +2033,98 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
             mapa_oe = {f"{o['codigo']} - {o['descricao']}": o['codigo'] for o in res_oe} if res_oe else {"Nenhum": None}
             mapa_cat = {f"{c['tipo']} / {c['sub_tipo']}": c['id'] for c in res_cat} if res_cat else {"Nenhuma": None}
 
-            with st.form("form_cadastrar_risco", clear_on_submit=True):
-                st.markdown("##### 1. Contexto do Risco")
-                col_c1, col_c2 = st.columns(2)
-                with col_c1:
-                    if is_admin or not unidade_usuario:
-                        unid_label = st.selectbox("Unidade Responsável*", options=list(mapa_unidades.keys()))
-                        unidade_sigla_final = mapa_unidades[unid_label]
-                    else:
-                        st.text_input("Unidade Responsável*", value=f"{unidade_usuario}", disabled=True)
-                        unidade_sigla_final = unidade_usuario
+            # --- CAMPOS FORA DO FORM PARA MANTER O RECARREGAMENTO DINÂMICO ---
+            st.markdown("##### 1. Contexto do Risco")
+            col_c1, col_c2 = st.columns(2)
+            with col_c1:
+                if is_admin or not unidade_usuario:
+                    unid_label = st.selectbox("Unidade Responsável*", options=list(mapa_unidades.keys()), key="sb_unid_novo_r")
+                    unidade_sigla_final = mapa_unidades[unid_label]
+                else:
+                    st.text_input("Unidade Responsável*", value=f"{unidade_usuario}", disabled=True, key="ti_unid_novo_r")
+                    unidade_sigla_final = unidade_usuario
 
-                with col_c2:
-                    oe_label = st.selectbox("Objetivo Estratégico Relacionado*", options=list(mapa_oe.keys()))
-                    cat_label = st.selectbox("Categoria do Risco*", options=list(mapa_cat.keys()))
+            with col_c2:
+                oe_label = st.selectbox("Objetivo Estratégico Relacionado*", options=list(mapa_oe.keys()), key="sb_oe_novo_r")
+                cat_label = st.selectbox("Categoria do Risco*", options=list(mapa_cat.keys()), key="sb_cat_novo_r")
 
-                st.markdown("##### 2. Identificação e Análise do Risco")
-                evento_input = st.text_area("Risco*", placeholder="Descreva o evento de risco...")
-                
-                col_i1, col_i2 = st.columns(2)
-                with col_i1:
-                    causa_input = st.text_area("Causa(s)*", placeholder="Quais fatores geram este risco?")
-                with col_i2:
-                    consequencia_input = st.text_area("Consequência(s)*", placeholder="Quais os impactos?")
+            st.markdown("##### 2. Identificação e Análise do Risco")
+            evento_input = st.text_area("Risco*", placeholder="Descreva o evento de risco...", key="ta_evento_novo_r")
+            
+            col_i1, col_i2 = st.columns(2)
+            with col_i1:
+                causa_input = st.text_area("Causa(s)*", placeholder="Quais fatores geram este risco?", key="ta_causa_novo_r")
+            with col_i2:
+                consequencia_input = st.text_area("Consequência(s)*", placeholder="Quais os impactos?", key="ta_cons_novo_r")
 
-                # --- SEÇÃO 3: AVALIAÇÃO QUALITATIVA COM POPOVER LADO A LADO E DICAS DINÂMICAS ---
-                col_tit, col_ajuda = st.columns([3, 1])
-                with col_tit:
-                    st.markdown("##### 3. Avaliação Qualitativa")
-                with col_ajuda:
-                    renderizar_popover_guia_atribuicao()
+            # --- SEÇÃO 3: AVALIAÇÃO QUALITATIVA REATIVA (FEEDBACK DINÂMICO FUNCIONAL) ---
+            col_tit, col_ajuda = st.columns([3, 1])
+            with col_tit:
+                st.markdown("##### 3. Avaliação Qualitativa")
+            with col_ajuda:
+                renderizar_popover_guia_atribuicao()
 
-                col_a1, col_a2 = st.columns(2)
-                with col_a1:
-                    prob_val = st.slider("Probabilidade (1 a 5)", 1, 5, 3, key="sld_prob_novo")
-                    rotulo_p, desc_p = DADOS_PROB[prob_val]
-                    st.caption(f"📌 **Nota {prob_val} ({rotulo_p}):** *{desc_p}*")
+            col_a1, col_a2 = st.columns(2)
+            with col_a1:
+                prob_val = st.slider("Probabilidade (1 a 5)", 1, 5, 3, key="sld_prob_novo")
+                rotulo_p, desc_p = DADOS_PROB[prob_val]
+                st.caption(f"📌 **Nota {prob_val} ({rotulo_p}):** *{desc_p}*")
 
-                with col_a2:
-                    imp_val = st.slider("Impacto (1 a 5)", 1, 5, 3, key="sld_imp_novo")
-                    rotulo_i, desc_i = DADOS_IMP[imp_val]
-                    st.caption(f"💥 **Nota {imp_val} ({rotulo_i}):** *{desc_i}*")
+            with col_a2:
+                imp_val = st.slider("Impacto (1 a 5)", 1, 5, 3, key="sld_imp_novo")
+                rotulo_i, desc_i = DADOS_IMP[imp_val]
+                st.caption(f"💥 **Nota {imp_val} ({rotulo_i}):** *{desc_i}*")
 
-                st.markdown("##### 4. Governança e Prazos")
-                col_g1, col_g2, col_g3 = st.columns(3)
-                with col_g1:
-                    resp_input = st.text_input("Gestor do Risco*", value=usr_atual["nome"])
-                with col_g2:
-                    dt_identificacao = st.date_input("Data de Identificação*", datetime.now(), format="DD/MM/YYYY")
-                with col_g3:
-                    periodicidade_sel = st.selectbox("Periodicidade de Revisão", ["Mensal", "Trimestral", "Semestral", "Anual"])
+            st.markdown("##### 4. Governança e Prazos")
+            col_g1, col_g2, col_g3 = st.columns(3)
+            with col_g1:
+                resp_input = st.text_input("Gestor do Risco*", value=usr_atual["nome"], key="ti_resp_novo_r")
+            with col_g2:
+                dt_identificacao = st.date_input("Data de Identificação*", datetime.now(), format="DD/MM/YYYY", key="di_dt_novo_r")
+            with col_g3:
+                periodicidade_sel = st.selectbox("Periodicidade de Revisão", ["Mensal", "Trimestral", "Semestral", "Anual"], key="sb_per_novo_r")
 
-                submitted_risco = st.form_submit_button("💾 Salvar Risco")
-                
-                if submitted_risco:
-                    if not evento_input or not resp_input:
-                        st.warning("Preencha os campos obrigatórios.")
-                    else:
-                        nivel_calc = prob_val * imp_val
+            submitted_risco = st.button("💾 Salvar Risco", type="primary", key="btn_salvar_novo_risco")
+            
+            if submitted_risco:
+                if not evento_input or not resp_input:
+                    st.warning("Preencha os campos obrigatórios.")
+                else:
+                    nivel_calc = prob_val * imp_val
+                    
+                    novo_risco_dados = {
+                        "unidade": unidade_sigla_final,
+                        "objetivo_estrategico": mapa_oe[oe_label],
+                        "categoria_risco": mapa_cat[cat_label],
+                        "evento": evento_input,
+                        "causa": causa_input,
+                        "consequencia": consequencia_input,
+                        "probabilidade": prob_val,
+                        "impacto": imp_val,
+                        "nivel_risco": nivel_calc,
+                        "gestor_risco": resp_input,
+                        "data_identificacao": dt_identificacao.strftime("%Y-%m-%d"),
+                        "periodicidade_revisao": periodicidade_sel,
+                        "situacao_status": "Identificado"
+                    }
+                    try:
+                        res_novo_risco = supabase.table("riscos").insert(novo_risco_dados).execute()
                         
-                        novo_risco_dados = {
-                            "unidade": unidade_sigla_final,
-                            "objetivo_estrategico": mapa_oe[oe_label],
-                            "categoria_risco": mapa_cat[cat_label],
-                            "evento": evento_input,
-                            "causa": causa_input,
-                            "consequencia": consequencia_input,
-                            "probabilidade": prob_val,
-                            "impacto": imp_val,
-                            "nivel_risco": nivel_calc,
-                            "gestor_risco": resp_input,
-                            "data_identificacao": dt_identificacao.strftime("%Y-%m-%d"),
-                            "periodicidade_revisao": periodicidade_sel,
-                            "situacao_status": "Identificado"
-                        }
-                        try:
-                            res_novo_risco = supabase.table("riscos").insert(novo_risco_dados).execute()
-                            
-                            if res_novo_risco.data and len(res_novo_risco.data) > 0:
-                                novo_risco_id = res_novo_risco.data[0]["id"]
-                                dados_tramitacao_inicial = {
-                                    "risco_id": novo_risco_id,
-                                    "unidade_origem": unidade_sigla_final,
-                                    "unidade_destino": unidade_sigla_final,
-                                    "usuario_remetente": resp_input,
-                                    "parecer_observacao": "Registro inicial e identificação do risco no sistema."
-                                }
-                                supabase.table("tramitacoes").insert(dados_tramitacao_inicial).execute()
+                        if res_novo_risco.data and len(res_novo_risco.data) > 0:
+                            novo_risco_id = res_novo_risco.data[0]["id"]
+                            dados_tramitacao_inicial = {
+                                "risco_id": novo_risco_id,
+                                "unidade_origem": unidade_sigla_final,
+                                "unidade_destino": unidade_sigla_final,
+                                "usuario_remetente": resp_input,
+                                "parecer_observacao": "Registro inicial e identificação do risco no sistema."
+                            }
+                            supabase.table("tramitacoes").insert(dados_tramitacao_inicial).execute()
 
-                            st.success("✅ Risco registrado com sucesso!")
-                            st.rerun()
-                        except Exception as e:
-                            st.error(f"Erro ao salvar o risco no banco de dados: {e}")
+                        st.success("✅ Risco registrado com sucesso!")
+                        st.rerun()
+                    except Exception as e:
+                        st.error(f"Erro ao salvar o risco no banco de dados: {e}")
 
     # =========================================================
     # 2. TELA: REAVALIAÇÃO DO NÍVEL DE RISCO (COM HISTÓRICO)
@@ -2176,35 +2176,35 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
 
             st.divider()
 
-            # --- FORMULÁRIO DEDICADO DE REAVALIAÇÃO COM POPOVER E SLIDERS DINÂMICOS ---
+            # --- PAINEL DEDICADO DE REAVALIAÇÃO COM POPOVER E SLIDERS REATIVOS ---
             col_rtit, col_rpop = st.columns([3, 1])
             with col_rtit:
                 st.markdown("### 📝 Formulário de Reavaliação")
             with col_rpop:
                 renderizar_popover_guia_atribuicao()
 
-            with st.form(f"form_reavaliar_dedicado_{r_id}"):
-                col_sl1, col_sl2 = st.columns(2)
-                with col_sl1:
-                    p_nova = st.slider("Nova Probabilidade (1 a 5)*", 1, 5, value=p_at, key=f"sld_pn_{r_id}")
-                    rot_pn, desc_pn = DADOS_PROB[p_nova]
-                    st.caption(f"📌 **Nota {p_nova} ({rot_pn}):** *{desc_pn}*")
+            col_sl1, col_sl2 = st.columns(2)
+            with col_sl1:
+                p_nova = st.slider("Nova Probabilidade (1 a 5)*", 1, 5, value=p_at, key=f"sld_pn_{r_id}")
+                rot_pn, desc_pn = DADOS_PROB[p_nova]
+                st.caption(f"📌 **Nota {p_nova} ({rot_pn}):** *{desc_pn}*")
 
-                with col_sl2:
-                    i_novo = st.slider("Novo Impacto (1 a 5)*", 1, 5, value=i_at, key=f"sld_in_{r_id}")
-                    rot_in, desc_in = DADOS_IMP[i_novo]
-                    st.caption(f"💥 **Nota {i_novo} ({rot_in}):** *{desc_in}*")
+            with col_sl2:
+                i_novo = st.slider("Novo Impacto (1 a 5)*", 1, 5, value=i_at, key=f"sld_in_{r_id}")
+                rot_in, desc_in = DADOS_IMP[i_novo]
+                st.caption(f"💥 **Nota {i_novo} ({rot_in}):** *{desc_in}*")
 
-                just_reav = st.text_area(
-                    "Justificativa da Reavaliação*", 
-                    placeholder="Descreva as razões técnicas, ações implementadas ou evidências que justificam a alteração da nota..."
-                )
+            just_reav = st.text_area(
+                "Justificativa da Reavaliação*", 
+                placeholder="Descreva as razões técnicas, ações implementadas ou evidências que justificam a alteração da nota...",
+                key=f"ta_just_reav_{r_id}"
+            )
 
-                novo_nivel_calc = p_nova * i_novo
-                cor_novo_n = "🔴 Crítico" if novo_nivel_calc >= 15 else "🟡 Médio" if novo_nivel_calc >= 8 else "🟢 Baixo"
-                st.caption(f"⚡ **Novo Nível do Risco Calculado:** `{novo_nivel_calc}` ({cor_novo_n})")
+            novo_nivel_calc = p_nova * i_novo
+            cor_novo_n = "🔴 Crítico" if novo_nivel_calc >= 15 else "🟡 Médio" if novo_nivel_calc >= 8 else "🟢 Baixo"
+            st.caption(f"⚡ **Novo Nível do Risco Calculado:** `{novo_nivel_calc}` ({cor_novo_n})")
 
-                btn_sub_reav = st.form_submit_button("💾 Confirmar e Gravar Nova Avaliação")
+            btn_sub_reav = st.button("💾 Confirmar e Gravar Nova Avaliação", type="primary", key=f"btn_salvar_reav_{r_id}")
 
             if btn_sub_reav:
                 if not just_reav.strip():
