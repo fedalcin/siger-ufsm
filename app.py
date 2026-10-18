@@ -1830,44 +1830,47 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
     unidade_usuario = usr_atual.get("unidade")
 
     # =========================================================
-    # FUNÇÃO AUXILIAR: RENDERIZAR GUIA ORIENTATIVO DE PROBABILIDADE E IMPACTO
+    # DICIONÁRIOS E FUNÇÃO AUXILIAR DE GUIA ORIENTATIVO (ERM)
     # =========================================================
+    DADOS_PROB = {
+        1: ("Raro", "Ocorrência excepcional. Não há histórico conhecido nem indícios concretos de que o evento possa ocorrer no período avaliado."),
+        2: ("Pouco provável", "Há poucos registros ou indícios de ocorrência. O histórico sugere baixa frequência no período avaliado."),
+        3: ("Provável", "Há registros recorrentes ou indícios razoáveis de que o evento possa ocorrer no período avaliado."),
+        4: ("Muito provável", "Há histórico frequente ou evidências consistentes de que o evento ocorrerá no período avaliado."),
+        5: ("Praticamente certo", "A ocorrência é quase garantida, sendo esperada no período avaliado, com base no histórico ou nas evidências disponíveis.")
+    }
 
-    def renderizar_guia_avaliacao_risco():
-        with st.expander("💡 **Guia de Apoio: Como escolher os níveis de Probabilidade e Impacto (1 a 5)**"):
-            tab_prob_g, tab_imp_g, tab_mat_g = st.tabs(["📊 Probabilidade", "💥 Impacto", "🎲 Matriz Resultante"])
-        
-            with tab_prob_g:
-                st.markdown("**Pergunta orientadora:** *Qual é a chance de este risco ocorrer no período considerado para o objetivo institucional?*")
-                st.markdown("""
-                | Nota | Classificação | Orientação para atribuição da nota |
-                | :---: | :--- | :--- |
-                | **1** | **Raro** | Ocorrência excepcional. Não há histórico conhecido nem indícios concretos de que o evento possa ocorrer no período avaliado. |
-                | **2** | **Pouco provável** | Há poucos registros ou indícios de ocorrência. O histórico sugere baixa frequência no período avaliado. |
-                | **3** | **Provável** | Há registros recorrentes ou indícios razoáveis de que o evento possa ocorrer no período avaliado. |
-                | **4** | **Muito provável** | Há histórico frequente ou evidências consistentes de que o evento ocorrerá no período avaliado. |
-                | **5** | **Praticamente certo** | A ocorrência é quase garantida, sendo esperada no período avaliado, com base no histórico ou nas evidências disponíveis. |
-                """)
-            
-            with tab_imp_g:
-                st.markdown("**Pergunta orientadora:** *Caso o risco se concretize, quanto ele poderá comprometer o alcance do objetivo institucional?*")
-                st.markdown("""
-                | Nota | Classificação | Orientação para atribuição da nota |
-                | :---: | :--- | :--- |
-                | **1** | **Muito baixo** | Efeito mínimo sobre o objetivo. Não altera significativamente o resultado esperado. |
-                | **2** | **Baixo** | Compromete parcialmente o objetivo, mas a maior parte do resultado esperado permanece alcançável. |
-                | **3** | **Médio** | Compromete de forma relevante o alcance do objetivo, exigindo medidas corretivas. |
-                | **4** | **Alto** | Compromete a maior parte do objetivo, podendo exigir mudanças significativas nas ações ou nos recursos previstos. |
-                | **5** | **Muito alto** | Compromete total ou quase totalmente o alcance do objetivo ou do resultado institucional esperado. |
-                """)
+    DADOS_IMP = {
+        1: ("Muito baixo", "Efeito mínimo sobre o objetivo. Não altera significativamente o resultado esperado."),
+        2: ("Baixo", "Compromete parcialmente o objetivo, mas a maior parte do resultado esperado permanece alcançável."),
+        3: ("Médio", "Compromete de forma relevante o alcance do objetivo, exigindo medidas corretivas."),
+        4: ("Alto", "Compromete a maior parte do objetivo, podendo exigir mudanças significativas nas ações ou nos recursos previstos."),
+        5: ("Muito alto", "Compromete total ou quase totalmente o alcance do objetivo ou do resultado institucional esperado.")
+    }
 
-            with tab_mat_g:
-                st.info("⚡ **Nível do Risco = Probabilidade x Impacto**")
-                st.markdown("""
-                * **🟢 Nível Baixo (1 a 7):** Monitoramento de rotina.
-                * **🟡 Nível Médio (8 a 14):** Ações de mitigação recomendadas.
-                * **🔴 Nível Crítico (15 a 25):** Exige plano de ação urgente e acompanhamento prioritário.
-                """)
+    def renderizar_popover_guia_atribuicao():
+        pop_guia = st.popover("ℹ️ Guia de Atribuição de Notas")
+        with pop_guia:
+            st.markdown("### 📊 Escala de Probabilidade e Impacto")
+            st.markdown("**Probabilidade:** *Qual é a chance de este risco ocorrer no período considerado para o objetivo institucional?*")
+            st.markdown("""
+            * **1 - Raro:** Ocorrência excepcional.
+            * **2 - Pouco provável:** Há poucos registros ou indícios de ocorrência.
+            * **3 - Provável:** Há registros recorrentes ou indícios razoáveis.
+            * **4 - Muito provável:** Há histórico frequente ou evidências consistentes.
+            * **5 - Praticamente certo:** A ocorrência é quase garantida no período.
+            """)
+            st.divider()
+            st.markdown("**Impacto:** *Caso o risco se concretize, quanto ele poderá comprometer o alcance do objetivo institucional?*")
+            st.markdown("""
+            * **1 - Muito baixo:** Efeito mínimo sobre o objetivo.
+            * **2 - Baixo:** Compromete parcialmente o objetivo.
+            * **3 - Médio:** Compromete de forma relevante (exige medidas corretivas).
+            * **4 - Alto:** Compromete a maior parte do objetivo.
+            * **5 - Muito alto:** Compromete total ou quase totalmente o resultado esperado.
+            """)
+            st.divider()
+            st.info("⚡ **Nível do Risco = Probabilidade x Impacto**\n* 🟢 Baixo: 1 a 7\n* 🟡 Médio: 8 a 14\n* 🔴 Crítico: 15 a 25")
 
     # =========================================================
     # 1. TELA: RISCOS (CADASTRO E GESTÃO DE RISCOS)
@@ -1906,13 +1909,31 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                             with col_r_edit:
                                 pop_edit_r = st.popover("✏️ Editar Risco")
                                 with pop_edit_r:
-                                    renderizar_guia_avaliacao_risco()
                                     with st.form(f"form_edit_risco_{r_item['id']}"):
+                                        st.markdown("##### Editar Informações do Risco")
                                         e_evento = st.text_area("Risco", value=r_item.get('evento', ''))
                                         e_causa = st.text_area("Causa", value=r_item.get('causa', ''))
                                         e_cons = st.text_area("Consequência", value=r_item.get('consequencia', ''))
-                                        e_prob = st.slider("Probabilidade (1 a 5)", 1, 5, value=r_item.get('probabilidade', 1), help="1: Raro | 2: Pouco provável | 3: Provável | 4: Muito provável | 5: Praticamente certo")
-                                        e_imp = st.slider("Impacto (1 a 5)", 1, 5, value=r_item.get('impacto', 1), help="1: Muito baixo | 2: Baixo | 3: Médio | 4: Alto | 5: Muito alto")
+                                        
+                                        st.markdown("---")
+                                        col_ed_tit, col_ed_pop = st.columns([2.5, 1.5])
+                                        with col_ed_tit:
+                                            st.markdown("##### Avaliação de Probabilidade e Impacto")
+                                        with col_ed_pop:
+                                            renderizar_popover_guia_atribuicao()
+
+                                        col_ep1, col_ep2 = st.columns(2)
+                                        with col_ep1:
+                                            e_prob = st.slider("Probabilidade (1 a 5)", 1, 5, value=r_item.get('probabilidade', 1), key=f"sld_ep_{r_item['id']}")
+                                            rot_ep, desc_ep = DADOS_PROB[e_prob]
+                                            st.caption(f"📌 **Nota {e_prob} ({rot_ep}):** *{desc_ep}*")
+
+                                        with col_ep2:
+                                            e_imp = st.slider("Impacto (1 a 5)", 1, 5, value=r_item.get('impacto', 1), key=f"sld_ei_{r_item['id']}")
+                                            rot_ei, desc_ei = DADOS_IMP[e_imp]
+                                            st.caption(f"💥 **Nota {e_imp} ({rot_ei}):** *{desc_ei}*")
+
+                                        st.markdown("---")
                                         e_resp = st.text_input("Gestor do Risco", value=r_item.get('gestor_risco', ''))
                                         
                                         options_status = ['Identificado', 'Em análise', 'Em tratamento', 'Monitorado', 'Encerrado', 'Cancelado']
@@ -2012,9 +2033,6 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
             mapa_oe = {f"{o['codigo']} - {o['descricao']}": o['codigo'] for o in res_oe} if res_oe else {"Nenhum": None}
             mapa_cat = {f"{c['tipo']} / {c['sub_tipo']}": c['id'] for c in res_cat} if res_cat else {"Nenhuma": None}
 
-            # GUIA ORIENTATIVO ANTES DO FORMULÁRIO DE NOVO RISCO
-            renderizar_guia_avaliacao_risco()
-
             with st.form("form_cadastrar_risco", clear_on_submit=True):
                 st.markdown("##### 1. Contexto do Risco")
                 col_c1, col_c2 = st.columns(2)
@@ -2039,12 +2057,23 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                 with col_i2:
                     consequencia_input = st.text_area("Consequência(s)*", placeholder="Quais os impactos?")
 
-                st.markdown("##### 3. Avaliação Qualitativa")
+                # --- SEÇÃO 3: AVALIAÇÃO QUALITATIVA COM POPOVER LADO A LADO E DICAS DINÂMICAS ---
+                col_tit, col_ajuda = st.columns([3, 1])
+                with col_tit:
+                    st.markdown("##### 3. Avaliação Qualitativa")
+                with col_ajuda:
+                    renderizar_popover_guia_atribuicao()
+
                 col_a1, col_a2 = st.columns(2)
                 with col_a1:
-                    prob_val = st.slider("Probabilidade (1 a 5)", 1, 5, 3, help="1: Raro | 2: Pouco provável | 3: Provável | 4: Muito provável | 5: Praticamente certo")
+                    prob_val = st.slider("Probabilidade (1 a 5)", 1, 5, 3, key="sld_prob_novo")
+                    rotulo_p, desc_p = DADOS_PROB[prob_val]
+                    st.caption(f"📌 **Nota {prob_val} ({rotulo_p}):** *{desc_p}*")
+
                 with col_a2:
-                    imp_val = st.slider("Impacto (1 a 5)", 1, 5, 3, help="1: Muito baixo | 2: Baixo | 3: Médio | 4: Alto | 5: Muito alto")
+                    imp_val = st.slider("Impacto (1 a 5)", 1, 5, 3, key="sld_imp_novo")
+                    rotulo_i, desc_i = DADOS_IMP[imp_val]
+                    st.caption(f"💥 **Nota {imp_val} ({rotulo_i}):** *{desc_i}*")
 
                 st.markdown("##### 4. Governança e Prazos")
                 col_g1, col_g2, col_g3 = st.columns(3)
@@ -2147,15 +2176,25 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
 
             st.divider()
 
-            renderizar_guia_avaliacao_risco()
+            # --- FORMULÁRIO DEDICADO DE REAVALIAÇÃO COM POPOVER E SLIDERS DINÂMICOS ---
+            col_rtit, col_rpop = st.columns([3, 1])
+            with col_rtit:
+                st.markdown("### 📝 Formulário de Reavaliação")
+            with col_rpop:
+                renderizar_popover_guia_atribuicao()
 
-            st.markdown("### 📝 Formulário de Reavaliação")
             with st.form(f"form_reavaliar_dedicado_{r_id}"):
                 col_sl1, col_sl2 = st.columns(2)
                 with col_sl1:
-                    p_nova = st.slider("Nova Probabilidade (1 a 5)*", 1, 5, value=p_at, help="1: Raro | 2: Pouco provável | 3: Provável | 4: Muito provável | 5: Praticamente certo")
+                    p_nova = st.slider("Nova Probabilidade (1 a 5)*", 1, 5, value=p_at, key=f"sld_pn_{r_id}")
+                    rot_pn, desc_pn = DADOS_PROB[p_nova]
+                    st.caption(f"📌 **Nota {p_nova} ({rot_pn}):** *{desc_pn}*")
+
                 with col_sl2:
-                    i_novo = st.slider("Novo Impacto (1 a 5)*", 1, 5, value=i_at, help="1: Muito baixo | 2: Baixo | 3: Médio | 4: Alto | 5: Muito alto")
+                    i_novo = st.slider("Novo Impacto (1 a 5)*", 1, 5, value=i_at, key=f"sld_in_{r_id}")
+                    rot_in, desc_in = DADOS_IMP[i_novo]
+                    st.caption(f"💥 **Nota {i_novo} ({rot_in}):** *{desc_in}*")
+
                 just_reav = st.text_area(
                     "Justificativa da Reavaliação*", 
                     placeholder="Descreva as razões técnicas, ações implementadas ou evidências que justificam a alteração da nota..."
