@@ -57,22 +57,18 @@ def obter_configuracoes_smtp():
 def obter_emails_unidade_ou_usuario(unidade_sigla=None, nome_usuario=None):
     emails = []
     try:
-        # 1. Busca e-mail de usuário específico (caso tenha sido selecionado um nome específico)
         if nome_usuario and nome_usuario not in ["Toda a Unidade", "Todos os Servidores / Gestores"]:
             res_usr = supabase.table("usuarios").select("email").ilike("nome", f"%{nome_usuario.strip()}%").eq("ativo", True).execute()
             if res_usr.data:
                 emails.extend([u["email"] for u in res_usr.data if u.get("email")])
 
-        # 2. Busca e-mails da Unidade (E-mail geral do Setor + E-mails de todos os usuários do setor)
         if unidade_sigla and unidade_sigla != "S/U":
-            # E-mail institucional do setor cadastrado na tabela 'unidades'
             res_u_email = supabase.table("unidades").select("email_unidade").eq("sigla", unidade_sigla).execute()
             if res_u_email.data:
                 em_sec = res_u_email.data[0].get("email_unidade")
                 if em_sec:
                     emails.append(em_sec.strip())
 
-            # E-mails de todos os usuários ativos vinculados a esta unidade
             res_unid_usrs = supabase.table("usuarios").select("email").eq("unidade_sigla", unidade_sigla).eq("ativo", True).execute()
             if res_unid_usrs.data:
                 emails.extend([u["email"] for u in res_unid_usrs.data if u.get("email")])
@@ -388,11 +384,10 @@ def verificar_senha(senha_fornecida, senha_hash):
 def gerar_hash_senha(senha):
     return bcrypt.hashpw(senha.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
 
-# CÓDIGO ATUALIZADO DO ITEM 3:
 def realizar_login(email, senha):
     try:
         res = supabase.table("usuarios")\
-            .select("*, perfis(nome, permissoes_json)")\
+            .select("*, perfis(id, nome, permissoes_json)")\
             .eq("email", email.strip().lower())\
             .eq("ativo", True)\
             .execute()
@@ -407,6 +402,7 @@ def realizar_login(email, senha):
                     "nome": usr["nome"],
                     "email": usr["email"],
                     "unidade": usr.get("unidade_sigla"),
+                    "perfil_id": usr.get("perfil_id"),
                     "perfil": dados_perf.get("nome", "Leitor"),
                     "permissoes": dados_perf.get("permissoes_json") or {}
                 }
@@ -416,6 +412,19 @@ def realizar_login(email, senha):
         return False, "Usuário não encontrado ou inativo."
     except Exception as e:
         return False, f"Erro na conexão de autenticação: {e}"
+
+def recarregar_permissoes_usuario_logado():
+    """Recarrega dinamicamente do banco as permissões do usuário atual caso tenham sido alteradas"""
+    if st.session_state.usuario_logado and st.session_state.usuario_logado.get("perfil_id"):
+        try:
+            p_id = st.session_state.usuario_logado["perfil_id"]
+            res = supabase.table("perfis").select("nome, permissoes_json").eq("id", p_id).execute()
+            if res.data:
+                p_data = res.data[0]
+                st.session_state.usuario_logado["perfil"] = p_data.get("nome")
+                st.session_state.usuario_logado["permissoes"] = p_data.get("permissoes_json") or {}
+        except Exception:
+            pass
 
 def tela_login():
     col_c1, col_c2, col_c3 = st.columns([1, 1.2, 1])
@@ -449,6 +458,9 @@ def tela_login():
 if not st.session_state.usuario_logado:
     tela_login()
     st.stop()
+
+# Atualiza dinamicamente as permissões do usuário em cada recarga
+recarregar_permissoes_usuario_logado()
 
 # ---------------------------------------------------------
 # HELPER DE PERMISSÕES (RBAC)
@@ -510,7 +522,6 @@ def gerar_barra_progresso_ascii(pct):
 # ---------------------------------------------------------
 def recalcular_e_atualizar_status_risco(risco_id):
     try:
-        # Verifica o status atual do risco (se já foi encerrado manualmente ou cancelado, mantém)
         res_r_atual = supabase.table("riscos").select("situacao_status").eq("id", risco_id).execute()
         if res_r_atual.data:
             st_atual_banco = res_r_atual.data[0].get("situacao_status")
@@ -529,7 +540,6 @@ def recalcular_e_atualizar_status_risco(risco_id):
 
         novo_status_risco = None
 
-        # REGRA: Concluir todas as ações move o risco para "Monitorado" (jamais "Encerrado")
         if concluidas == total_acoes:
             novo_status_risco = "Monitorado"
         elif em_andamento > 0 or concluidas > 0:
@@ -597,7 +607,6 @@ def renderizar_matriz_risco_5x5_consolidada(df_riscos_filtrados):
         ["cell-red", "cell-red", "cell-red", "cell-red", "cell-red"]
     ]
 
-    # Contagem de riscos por célula (Probabilidade x Impacto)
     contagem_celulas = {}
     if not df_riscos_filtrados.empty:
         for _, r in df_riscos_filtrados.iterrows():
@@ -652,7 +661,6 @@ def renderizar_timeline_risco(risco_id):
     
     eventos = []
 
-    # 1. Evento de Criação do Risco
     try:
         res_r = supabase.table("riscos").select("data_identificacao, gestor_risco, unidade, evento, justificativa_encerramento, usuario_encerramento, data_encerramento").eq("id", risco_id).execute()
         if res_r.data:
@@ -666,7 +674,6 @@ def renderizar_timeline_risco(risco_id):
                 "corpo": f"Risco registrado no sistema: {r_data.get('evento')}"
             })
 
-            # Evento de Encerramento (se houver)
             if r_data.get("data_encerramento"):
                 eventos.append({
                     "tipo": "encerramento",
@@ -678,7 +685,6 @@ def renderizar_timeline_risco(risco_id):
     except Exception:
         pass
 
-    # 2. Histórico de Reavaliações do Risco
     try:
         res_eval = supabase.table("avaliacoes_risco").select("*").eq("risco_id", risco_id).execute()
         for ev in (res_eval.data or []):
@@ -693,7 +699,6 @@ def renderizar_timeline_risco(risco_id):
     except Exception:
         pass
 
-    # 3. Tramitações Institucionais
     try:
         res_tram = supabase.table("tramitacoes").select("*").eq("risco_id", risco_id).execute()
         for t in (res_tram.data or []):
@@ -707,7 +712,6 @@ def renderizar_timeline_risco(risco_id):
     except Exception:
         pass
 
-    # 4. Movimentações e Alterações de Ações
     try:
         res_mov = supabase.table("movimentacoes_acoes").select("*").eq("risco_id", risco_id).execute()
         for m in (res_mov.data or []):
@@ -723,7 +727,6 @@ def renderizar_timeline_risco(risco_id):
     except Exception:
         pass
 
-    # Tratamento contra datas nulas/inválidas antes de ordenar
     for e in eventos:
         if not e["data"]:
             e["data"] = "1970-01-01T00:00:00"
@@ -755,7 +758,7 @@ def renderizar_timeline_risco(risco_id):
         """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
-# BARRA LATERAL (USER INFO & MENU EXPANSÍVEL)
+# BARRA LATERAL (USER INFO & MENU EXPANSÍVEL DINÂMICO)
 # ---------------------------------------------------------
 if url_logo_siger:
     st.sidebar.image(url_logo_siger, use_container_width=True)
@@ -781,7 +784,6 @@ def navegar_para(pagina, sub_pagina=None):
     st.session_state.pagina_atual = pagina
     st.session_state.sub_pagina_atual = sub_pagina
 
-# Mapeamento de permissões do usuário logado (Admin possui acesso total por padrão)
 perms = usr_atual.get("permissoes", {})
 
 st.sidebar.subheader("Menu Principal")
@@ -797,6 +799,12 @@ st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
 st.sidebar.divider()
 
+# Helper para checar se uma subpágina está liberada na matriz do usuário
+def tem_acesso_subpagina(key_perm, default_val=False):
+    if is_admin:
+        return True
+    return perms.get(key_perm, {}).get("acesso", default_val)
+
 # 2. Expander Administração
 items_adm = [
     ("👥 Usuários", "Usuários", "adm_usuarios"),
@@ -805,7 +813,7 @@ items_adm = [
     ("✍ Texto da Tela Inicial", "Texto da Tela Inicial", "adm_texto_home"),
     ("🔧 Configurações Gerais", "Configurações Gerais", "adm_config_gerais")
 ]
-items_adm_visiveis = [item for item in items_adm if is_admin or perms.get(item[2], {}).get("acesso", False)]
+items_adm_visiveis = [item for item in items_adm if tem_acesso_subpagina(item[2], False)]
 
 if items_adm_visiveis:
     with st.sidebar.expander("⚙ Administração", expanded=False):
@@ -820,7 +828,7 @@ items_cad = [
     ("🏷️ Categorias de Risco", "Categorias de Risco", "cad_categorias"),
     ("📚 Documentos da Biblioteca", "Documentos da Biblioteca", "cad_doc_biblioteca")
 ]
-items_cad_visiveis = [item for item in items_cad if is_admin or perms.get(item[2], {}).get("acesso", False)]
+items_cad_visiveis = [item for item in items_cad if tem_acesso_subpagina(item[2], False)]
 
 if items_cad_visiveis:
     with st.sidebar.expander("📝 Cadastros", expanded=False):
@@ -834,7 +842,7 @@ items_gr = [
     ("📋 Ações de Tratamento", "Ações de Tratamento", "gr_acoes"),
     ("🎯 Reavaliação do Nível de Risco", "Reavaliação do Nível de Risco", "gr_reavaliacao")
 ]
-items_gr_visiveis = [item for item in items_gr if is_admin or is_gestor or perms.get(item[2], {}).get("acesso", True)]
+items_gr_visiveis = [item for item in items_gr if tem_acesso_subpagina(item[2], is_gestor)]
 
 if items_gr_visiveis:
     with st.sidebar.expander("🛡️ Gestão de Riscos", expanded=False):
@@ -847,7 +855,7 @@ items_dash = [
     ("📌 Acompanhamento de Riscos", "Acompanhamento de Riscos", "dash_acomp"),
     ("📈 Painel Geral", "Painel Geral", "dash_geral")
 ]
-items_dash_visiveis = [item for item in items_dash if is_admin or is_gestor or perms.get(item[2], {}).get("acesso", True)]
+items_dash_visiveis = [item for item in items_dash if tem_acesso_subpagina(item[2], is_gestor)]
 
 if items_dash_visiveis:
     with st.sidebar.expander("📊 Dashboards", expanded=False):
@@ -904,10 +912,10 @@ if st.session_state.pagina_atual == "Início":
 # ---------------------------------------------------------
 # PÁGINA: ADMINISTRAÇÃO DO SISTEMA
 # ---------------------------------------------------------
-elif st.session_state.pagina_atual == "Administração do Sistema" and is_admin:
+elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin or any(p.get("acesso") for k, p in perms.items() if k.startswith("adm_"))):
     sub = st.session_state.sub_pagina_atual or "Usuários"
     
-    # 1. SUBPÁGINA: USUÁRIOS E PERMISSÕES
+    # 1. SUBPÁGINA: USUÁRIOS
     if sub == "Usuários":
         st.title("👥 Usuários")
         st.caption("Gerenciamento e cadastro de usuários do sistema.")
@@ -1016,8 +1024,15 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and is_admin:
             perfil_obj = mapa_p[perfil_sel_nome]
             p_id = perfil_obj["id"]
             
-            # Matriz de permissões salva em JSONB no banco
+            # Matriz de permissões do perfil selecionado
             m_perms = perfil_obj.get("permissoes_json") or {}
+
+            # Função auxiliar para pegar permissão salvas (padrão é True para Admin, e False para os demais)
+            eh_admin_sel = perfil_sel_nome == "Admin"
+            def def_perm(modulo, operacao, val_default=False):
+                if eh_admin_sel:
+                    return True
+                return m_perms.get(modulo, {}).get(operacao, val_default)
 
             st.divider()
 
@@ -1027,32 +1042,32 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and is_admin:
                 
                 with c1:
                     st.markdown("**👥 Usuários**")
-                    p_usr_acc = st.checkbox("Acessar", value=m_perms.get("adm_usuarios", {}).get("acesso", True), key=f"usr_acc_{p_id}")
-                    p_usr_inc = st.checkbox("Incluir", value=m_perms.get("adm_usuarios", {}).get("incluir", True), key=f"usr_inc_{p_id}")
-                    p_usr_alt = st.checkbox("Alterar", value=m_perms.get("adm_usuarios", {}).get("alterar", True), key=f"usr_alt_{p_id}")
-                    p_usr_exc = st.checkbox("Excluir", value=m_perms.get("adm_usuarios", {}).get("excluir", True), key=f"usr_exc_{p_id}")
+                    p_usr_acc = st.checkbox("Acessar", value=def_perm("adm_usuarios", "acesso"), key=f"usr_acc_{p_id}")
+                    p_usr_inc = st.checkbox("Incluir", value=def_perm("adm_usuarios", "incluir"), key=f"usr_inc_{p_id}")
+                    p_usr_alt = st.checkbox("Alterar", value=def_perm("adm_usuarios", "alterar"), key=f"usr_alt_{p_id}")
+                    p_usr_exc = st.checkbox("Excluir", value=def_perm("adm_usuarios", "excluir"), key=f"usr_exc_{p_id}")
                 
                 with c2:
                     st.markdown("**🔐 Perfis**")
-                    p_prf_acc = st.checkbox("Acessar", value=m_perms.get("adm_perfis", {}).get("acesso", True), key=f"prf_acc_{p_id}")
-                    p_prf_inc = st.checkbox("Incluir", value=m_perms.get("adm_perfis", {}).get("incluir", True), key=f"prf_inc_{p_id}")
-                    p_prf_alt = st.checkbox("Alterar", value=m_perms.get("adm_perfis", {}).get("alterar", True), key=f"prf_alt_{p_id}")
-                    p_prf_exc = st.checkbox("Excluir", value=m_perms.get("adm_perfis", {}).get("excluir", True), key=f"prf_exc_{p_id}")
+                    p_prf_acc = st.checkbox("Acessar", value=def_perm("adm_perfis", "acesso"), key=f"prf_acc_{p_id}")
+                    p_prf_inc = st.checkbox("Incluir", value=def_perm("adm_perfis", "incluir"), key=f"prf_inc_{p_id}")
+                    p_prf_alt = st.checkbox("Alterar", value=def_perm("adm_perfis", "alterar"), key=f"prf_alt_{p_id}")
+                    p_prf_exc = st.checkbox("Excluir", value=def_perm("adm_perfis", "excluir"), key=f"prf_exc_{p_id}")
 
                 with c3:
                     st.markdown("**🖼️ Identidade Visual**")
-                    p_idv_acc = st.checkbox("Acessar", value=m_perms.get("adm_id_visual", {}).get("acesso", True), key=f"idv_acc_{p_id}")
-                    p_idv_alt = st.checkbox("Alterar", value=m_perms.get("adm_id_visual", {}).get("alterar", True), key=f"idv_alt_{p_id}")
+                    p_idv_acc = st.checkbox("Acessar", value=def_perm("adm_id_visual", "acesso"), key=f"idv_acc_{p_id}")
+                    p_idv_alt = st.checkbox("Alterar", value=def_perm("adm_id_visual", "alterar"), key=f"idv_alt_{p_id}")
 
                 with c4:
                     st.markdown("**✍ Texto Inicial**")
-                    p_txt_acc = st.checkbox("Acessar", value=m_perms.get("adm_texto_home", {}).get("acesso", True), key=f"txt_acc_{p_id}")
-                    p_txt_alt = st.checkbox("Alterar", value=m_perms.get("adm_texto_home", {}).get("alterar", True), key=f"txt_alt_{p_id}")
+                    p_txt_acc = st.checkbox("Acessar", value=def_perm("adm_texto_home", "acesso"), key=f"txt_acc_{p_id}")
+                    p_txt_alt = st.checkbox("Alterar", value=def_perm("adm_texto_home", "alterar"), key=f"txt_alt_{p_id}")
 
                 with c5:
                     st.markdown("**🔧 Config. Gerais**")
-                    p_cfg_acc = st.checkbox("Acessar", value=m_perms.get("adm_config_gerais", {}).get("acesso", True), key=f"cfg_acc_{p_id}")
-                    p_cfg_alt = st.checkbox("Alterar", value=m_perms.get("adm_config_gerais", {}).get("alterar", True), key=f"cfg_alt_{p_id}")
+                    p_cfg_acc = st.checkbox("Acessar", value=def_perm("adm_config_gerais", "acesso"), key=f"cfg_acc_{p_id}")
+                    p_cfg_alt = st.checkbox("Alterar", value=def_perm("adm_config_gerais", "alterar"), key=f"cfg_alt_{p_id}")
 
                 st.divider()
 
@@ -1061,30 +1076,30 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and is_admin:
                 
                 with c_c1:
                     st.markdown("**🏢 Unidades**")
-                    p_und_acc = st.checkbox("Acessar", value=m_perms.get("cad_unidades", {}).get("acesso", True), key=f"und_acc_{p_id}")
-                    p_und_inc = st.checkbox("Incluir", value=m_perms.get("cad_unidades", {}).get("incluir", True), key=f"und_inc_{p_id}")
-                    p_und_alt = st.checkbox("Alterar", value=m_perms.get("cad_unidades", {}).get("alterar", True), key=f"und_alt_{p_id}")
-                    p_und_exc = st.checkbox("Excluir", value=m_perms.get("cad_unidades", {}).get("excluir", True), key=f"und_exc_{p_id}")
+                    p_und_acc = st.checkbox("Acessar", value=def_perm("cad_unidades", "acesso"), key=f"und_acc_{p_id}")
+                    p_und_inc = st.checkbox("Incluir", value=def_perm("cad_unidades", "incluir"), key=f"und_inc_{p_id}")
+                    p_und_alt = st.checkbox("Alterar", value=def_perm("cad_unidades", "alterar"), key=f"und_alt_{p_id}")
+                    p_und_exc = st.checkbox("Excluir", value=def_perm("cad_unidades", "excluir"), key=f"und_exc_{p_id}")
 
                 with c_c2:
                     st.markdown("**🎯 Obj. Estratégicos**")
-                    p_oe_acc = st.checkbox("Acessar", value=m_perms.get("cad_objetivos", {}).get("acesso", True), key=f"oe_acc_{p_id}")
-                    p_oe_inc = st.checkbox("Incluir", value=m_perms.get("cad_objetivos", {}).get("incluir", True), key=f"oe_inc_{p_id}")
-                    p_oe_alt = st.checkbox("Alterar", value=m_perms.get("cad_objetivos", {}).get("alterar", True), key=f"oe_alt_{p_id}")
-                    p_oe_exc = st.checkbox("Excluir", value=m_perms.get("cad_objetivos", {}).get("excluir", True), key=f"oe_exc_{p_id}")
+                    p_oe_acc = st.checkbox("Acessar", value=def_perm("cad_objetivos", "acesso"), key=f"oe_acc_{p_id}")
+                    p_oe_inc = st.checkbox("Incluir", value=def_perm("cad_objetivos", "incluir"), key=f"oe_inc_{p_id}")
+                    p_oe_alt = st.checkbox("Alterar", value=def_perm("cad_objetivos", "alterar"), key=f"oe_alt_{p_id}")
+                    p_oe_exc = st.checkbox("Excluir", value=def_perm("cad_objetivos", "excluir"), key=f"oe_exc_{p_id}")
 
                 with c_c3:
                     st.markdown("**🏷️ Categorias**")
-                    p_cat_acc = st.checkbox("Acessar", value=m_perms.get("cad_categorias", {}).get("acesso", True), key=f"cat_acc_{p_id}")
-                    p_cat_inc = st.checkbox("Incluir", value=m_perms.get("cad_categorias", {}).get("incluir", True), key=f"cat_inc_{p_id}")
-                    p_cat_alt = st.checkbox("Alterar", value=m_perms.get("cad_categorias", {}).get("alterar", True), key=f"cat_alt_{p_id}")
-                    p_cat_exc = st.checkbox("Excluir", value=m_perms.get("cad_categorias", {}).get("excluir", True), key=f"cat_exc_{p_id}")
+                    p_cat_acc = st.checkbox("Acessar", value=def_perm("cad_categorias", "acesso"), key=f"cat_acc_{p_id}")
+                    p_cat_inc = st.checkbox("Incluir", value=def_perm("cad_categorias", "incluir"), key=f"cat_inc_{p_id}")
+                    p_cat_alt = st.checkbox("Alterar", value=def_perm("cad_categorias", "alterar"), key=f"cat_alt_{p_id}")
+                    p_cat_exc = st.checkbox("Excluir", value=def_perm("cad_categorias", "excluir"), key=f"cat_exc_{p_id}")
 
                 with c_c4:
                     st.markdown("**📚 Doc. Biblioteca**")
-                    p_doc_acc = st.checkbox("Acessar", value=m_perms.get("cad_doc_biblioteca", {}).get("acesso", True), key=f"doc_acc_{p_id}")
-                    p_doc_inc = st.checkbox("Incluir PDF", value=m_perms.get("cad_doc_biblioteca", {}).get("incluir", True), key=f"doc_inc_{p_id}")
-                    p_doc_exc = st.checkbox("Excluir PDF", value=m_perms.get("cad_doc_biblioteca", {}).get("excluir", True), key=f"doc_exc_{p_id}")
+                    p_doc_acc = st.checkbox("Acessar", value=def_perm("cad_doc_biblioteca", "acesso"), key=f"doc_acc_{p_id}")
+                    p_doc_inc = st.checkbox("Incluir PDF", value=def_perm("cad_doc_biblioteca", "incluir"), key=f"doc_inc_{p_id}")
+                    p_doc_exc = st.checkbox("Excluir PDF", value=def_perm("cad_doc_biblioteca", "excluir"), key=f"doc_exc_{p_id}")
 
                 st.divider()
 
@@ -1093,22 +1108,22 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and is_admin:
                 
                 with c_g1:
                     st.markdown("**📋 Riscos**")
-                    p_rsk_acc = st.checkbox("Acessar", value=m_perms.get("gr_riscos", {}).get("acesso", True), key=f"rsk_acc_{p_id}")
-                    p_rsk_inc = st.checkbox("Incluir (Cadastrar)", value=m_perms.get("gr_riscos", {}).get("incluir", True), key=f"rsk_inc_{p_id}")
-                    p_rsk_alt = st.checkbox("Alterar (Editar)", value=m_perms.get("gr_riscos", {}).get("alterar", True), key=f"rsk_alt_{p_id}")
-                    p_rsk_exc = st.checkbox("Excluir", value=m_perms.get("gr_riscos", {}).get("excluir", True), key=f"rsk_exc_{p_id}")
+                    p_rsk_acc = st.checkbox("Acessar", value=def_perm("gr_riscos", "acesso", True), key=f"rsk_acc_{p_id}")
+                    p_rsk_inc = st.checkbox("Incluir (Cadastrar)", value=def_perm("gr_riscos", "incluir", True), key=f"rsk_inc_{p_id}")
+                    p_rsk_alt = st.checkbox("Alterar (Editar)", value=def_perm("gr_riscos", "alterar", True), key=f"rsk_alt_{p_id}")
+                    p_rsk_exc = st.checkbox("Excluir", value=def_perm("gr_riscos", "excluir", True), key=f"rsk_exc_{p_id}")
 
                 with c_g2:
                     st.markdown("**📋 Ações de Tratamento**")
-                    p_act_acc = st.checkbox("Acessar", value=m_perms.get("gr_acoes", {}).get("acesso", True), key=f"act_acc_{p_id}")
-                    p_act_inc = st.checkbox("Incluir Ação", value=m_perms.get("gr_acoes", {}).get("incluir", True), key=f"act_inc_{p_id}")
-                    p_act_alt = st.checkbox("Alterar Ação", value=m_perms.get("gr_acoes", {}).get("alterar", True), key=f"act_alt_{p_id}")
-                    p_act_exc = st.checkbox("Excluir Ação", value=m_perms.get("gr_acoes", {}).get("excluir", True), key=f"act_exc_{p_id}")
+                    p_act_acc = st.checkbox("Acessar", value=def_perm("gr_acoes", "acesso", True), key=f"act_acc_{p_id}")
+                    p_act_inc = st.checkbox("Incluir Ação", value=def_perm("gr_acoes", "incluir", True), key=f"act_inc_{p_id}")
+                    p_act_alt = st.checkbox("Alterar Ação", value=def_perm("gr_acoes", "alterar", True), key=f"act_alt_{p_id}")
+                    p_act_exc = st.checkbox("Excluir Ação", value=def_perm("gr_acoes", "excluir", True), key=f"act_exc_{p_id}")
 
                 with c_g3:
                     st.markdown("**🎯 Reavaliação de Risco**")
-                    p_rev_acc = st.checkbox("Acessar Menu", value=m_perms.get("gr_reavaliacao", {}).get("acesso", True), key=f"rev_acc_{p_id}")
-                    p_rev_alt = st.checkbox("Permitir Reavaliar", value=m_perms.get("gr_reavaliacao", {}).get("alterar", True), key=f"rev_alt_{p_id}")
+                    p_rev_acc = st.checkbox("Acessar Menu", value=def_perm("gr_reavaliacao", "acesso", True), key=f"rev_acc_{p_id}")
+                    p_rev_alt = st.checkbox("Permitir Reavaliar", value=def_perm("gr_reavaliacao", "alterar", True), key=f"rev_alt_{p_id}")
 
                 st.divider()
 
@@ -1117,17 +1132,17 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and is_admin:
 
                 with c_d1:
                     st.markdown("**📌 Acompanhamento**")
-                    p_d1_acc = st.checkbox("Acessar Dashboard", value=m_perms.get("dash_acomp", {}).get("acesso", True), key=f"d1_acc_{p_id}")
-                    p_d1_outras = st.toggle("Ver Outras Unidades", value=m_perms.get("dash_acomp", {}).get("ver_outras_unidades", True), key=f"d1_out_{p_id}")
+                    p_d1_acc = st.checkbox("Acessar Dashboard", value=def_perm("dash_acomp", "acesso", True), key=f"d1_acc_{p_id}")
+                    p_d1_outras = st.toggle("Ver Outras Unidades", value=def_perm("dash_acomp", "ver_outras_unidades", True), key=f"d1_out_{p_id}")
 
                 with c_d2:
                     st.markdown("**📈 Painel Geral**")
-                    p_d2_acc = st.checkbox("Acessar Painel", value=m_perms.get("dash_geral", {}).get("acesso", True), key=f"d2_acc_{p_id}")
-                    p_d2_outras = st.toggle("Ver Outras Unidades", value=m_perms.get("dash_geral", {}).get("ver_outras_unidades", True), key=f"d2_out_{p_id}")
+                    p_d2_acc = st.checkbox("Acessar Painel", value=def_perm("dash_geral", "acesso", True), key=f"d2_acc_{p_id}")
+                    p_d2_outras = st.toggle("Ver Outras Unidades", value=def_perm("dash_geral", "ver_outras_unidades", True), key=f"d2_out_{p_id}")
 
                 with c_d3:
                     st.markdown("**📄 Doc. e Normativas**")
-                    p_bib_read = st.toggle("Permitir Leitura/Download", value=m_perms.get("bib_normativas", {}).get("leitura", True), key=f"bib_rd_{p_id}")
+                    p_bib_read = st.toggle("Permitir Leitura/Download", value=def_perm("bib_normativas", "leitura", True), key=f"bib_rd_{p_id}")
 
                 st.write("")
                 btn_salvar_matriz = st.form_submit_button("💾 Salvar Matriz de Permissões do Perfil", use_container_width=True)
@@ -1397,7 +1412,6 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
             unidade_risco_origem = dados_risco.get("unidade", unidade_ativa)
             situacao_risco = dados_risco.get("situacao_status", "Identificado")
             
-            # Busca a última tramitação para saber QUEM enviou esta demanda para a unidade atual
             ultimo_remetente_txt = "Registro Inicial"
             try:
                 res_u_tram = supabase.table("tramitacoes")\
@@ -1436,7 +1450,6 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                     
                 st.divider()
                 
-                # Leitura da porcentagem usando 'percentual_execucao' conforme seu schema SQL
                 pct_atual = acao_item.get("percentual_execucao") or 0
                 try:
                     res_ult_mov = supabase.table("movimentacoes_acoes")\
@@ -1467,7 +1480,6 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                         with pop_atuar:
                             st.markdown(f"### Atuação na Ação nº {seq} (Risco #{r_id})")
                             
-                            # Seleção da Unidade Destino FORA do form para filtrar os usuários dinamicamente
                             idx_dest_def = opcoes_unid.index(unidade_risco_origem) if unidade_risco_origem in opcoes_unid else 0
                             unid_destino_wf = st.selectbox(
                                 "Encaminhar Para Unidade*", 
@@ -1476,7 +1488,6 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                 key=f"sb_dest_out_{r_id}_{seq}"
                             )
 
-                            # Carrega ESTRITAMENTE os usuários ativos da unidade selecionada
                             try:
                                 res_u_dest = supabase.table("usuarios")\
                                     .select("nome")\
@@ -1515,7 +1526,6 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                         key=f"sb_resp_dest_{r_id}_{seq}"
                                     )
                                 with col_t_wf2:
-                                    # Remetente fixo do usuário logado (Apenas Leitura)
                                     st.text_input("Remetente (Seu Usuário)", value=usr_atual["nome"], disabled=True, key=f"txt_rem_dis_{r_id}_{seq}")
                                 
                                 btn_enviar_wf = st.form_submit_button("🚀 Gravar Avanço e Tramitar Demanda")
@@ -1529,7 +1539,6 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                             resp_destino_final = resp_destino_wf
                                             nome_para_email = None if resp_destino_final == "Toda a Unidade" else resp_destino_final
 
-                                            # Atualização usando percentual_execucao conforme o schema da tabela
                                             dados_update_acao = {
                                                 "status_acao": novo_status_ac,
                                                 "percentual_execucao": novo_pct,
@@ -1537,7 +1546,6 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                                 "nome_responsavel_implementacao": resp_destino_final
                                             }
                                             
-                                            # Se o status for concluído, registra a data de conclusão efetiva
                                             if novo_status_ac == "Concluída":
                                                 dados_update_acao["data_conclusao_efetiva"] = date.today().strftime("%Y-%m-%d")
 
@@ -1566,7 +1574,6 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
 
                                             recalcular_e_atualizar_status_risco(r_id)
 
-                                            # ENVIO DE E-MAIL AUTOMÁTICO PARA A UNIDADE E USUÁRIO DESTINO
                                             emails_dest = obter_emails_unidade_ou_usuario(unidade_sigla=unid_destino_wf, nome_usuario=nome_para_email)
                                             if emails_dest:
                                                 assunto_e = f"💬 [SIGER] Tramitação de Demanda - Risco #{r_id} (Ação {seq})"
@@ -2162,7 +2169,7 @@ elif st.session_state.pagina_atual == "Cadastros":
     sub = st.session_state.sub_pagina_atual or "Unidades"
 
     # 1. SUBPÁGINA: UNIDADES
-    if sub == "Unidades" and is_admin:
+    if sub == "Unidades":
         st.title("🏢 Unidades")
         tab_list_unid, tab_novo_unid = st.tabs(["🔍 Unidades Cadastradas", "➕ Nova Unidade"])
         
@@ -2188,42 +2195,43 @@ elif st.session_state.pagina_atual == "Cadastros":
                                 st.write(f"**E-mail da Unidade:** `{email_item or 'Não informado'}`")
                             
                             with col_acoes:
-                                modal_edit = st.popover("✏️ Editar")
-                                with modal_edit:
-                                    st.markdown("### Editar Unidade")
-                                    with st.form(f"form_edit_unid_{sigla_item}"):
-                                        edit_nome = st.text_input("Nome Extenso", value=nome_item)
-                                        val_atual = item.get('tipo_unidade')
-                                        idx_tipo = TIPOS_UNIDADE_OPCOES.index(val_atual) if val_atual in TIPOS_UNIDADE_OPCOES else 0
-                                        edit_tipo = st.selectbox("Tipo da Unidade*", options=TIPOS_UNIDADE_OPCOES, index=idx_tipo)
-                                        edit_email = st.text_input("E-mail Institucional da Unidade", value=email_item, placeholder="setor@instituicao.edu.br")
-                                        
-                                        if st.form_submit_button("💾 Salvar Alterações"):
-                                            try:
-                                                supabase.table("unidades").update({
-                                                    "nome_extenso": edit_nome,
-                                                    "tipo_unidade": edit_tipo,
-                                                    "email_unidade": edit_email.strip().lower() if edit_email else None
-                                                }).eq("sigla", sigla_item).execute()
-                                                st.toast("Unidade atualizada com sucesso!", icon="✅")
-                                                st.rerun()
-                                            except Exception as e:
-                                                st.error(f"Erro ao atualizar: {e}")
+                                if is_admin:
+                                    modal_edit = st.popover("✏️ Editar")
+                                    with modal_edit:
+                                        st.markdown("### Editar Unidade")
+                                        with st.form(f"form_edit_unid_{sigla_item}"):
+                                            edit_nome = st.text_input("Nome Extenso", value=nome_item)
+                                            val_atual = item.get('tipo_unidade')
+                                            idx_tipo = TIPOS_UNIDADE_OPCOES.index(val_atual) if val_atual in TIPOS_UNIDADE_OPCOES else 0
+                                            edit_tipo = st.selectbox("Tipo da Unidade*", options=TIPOS_UNIDADE_OPCOES, index=idx_tipo)
+                                            edit_email = st.text_input("E-mail Institucional da Unidade", value=email_item, placeholder="setor@instituicao.edu.br")
+                                            
+                                            if st.form_submit_button("💾 Salvar Alterações"):
+                                                try:
+                                                    supabase.table("unidades").update({
+                                                        "nome_extenso": edit_nome,
+                                                        "tipo_unidade": edit_tipo,
+                                                        "email_unidade": edit_email.strip().lower() if edit_email else None
+                                                    }).eq("sigla", sigla_item).execute()
+                                                    st.toast("Unidade atualizada com sucesso!", icon="✅")
+                                                    st.rerun()
+                                                except Exception as e:
+                                                    st.error(f"Erro ao atualizar: {e}")
 
-                                modal_del = st.popover("🗑️ Excluir")
-                                with modal_del:
-                                    st.warning(f"Tem certeza que deseja excluir a unidade '{sigla_item}'?")
-                                    if st.button("Confirmar Exclusão", key=f"btn_del_unid_{sigla_item}"):
-                                        try:
-                                            res_riscos = supabase.table("riscos").select("id").eq("unidade", sigla_item).execute()
-                                            if res_riscos.data and len(res_riscos.data) > 0:
-                                                st.error(f"❌ Impossível excluir '{sigla_item}'. Existem {len(res_riscos.data)} risco(s) vinculados.")
-                                            else:
-                                                supabase.table("unidades").delete().eq("sigla", sigla_item).execute()
-                                                st.toast(f"Unidade '{sigla_item}' excluída!", icon="🗑")
-                                                st.rerun()
-                                        except Exception as e:
-                                            st.error(f"Erro ao tentar excluir: {e}")
+                                    modal_del = st.popover("🗑️ Excluir")
+                                    with modal_del:
+                                        st.warning(f"Tem certeza que deseja excluir a unidade '{sigla_item}'?")
+                                        if st.button("Confirmar Exclusão", key=f"btn_del_unid_{sigla_item}"):
+                                            try:
+                                                res_riscos = supabase.table("riscos").select("id").eq("unidade", sigla_item).execute()
+                                                if res_riscos.data and len(res_riscos.data) > 0:
+                                                    st.error(f"❌ Impossível excluir '{sigla_item}'. Existem {len(res_riscos.data)} risco(s) vinculados.")
+                                                else:
+                                                    supabase.table("unidades").delete().eq("sigla", sigla_item).execute()
+                                                    st.toast(f"Unidade '{sigla_item}' excluída!", icon="🗑")
+                                                    st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Erro ao tentar excluir: {e}")
                 else:
                     st.info("Nenhuma unidade cadastrada.")
             except Exception as e:
@@ -2258,7 +2266,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao salvar unidade: {e}")
 
     # 2. SUBPÁGINA: OBJETIVOS ESTRATÉGICOS
-    elif sub == "Objetivos Estratégicos" and is_admin:
+    elif sub == "Objetivos Estratégicos":
         st.title("🎯 Objetivos Estratégicos")
         tab_oe_list, tab_oe_novo = st.tabs(["🔍 Objetivos Cadastrados", "➕ Novo Objetivo Estratégico"])
         
@@ -2281,43 +2289,44 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.write(f"**Desafio:** {desafio_item}")
                             st.write(f"**Dimensão:** {dimensao_item}")
                             
-                            col_info, col_acoes = st.columns([1, 1])
-                            with col_info:
-                                pop_edit = st.popover("✏️ Editar")
-                                with pop_edit:
-                                    st.markdown("### Editar Objetivo Estratégico")
-                                    with st.form(f"form_edit_oe_{cod_item}"):
-                                        e_desc = st.text_area("Descrição", value=desc_item)
-                                        e_desafio = st.text_area("Desafio", value=desafio_item)
-                                        e_dimensao = st.text_input("Dimensão", value=dimensao_item)
-                                        
-                                        if st.form_submit_button("💾 Salvar Alterações"):
-                                            try:
-                                                supabase.table("objetivos_estrategicos").update({
-                                                    "descricao": e_desc,
-                                                    "desafio": e_desafio,
-                                                    "dimensao": e_dimensao
-                                                }).eq("codigo", cod_item).execute()
-                                                st.success("Objetivo Estratégico atualizado!")
-                                                st.rerun()
-                                            except Exception as e:
-                                                st.error(f"Erro ao atualizar objetivo estratégico: {e}")
+                            if is_admin:
+                                col_info, col_acoes = st.columns([1, 1])
+                                with col_info:
+                                    pop_edit = st.popover("✏️ Editar")
+                                    with pop_edit:
+                                        st.markdown("### Editar Objetivo Estratégico")
+                                        with st.form(f"form_edit_oe_{cod_item}"):
+                                            e_desc = st.text_area("Descrição", value=desc_item)
+                                            e_desafio = st.text_area("Desafio", value=desafio_item)
+                                            e_dimensao = st.text_input("Dimensão", value=dimensao_item)
+                                            
+                                            if st.form_submit_button("💾 Salvar Alterações"):
+                                                try:
+                                                    supabase.table("objetivos_estrategicos").update({
+                                                        "descricao": e_desc,
+                                                        "desafio": e_desafio,
+                                                        "dimensao": e_dimensao
+                                                    }).eq("codigo", cod_item).execute()
+                                                    st.success("Objetivo Estratégico atualizado!")
+                                                    st.rerun()
+                                                except Exception as e:
+                                                    st.error(f"Erro ao atualizar objetivo estratégico: {e}")
 
-                            with col_acoes:
-                                pop_del = st.popover("🗑️ Excluir")
-                                with pop_del:
-                                    st.warning(f"Deseja excluir o objetivo '{cod_item}'?")
-                                    if st.button("Confirmar Exclusão", key=f"btn_del_oe_{cod_item}"):
-                                        try:
-                                            res_vinc = supabase.table("riscos").select("id").eq("objetivo_estrategico", cod_item).execute()
-                                            if res_vinc.data and len(res_vinc.data) > 0:
-                                                st.error(f"❌ Impossível excluir. Existem {len(res_vinc.data)} risco(s) vinculados a este objetivo.")
-                                            else:
-                                                supabase.table("objetivos_estrategicos").delete().eq("codigo", cod_item).execute()
-                                                st.success(f"Objetivo '{cod_item}' excluído com sucesso!")
-                                                st.rerun()
-                                        except Exception as e:
-                                            st.error(f"Erro ao excluir objetivo estratégico: {e}")
+                                with col_acoes:
+                                    pop_del = st.popover("🗑️ Excluir")
+                                    with pop_del:
+                                        st.warning(f"Deseja excluir o objetivo '{cod_item}'?")
+                                        if st.button("Confirmar Exclusão", key=f"btn_del_oe_{cod_item}"):
+                                            try:
+                                                res_vinc = supabase.table("riscos").select("id").eq("objetivo_estrategico", cod_item).execute()
+                                                if res_vinc.data and len(res_vinc.data) > 0:
+                                                    st.error(f"❌ Impossível excluir. Existem {len(res_vinc.data)} risco(s) vinculados a este objetivo.")
+                                                else:
+                                                    supabase.table("objetivos_estrategicos").delete().eq("codigo", cod_item).execute()
+                                                    st.success(f"Objetivo '{cod_item}' excluído com sucesso!")
+                                                    st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Erro ao excluir objetivo estratégico: {e}")
                 else:
                     st.info("Nenhum objetivo estratégico cadastrado no banco de dados.")
             except Exception as e:
@@ -2353,7 +2362,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao cadastrar objetivo estratégico: {e}")
 
     # 3. SUBPÁGINA: CATEGORIAS DE RISCO
-    elif sub == "Categorias de Risco" and is_admin:
+    elif sub == "Categorias de Risco":
         st.title("🏷️ Categorias de Risco")
         tab_cat_list, tab_cat_nova = st.tabs(["🔍 Categorias Cadastradas", "➕ Nova Categoria"])
         
@@ -2376,42 +2385,43 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.write(f"**Detalhamento:** {cdet or '-'}")
                             st.caption(f"Criado em: {formatar_data_hora_br(c_item.get('criado_em'))}")
                             
-                            col_c_edit, col_c_del = st.columns([1, 1])
-                            with col_c_edit:
-                                pop_edit_cat = st.popover("✏️ Editar")
-                                with pop_edit_cat:
-                                    with st.form(f"form_edit_cat_{cid}"):
-                                        e_tipo = st.text_input("Tipo", value=ctipo)
-                                        e_sub = st.text_input("Subtipo", value=csub)
-                                        e_det = st.text_area("Detalhamento", value=cdet)
-                                        
-                                        if st.form_submit_button("💾 Salvar Alterações"):
-                                            try:
-                                                supabase.table("categorias_riscos").update({
-                                                    "tipo": e_tipo,
-                                                    "sub_tipo": e_sub,
-                                                    "detalhamento": e_det
-                                                }).eq("id", cid).execute()
-                                                st.success("Categoria atualizada!")
-                                                st.rerun()
-                                            except Exception as e:
-                                                st.error(f"Erro ao atualizar categoria: {e}")
+                            if is_admin:
+                                col_c_edit, col_c_del = st.columns([1, 1])
+                                with col_c_edit:
+                                    pop_edit_cat = st.popover("✏️ Editar")
+                                    with pop_edit_cat:
+                                        with st.form(f"form_edit_cat_{cid}"):
+                                            e_tipo = st.text_input("Tipo", value=ctipo)
+                                            e_sub = st.text_input("Subtipo", value=csub)
+                                            e_det = st.text_area("Detalhamento", value=cdet)
+                                            
+                                            if st.form_submit_button("💾 Salvar Alterações"):
+                                                try:
+                                                    supabase.table("categorias_riscos").update({
+                                                        "tipo": e_tipo,
+                                                        "sub_tipo": e_sub,
+                                                        "detalhamento": e_det
+                                                    }).eq("id", cid).execute()
+                                                    st.success("Categoria atualizada!")
+                                                    st.rerun()
+                                                except Exception as e:
+                                                    st.error(f"Erro ao atualizar categoria: {e}")
 
-                            with col_c_del:
-                                pop_del_cat = st.popover("🗑️ Excluir")
-                                with pop_del_cat:
-                                    st.warning(f"Deseja excluir a categoria '{ctipo} / {csub}'?")
-                                    if st.button("Confirmar Exclusão", key=f"btn_del_cat_{cid}"):
-                                        try:
-                                            res_vinc_c = supabase.table("riscos").select("id").eq("categoria_risco", cid).execute()
-                                            if res_vinc_c.data and len(res_vinc_c.data) > 0:
-                                                st.error(f"❌ Impossível excluir. Existem {len(res_vinc_c.data)} risco(s) vinculados a esta categoria.")
-                                            else:
-                                                supabase.table("categorias_riscos").delete().eq("id", cid).execute()
-                                                st.success("Categoria excluída com sucesso!")
-                                                st.rerun()
-                                        except Exception as e:
-                                            st.error(f"Erro ao excluir categoria: {e}")
+                                with col_c_del:
+                                    pop_del_cat = st.popover("🗑️ Excluir")
+                                    with pop_del_cat:
+                                        st.warning(f"Deseja excluir a categoria '{ctipo} / {csub}'?")
+                                        if st.button("Confirmar Exclusão", key=f"btn_del_cat_{cid}"):
+                                            try:
+                                                res_vinc_c = supabase.table("riscos").select("id").eq("categoria_risco", cid).execute()
+                                                if res_vinc_c.data and len(res_vinc_c.data) > 0:
+                                                    st.error(f"❌ Impossível excluir. Existem {len(res_vinc_c.data)} risco(s) vinculados a esta categoria.")
+                                                else:
+                                                    supabase.table("categorias_riscos").delete().eq("id", cid).execute()
+                                                    st.success("Categoria excluída com sucesso!")
+                                                    st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Erro ao excluir categoria: {e}")
                 else:
                     st.info("Nenhuma categoria cadastrada.")
             except Exception as e:
@@ -2443,7 +2453,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.error(f"Erro ao cadastrar categoria: {e}")
 
     # 4. SUBPÁGINA: DOCUMENTOS DA BIBLIOTECA
-    elif sub == "Documentos da Biblioteca" and is_admin:
+    elif sub == "Documentos da Biblioteca":
         st.title("📚 Documentos da Biblioteca")
         tab_b_list, tab_b_novo = st.tabs(["🔍 Documentos Cadastrados", "➕ Enviar Novo Documento PDF"])
         
@@ -2470,21 +2480,22 @@ elif st.session_state.pagina_atual == "Cadastros":
                             with col_b_act1:
                                 st.link_button("📥 Abrir / Download PDF", d_url)
                             with col_b_act2:
-                                pop_del_doc = st.popover("🗑 Excluir Documento")
-                                with pop_del_doc:
-                                    st.warning(f"Deseja remover o documento '{d_titulo}'?")
-                                    if st.button("Confirmar Exclusão", key=f"btn_del_doc_{doc_id}"):
-                                        try:
-                                            if d_arq:
-                                                try:
-                                                    supabase.storage.from_("biblioteca_documentos").remove([d_arq])
-                                                except Exception:
-                                                    pass
-                                            supabase.table("biblioteca").delete().eq("id", doc_id).execute()
-                                            st.success("Documento excluído com sucesso!")
-                                            st.rerun()
-                                        except Exception as e:
-                                            st.error(f"Erro ao excluir documento: {e}")
+                                if is_admin:
+                                    pop_del_doc = st.popover("🗑 Excluir Documento")
+                                    with pop_del_doc:
+                                        st.warning(f"Deseja remover o documento '{d_titulo}'?")
+                                        if st.button("Confirmar Exclusão", key=f"btn_del_doc_{doc_id}"):
+                                            try:
+                                                if d_arq:
+                                                    try:
+                                                        supabase.storage.from_("biblioteca_documentos").remove([d_arq])
+                                                    except Exception:
+                                                        pass
+                                                supabase.table("biblioteca").delete().eq("id", doc_id).execute()
+                                                st.success("Documento excluído com sucesso!")
+                                                st.rerun()
+                                            except Exception as e:
+                                                st.error(f"Erro ao excluir documento: {e}")
                 else:
                     st.info("Nenhum documento cadastrado na biblioteca.")
             except Exception as e:
@@ -2521,67 +2532,6 @@ elif st.session_state.pagina_atual == "Cadastros":
                         except Exception as e:
                             st.error(f"Erro ao enviar documento para a biblioteca: {e}")
 
-    # 5. SUBPÁGINA: PERFIS E PERMISSÕES
-    elif sub == "Perfis e Permissões" and is_admin:
-        st.title("🔐 Perfis de Acesso e Permissões")
-        st.caption("Configure os privilégios e escopos de acesso para cada perfil cadastrado no sistema.")
-
-        try:
-            res_perfis = supabase.table("perfis").select("*").order("id").execute()
-            lista_perfis = res_perfis.data or []
-        except Exception as e:
-            st.error(f"Erro ao carregar perfis: {e}")
-            lista_perfis = []
-
-        if lista_perfis:
-            for p in lista_perfis:
-                p_id = p["id"]
-                p_nome = p["nome"]
-                p_desc = p.get("descricao", "")
-                
-                perm_reavaliar = p.get("pode_reavaliar", True)
-                perm_ver_outras_unid = p.get("pode_ver_outras_unidades", True)
-                perm_cadastrar_risco = p.get("pode_cadastrar_risco", True)
-
-                with st.expander(f"🛡️ Perfil: **{p_nome}**"):
-                    st.write(f"**Descrição:** {p_desc or 'Sem descrição'}")
-                    
-                    with st.form(f"form_perm_perfil_{p_id}"):
-                        st.markdown("##### Regras e Escopo de Acesso")
-                        
-                        f_reavaliar = st.toggle(
-                            "Permitir Reavaliar Nível de Risco", 
-                            value=perm_reavaliar, 
-                            key=f"tog_reav_{p_id}"
-                        )
-                        
-                        f_ver_outras = st.toggle(
-                            "Visualizar Riscos de Outras Unidades", 
-                            value=perm_ver_outras_unid, 
-                            key=f"tog_ver_{p_id}"
-                        )
-
-                        f_cad_risco = st.toggle(
-                            "Permitir Mapear/Cadastrar Novos Riscos", 
-                            value=perm_cadastrar_risco, 
-                            key=f"tog_cad_{p_id}"
-                        )
-
-                        if st.form_submit_button("💾 Salvar Permissões do Perfil"):
-                            try:
-                                supabase.table("perfis").update({
-                                    "pode_reavaliar": f_reavaliar,
-                                    "pode_ver_outras_unidades": f_ver_outras,
-                                    "pode_cadastrar_risco": f_cad_risco
-                                }).eq("id", p_id).execute()
-                                
-                                st.toast(f"✅ Permissões do perfil '{p_nome}' atualizadas!", icon="🎉")
-                                st.rerun()
-                            except Exception as e:
-                                st.error(f"Erro ao atualizar permissões: {e}")
-        else:
-            st.info("Nenhum perfil encontrado no banco de dados.")
-
 # ---------------------------------------------------------
 # PÁGINA: DASHBOARDS
 # ---------------------------------------------------------
@@ -2608,21 +2558,18 @@ elif st.session_state.pagina_atual == "Dashboards":
             risco_obj = mapa_riscos_mon[risco_sel_label]
             r_id = risco_obj["id"]
 
-            # Carregamento das Ações de Tratamento do Risco
             try:
                 res_ac_mon = supabase.table("acoes_tratamento").select("*").eq("risco_id", r_id).order("numero_sequencial").execute()
                 df_ac_mon = pd.DataFrame(res_ac_mon.data or [])
             except Exception:
                 df_ac_mon = pd.DataFrame()
 
-            # Carregamento do Histórico de Avaliações (avaliacoes_risco)
             try:
                 res_hist = supabase.table("avaliacoes_risco").select("*").eq("risco_id", r_id).order("created_at", desc=False).execute()
                 df_hist_eval = pd.DataFrame(res_hist.data or [])
             except Exception:
                 df_hist_eval = pd.DataFrame()
 
-            # Cálculo das Métricas e Indicadores Gerenciais via calculos_siger.py
             data_prox_rev = risco_obj.get("proxima_revisao") or risco_obj.get("data_proxima_revisao")
             sit_revisao = calcular_situacao_revisao_risco(data_prox_rev)
             
@@ -2654,7 +2601,6 @@ elif st.session_state.pagina_atual == "Dashboards":
 
             st.divider()
 
-            # CABEÇALHO 360° E CARDS DE INDICADORES
             col_hdr1, col_hdr2 = st.columns([2.5, 1.5])
             with col_hdr1:
                 st.markdown(f"### 🛡️ Risco #{r_id}: {risco_obj.get('evento')}")
@@ -2679,25 +2625,12 @@ elif st.session_state.pagina_atual == "Dashboards":
             kpi_c2.metric("Total Ações", tot_acoes_r)
             kpi_c3.metric("Concluídas", acoes_concluidas_r)
             kpi_c4.metric("Atrasadas", acoes_atrasadas_r)
-            kpi_c5.metric(
-                "Execução do Tratamento", 
-                f"{iet_r}%", 
-                help="Índice de Execução do Tratamento: Mede o percentual médio de execução das ações de mitigação cadastradas.\n\nFórmula: (Soma do % de Conclusão das Ações / Total de Ações)"
-            )
-            kpi_c6.metric(
-                "Cumprimento de Prazos", 
-                f"{icp_r}%", 
-                help="Índice de Cumprimento de Prazos: Avalia a proporção de ações que estão dentro do prazo previsto.\n\nFórmula: ((Ações no Prazo / Total de Ações) * 100)"
-            )
-            kpi_c7.metric(
-                "Tratamento do Risco", 
-                f"{itr_r}%", 
-                help="Índice de Tratamento do Risco: Métrica consolidada que combina a taxa de execução, conclusão total e aderência aos prazos.\n\nFórmula: Ponderação entre Execução, Conclusão Total e Cumprimento de Prazos"
-            )
+            kpi_c5.metric("Execução do Tratamento", f"{iet_r}%")
+            kpi_c6.metric("Cumprimento de Prazos", f"{icp_r}%")
+            kpi_c7.metric("Tratamento do Risco", f"{itr_r}%")
 
             st.divider()
 
-            # MATRIZ 5X5, HISTÓRICO E ALERTAS
             col_sec1, col_sec2 = st.columns([1.2, 1.3])
 
             with col_sec1:
@@ -2749,7 +2682,6 @@ elif st.session_state.pagina_atual == "Dashboards":
 
             st.divider()
 
-            # TABELA E BARRA DE PROGRESSO DAS AÇÕES
             st.markdown("### 🛡️ Planos de Ação e Progresso das Mitigações")
             
             if not df_ac_mon.empty:
@@ -2790,7 +2722,6 @@ elif st.session_state.pagina_atual == "Dashboards":
         st.title("📈 Painel Geral")
         st.caption("Visão estratégica de governança e monitoramento integrado de exposição a riscos.")
 
-        # CARREGAMENTO DOS DADOS BASE DO SUPABASE
         try:
             res_r = supabase.table("riscos").select("*").execute()
             df_riscos_base = pd.DataFrame(res_r.data or [])
@@ -2809,7 +2740,6 @@ elif st.session_state.pagina_atual == "Dashboards":
         if not df_riscos_base.empty and "categoria_risco" in df_riscos_base.columns:
             df_riscos_base["nome_categoria"] = df_riscos_base["categoria_risco"].map(mapa_cat_nomes).fillna("Não Categorizado")
 
-        # BARRA SUPERIOR DE FILTROS GLOBAIS
         with st.expander("🔍 Filtros Globais do Painel Executivo", expanded=True):
             f_col1, f_col2, f_col3, f_col4, f_col5, f_col6 = st.columns(6)
 
@@ -2845,7 +2775,6 @@ elif st.session_state.pagina_atual == "Dashboards":
             with f_dt2:
                 dt_fim_filtro = st.date_input("Data Final", value=date.today(), format="DD/MM/YYYY")
 
-        # APLICAÇÃO DOS FILTROS NO DATAFRAME DE RISCOS
         df_r_filtrado = df_riscos_base.copy()
 
         if not df_r_filtrado.empty:
@@ -2877,7 +2806,6 @@ elif st.session_state.pagina_atual == "Dashboards":
 
         st.divider()
 
-        # CARDS DE EXPOSIÇÃO E KPIS INSTITUCIONAIS
         tot_riscos_f = len(df_r_filtrado)
         criticos_f = sum(1 for _, r in df_r_filtrado.iterrows() if r.get("nivel_risco", 0) >= 15) if not df_r_filtrado.empty else 0
         exposicao_agregada_tot = df_r_filtrado["nivel_risco"].sum() if not df_r_filtrado.empty else 0
@@ -2898,17 +2826,12 @@ elif st.session_state.pagina_atual == "Dashboards":
         kpi_col1, kpi_col2, kpi_col3, kpi_col4, kpi_col5 = st.columns(5)
         kpi_col1.metric("Total de Riscos", tot_riscos_f)
         kpi_col2.metric("Riscos Críticos (≥ 15)", criticos_f, delta_color="inverse")
-        kpi_col3.metric(
-            "Exposição Agregada (∑ Nível)", 
-            exposicao_agregada_tot,
-            help="Exposição Agregada (∑ Nível): Representa o somatório total do Nível de Risco (Probabilidade x Impacto) de todos os riscos mapeados dentro do filtro selecionado.\n\nFórmula: ∑ (Probabilidade × Impacto)"
-        )
+        kpi_col3.metric("Exposição Agregada (∑ Nível)", exposicao_agregada_tot)
         kpi_col4.metric("Riscos sem Tratamento", riscos_sem_tratamento)
         kpi_col5.metric("% Ações Atrasadas", f"{pct_acoes_atrasadas}%")
 
         st.divider()
 
-        # MATRIZ 5X5 CONSOLIDADA E DISTRIBUIÇÕES
         col_matriz, col_graficos = st.columns([1.2, 1.8])
 
         with col_matriz:
@@ -2947,14 +2870,10 @@ elif st.session_state.pagina_atual == "Dashboards":
 
         st.divider()
 
-        # TABELA DE TOP RISCOS PRIORITÁRIOS & ALERTAS GLOBAIS
         col_top, col_alertas_gl = st.columns([1.8, 1.2])
 
         with col_top:
-            st.markdown(
-                "### 🔝 Ranking de Riscos Prioritários", 
-                help="Fórmula de Priorização do Risco: Pontuação calculada com base no Nível do Risco, número de Ações Atrasadas, proporção de Tratamento e Situação da Revisão Temporal."
-            )
+            st.markdown("### 🔝 Ranking de Riscos Prioritários")
             st.caption("Ordenado pela Pontuação de Priorização do Risco (nível de exposição, pendências e revisão temporal).")
 
             if not df_r_filtrado.empty:
