@@ -1020,22 +1020,28 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
 
         if lista_perfis:
             mapa_p = {p["nome"]: p for p in lista_perfis}
-            perfil_sel_nome = st.selectbox("🎯 Selecione o Perfil para Configurar Permissões:", list(mapa_p.keys()))
+            
+            # Utiliza chave na session_state para forçar a re-leitura do perfil selecionado
+            perfil_sel_nome = st.selectbox(
+                "🎯 Selecione o Perfil para Configurar Permissões:", 
+                list(mapa_p.keys()),
+                key="sb_selecao_perfil_matriz"
+            )
+            
             perfil_obj = mapa_p[perfil_sel_nome]
             p_id = perfil_obj["id"]
-            
-            # Recarrega a matriz atual do perfil selecionado
-            m_perms = perfil_obj.get("permissoes_json") or {}
-            
-            # Garante a atualização imediata das permissões na sessão se o perfil for do usuário logado
-            if usr_atual.get("perfil_id") == p_id:
-                st.session_state.usuario_logado["permissoes"] = m_perms
 
-            # Matriz de permissões do perfil selecionado
-            m_perms = perfil_obj.get("permissoes_json") or {}
+            # Reconsultar no banco de dados para pegar sempre a matriz gravada mais recente
+            try:
+                res_p_fresca = supabase.table("perfis").select("permissoes_json").eq("id", p_id).execute()
+                m_perms = res_p_fresca.data[0].get("permissoes_json") if res_p_fresca.data else {}
+            except Exception:
+                m_perms = perfil_obj.get("permissoes_json") or {}
 
-            # Função auxiliar para pegar permissão salvas (padrão é True para Admin, e False para os demais)
-            eh_admin_sel = perfil_sel_nome == "Admin"
+            if not isinstance(m_perms, dict):
+                m_perms = {}
+
+            eh_admin_sel = (perfil_sel_nome == "Admin")
 
             def def_perm(modulo, operacao, val_default=False):
                 if eh_admin_sel:
@@ -1047,7 +1053,8 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
 
             st.divider()
 
-            with st.form(f"form_matriz_perm_{p_id}"):
+            # Chave do formulário dinâmica garante a recriação limpa dos checkboxes ao trocar o perfil selecionado
+            with st.form(f"form_matriz_perm_{p_id}_{perfil_sel_nome}"):
                 st.markdown("### ⚙️ 1. Módulo Administração")
                 c1, c2, c3, c4, c5 = st.columns(5)
                 
@@ -1183,7 +1190,6 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                     try:
                         supabase.table("perfis").update({"permissoes_json": nova_matriz}).eq("id", p_id).execute()
         
-                        # Atualiza a sessão caso o perfil alterado seja o do usuário atual
                         if usr_atual.get("perfil_id") == p_id:
                             st.session_state.usuario_logado["permissoes"] = nova_matriz
             
