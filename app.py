@@ -1030,7 +1030,7 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
             perfil_obj = mapa_p[perfil_sel_nome]
             p_id = perfil_obj["id"]
 
-            # Reconsultar diretamente no banco para obter a matriz Json sem cache de sessão
+            # Reconsultar diretamente no banco sem cache
             try:
                 res_p_fresca = supabase.table("perfis").select("permissoes_json").eq("id", p_id).execute()
                 m_perms = res_p_fresca.data[0].get("permissoes_json") if res_p_fresca.data else {}
@@ -1040,8 +1040,10 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
             if not isinstance(m_perms, dict):
                 m_perms = {}
 
-            # Função auxiliar sem a trava do Admin para refletir o JSON real do banco no formulário
+            # Helper para consultar os valores salvos no JSON do Supabase
             def def_perm(modulo, operacao, val_default=False):
+                if perfil_sel_nome == "Admin":
+                    return True
                 mod_dict = m_perms.get(modulo)
                 if isinstance(mod_dict, dict) and operacao in mod_dict:
                     return bool(mod_dict[operacao])
@@ -1049,41 +1051,39 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
 
             st.divider()
 
-            # Chave do formulário e dos widgets contendo p_id + perfil_sel_nome garante renderização 100% limpa ao alternar perfis
-            k_sfx = f"{p_id}_{perfil_sel_nome.replace(' ', '_')}"
-
-            with st.form(f"form_matriz_perm_{k_sfx}"):
+            # Usamos formulário fixo para garatida de submissão atômica sem perdas de estado
+            with st.form(key=f"form_matriz_perm_id_{p_id}"):
                 st.markdown("### ⚙️ 1. Módulo Administração")
                 c1, c2, c3, c4, c5 = st.columns(5)
                 
                 with c1:
                     st.markdown("**👥 Usuários**")
-                    p_usr_acc = st.checkbox("Acessar", value=def_perm("adm_usuarios", "acesso"), key=f"usr_acc_{k_sfx}")
-                    p_usr_inc = st.checkbox("Incluir", value=def_perm("adm_usuarios", "incluir"), key=f"usr_inc_{k_sfx}")
-                    p_usr_alt = st.checkbox("Alterar", value=def_perm("adm_usuarios", "alterar"), key=f"usr_alt_{k_sfx}")
-                    p_usr_exc = st.checkbox("Excluir", value=def_perm("adm_usuarios", "excluir"), key=f"usr_exc_{k_sfx}")
+                    p_usr_acc = st.checkbox("Acessar", value=def_perm("adm_usuarios", "acesso"))
+                    p_usr_inc = st.checkbox("Incluir", value=def_perm("adm_usuarios", "incluir"))
+                    p_usr_alt = st.checkbox("Alterar", value=def_perm("adm_usuarios", "alterar"))
+                    p_usr_exc = st.checkbox("Excluir", value=def_perm("adm_usuarios", "excluir"))
                 
                 with c2:
                     st.markdown("**🔐 Perfis**")
-                    p_prf_acc = st.checkbox("Acessar", value=def_perm("adm_perfis", "acesso"), key=f"prf_acc_{k_sfx}")
-                    p_prf_inc = st.checkbox("Incluir", value=def_perm("adm_perfis", "incluir"), key=f"prf_inc_{k_sfx}")
-                    p_prf_alt = st.checkbox("Alterar", value=def_perm("adm_perfis", "alterar"), key=f"prf_alt_{k_sfx}")
-                    p_prf_exc = st.checkbox("Excluir", value=def_perm("adm_perfis", "excluir"), key=f"prf_exc_{k_sfx}")
+                    p_prf_acc = st.checkbox("Acessar", value=def_perm("adm_perfis", "acesso"))
+                    p_prf_inc = st.checkbox("Incluir", value=def_perm("adm_perfis", "incluir"))
+                    p_prf_alt = st.checkbox("Alterar", value=def_perm("adm_perfis", "alterar"))
+                    p_prf_exc = st.checkbox("Excluir", value=def_perm("adm_perfis", "excluir"))
 
                 with c3:
                     st.markdown("**🖼️ Identidade Visual**")
-                    p_idv_acc = st.checkbox("Acessar", value=def_perm("adm_id_visual", "acesso"), key=f"idv_acc_{k_sfx}")
-                    p_idv_alt = st.checkbox("Alterar", value=def_perm("adm_id_visual", "alterar"), key=f"idv_alt_{k_sfx}")
+                    p_idv_acc = st.checkbox("Acessar", value=def_perm("adm_id_visual", "acesso"))
+                    p_idv_alt = st.checkbox("Alterar", value=def_perm("adm_id_visual", "alterar"))
 
                 with c4:
                     st.markdown("**✍ Texto Inicial**")
-                    p_txt_acc = st.checkbox("Acessar", value=def_perm("adm_texto_home", "acesso"), key=f"txt_acc_{k_sfx}")
-                    p_txt_alt = st.checkbox("Alterar", value=def_perm("adm_texto_home", "alterar"), key=f"txt_alt_{k_sfx}")
+                    p_txt_acc = st.checkbox("Acessar", value=def_perm("adm_texto_home", "acesso"))
+                    p_txt_alt = st.checkbox("Alterar", value=def_perm("adm_texto_home", "alterar"))
 
                 with c5:
                     st.markdown("**🔧 Config. Gerais**")
-                    p_cfg_acc = st.checkbox("Acessar", value=def_perm("adm_config_gerais", "acesso"), key=f"cfg_acc_{k_sfx}")
-                    p_cfg_alt = st.checkbox("Alterar", value=def_perm("adm_config_gerais", "alterar"), key=f"cfg_alt_{k_sfx}")
+                    p_cfg_acc = st.checkbox("Acessar", value=def_perm("adm_config_gerais", "acesso"))
+                    p_cfg_alt = st.checkbox("Alterar", value=def_perm("adm_config_gerais", "alterar"))
 
                 st.divider()
 
@@ -1092,30 +1092,30 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                 
                 with c_c1:
                     st.markdown("**🏢 Unidades**")
-                    p_und_acc = st.checkbox("Acessar", value=def_perm("cad_unidades", "acesso"), key=f"und_acc_{k_sfx}")
-                    p_und_inc = st.checkbox("Incluir", value=def_perm("cad_unidades", "incluir"), key=f"und_inc_{k_sfx}")
-                    p_und_alt = st.checkbox("Alterar", value=def_perm("cad_unidades", "alterar"), key=f"und_alt_{k_sfx}")
-                    p_und_exc = st.checkbox("Excluir", value=def_perm("cad_unidades", "excluir"), key=f"und_exc_{k_sfx}")
+                    p_und_acc = st.checkbox("Acessar", value=def_perm("cad_unidades", "acesso"))
+                    p_und_inc = st.checkbox("Incluir", value=def_perm("cad_unidades", "incluir"))
+                    p_und_alt = st.checkbox("Alterar", value=def_perm("cad_unidades", "alterar"))
+                    p_und_exc = st.checkbox("Excluir", value=def_perm("cad_unidades", "excluir"))
 
                 with c_c2:
                     st.markdown("**🎯 Obj. Estratégicos**")
-                    p_oe_acc = st.checkbox("Acessar", value=def_perm("cad_objetivos", "acesso"), key=f"oe_acc_{k_sfx}")
-                    p_oe_inc = st.checkbox("Incluir", value=def_perm("cad_objetivos", "incluir"), key=f"oe_inc_{k_sfx}")
-                    p_oe_alt = st.checkbox("Alterar", value=def_perm("cad_objetivos", "alterar"), key=f"oe_alt_{k_sfx}")
-                    p_oe_exc = st.checkbox("Excluir", value=def_perm("cad_objetivos", "excluir"), key=f"oe_exc_{k_sfx}")
+                    p_oe_acc = st.checkbox("Acessar", value=def_perm("cad_objetivos", "acesso"))
+                    p_oe_inc = st.checkbox("Incluir", value=def_perm("cad_objetivos", "incluir"))
+                    p_oe_alt = st.checkbox("Alterar", value=def_perm("cad_objetivos", "alterar"))
+                    p_oe_exc = st.checkbox("Excluir", value=def_perm("cad_objetivos", "excluir"))
 
                 with c_c3:
                     st.markdown("**🏷️ Categorias**")
-                    p_cat_acc = st.checkbox("Acessar", value=def_perm("cad_categorias", "acesso"), key=f"cat_acc_{k_sfx}")
-                    p_cat_inc = st.checkbox("Incluir", value=def_perm("cad_categorias", "incluir"), key=f"cat_inc_{k_sfx}")
-                    p_cat_alt = st.checkbox("Alterar", value=def_perm("cad_categorias", "alterar"), key=f"cat_alt_{k_sfx}")
-                    p_cat_exc = st.checkbox("Excluir", value=def_perm("cad_categorias", "excluir"), key=f"cat_exc_{k_sfx}")
+                    p_cat_acc = st.checkbox("Acessar", value=def_perm("cad_categorias", "acesso"))
+                    p_cat_inc = st.checkbox("Incluir", value=def_perm("cad_categorias", "incluir"))
+                    p_cat_alt = st.checkbox("Alterar", value=def_perm("cad_categorias", "alterar"))
+                    p_cat_exc = st.checkbox("Excluir", value=def_perm("cad_categorias", "excluir"))
 
                 with c_c4:
                     st.markdown("**📚 Doc. Biblioteca**")
-                    p_doc_acc = st.checkbox("Acessar", value=def_perm("cad_doc_biblioteca", "acesso"), key=f"doc_acc_{k_sfx}")
-                    p_doc_inc = st.checkbox("Incluir PDF", value=def_perm("cad_doc_biblioteca", "incluir"), key=f"doc_inc_{k_sfx}")
-                    p_doc_exc = st.checkbox("Excluir PDF", value=def_perm("cad_doc_biblioteca", "excluir"), key=f"doc_exc_{k_sfx}")
+                    p_doc_acc = st.checkbox("Acessar", value=def_perm("cad_doc_biblioteca", "acesso"))
+                    p_doc_inc = st.checkbox("Incluir PDF", value=def_perm("cad_doc_biblioteca", "incluir"))
+                    p_doc_exc = st.checkbox("Excluir PDF", value=def_perm("cad_doc_biblioteca", "excluir"))
 
                 st.divider()
 
@@ -1124,22 +1124,22 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                 
                 with c_g1:
                     st.markdown("**📋 Riscos**")
-                    p_rsk_acc = st.checkbox("Acessar", value=def_perm("gr_riscos", "acesso"), key=f"rsk_acc_{k_sfx}")
-                    p_rsk_inc = st.checkbox("Incluir (Cadastrar)", value=def_perm("gr_riscos", "incluir"), key=f"rsk_inc_{k_sfx}")
-                    p_rsk_alt = st.checkbox("Alterar (Editar)", value=def_perm("gr_riscos", "alterar"), key=f"rsk_alt_{k_sfx}")
-                    p_rsk_exc = st.checkbox("Excluir", value=def_perm("gr_riscos", "excluir"), key=f"rsk_exc_{k_sfx}")
+                    p_rsk_acc = st.checkbox("Acessar", value=def_perm("gr_riscos", "acesso", True))
+                    p_rsk_inc = st.checkbox("Incluir (Cadastrar)", value=def_perm("gr_riscos", "incluir", True))
+                    p_rsk_alt = st.checkbox("Alterar (Editar)", value=def_perm("gr_riscos", "alterar", True))
+                    p_rsk_exc = st.checkbox("Excluir", value=def_perm("gr_riscos", "excluir", True))
 
                 with c_g2:
                     st.markdown("**📋 Ações de Tratamento**")
-                    p_act_acc = st.checkbox("Acessar", value=def_perm("gr_acoes", "acesso"), key=f"act_acc_{k_sfx}")
-                    p_act_inc = st.checkbox("Incluir Ação", value=def_perm("gr_acoes", "incluir"), key=f"act_inc_{k_sfx}")
-                    p_act_alt = st.checkbox("Alterar Ação", value=def_perm("gr_acoes", "alterar"), key=f"act_alt_{k_sfx}")
-                    p_act_exc = st.checkbox("Excluir Ação", value=def_perm("gr_acoes", "excluir"), key=f"act_exc_{k_sfx}")
+                    p_act_acc = st.checkbox("Acessar", value=def_perm("gr_acoes", "acesso", True))
+                    p_act_inc = st.checkbox("Incluir Ação", value=def_perm("gr_acoes", "incluir", True))
+                    p_act_alt = st.checkbox("Alterar Ação", value=def_perm("gr_acoes", "alterar", True))
+                    p_act_exc = st.checkbox("Excluir Ação", value=def_perm("gr_acoes", "excluir", True))
 
                 with c_g3:
                     st.markdown("**🎯 Reavaliação de Risco**")
-                    p_rev_acc = st.checkbox("Acessar Menu", value=def_perm("gr_reavaliacao", "acesso"), key=f"rev_acc_{k_sfx}")
-                    p_rev_alt = st.checkbox("Permitir Reavaliar", value=def_perm("gr_reavaliacao", "alterar"), key=f"rev_alt_{k_sfx}")
+                    p_rev_acc = st.checkbox("Acessar Menu", value=def_perm("gr_reavaliacao", "acesso", True))
+                    p_rev_alt = st.checkbox("Permitir Reavaliar", value=def_perm("gr_reavaliacao", "alterar", True))
 
                 st.divider()
 
@@ -1148,17 +1148,17 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
 
                 with c_d1:
                     st.markdown("**📌 Acompanhamento**")
-                    p_d1_acc = st.checkbox("Acessar Dashboard", value=def_perm("dash_acomp", "acesso"), key=f"d1_acc_{k_sfx}")
-                    p_d1_outras = st.toggle("Ver Outras Unidades", value=def_perm("dash_acomp", "ver_outras_unidades"), key=f"d1_out_{k_sfx}")
+                    p_d1_acc = st.checkbox("Acessar Dashboard", value=def_perm("dash_acomp", "acesso", True))
+                    p_d1_outras = st.toggle("Ver Outras Unidades", value=def_perm("dash_acomp", "ver_outras_unidades", True))
 
                 with c_d2:
                     st.markdown("**📈 Painel Geral**")
-                    p_d2_acc = st.checkbox("Acessar Painel", value=def_perm("dash_geral", "acesso"), key=f"d2_acc_{k_sfx}")
-                    p_d2_outras = st.toggle("Ver Outras Unidades", value=def_perm("dash_geral", "ver_outras_unidades"), key=f"d2_out_{k_sfx}")
+                    p_d2_acc = st.checkbox("Acessar Painel", value=def_perm("dash_geral", "acesso", True))
+                    p_d2_outras = st.toggle("Ver Outras Unidades", value=def_perm("dash_geral", "ver_outras_unidades", True))
 
                 with c_d3:
                     st.markdown("**📄 Doc. e Normativas**")
-                    p_bib_read = st.toggle("Permitir Leitura/Download", value=def_perm("bib_normativas", "leitura"), key=f"bib_rd_{k_sfx}")
+                    p_bib_read = st.toggle("Permitir Leitura/Download", value=def_perm("bib_normativas", "leitura", True))
 
                 st.write("")
                 btn_salvar_matriz = st.form_submit_button("💾 Salvar Matriz de Permissões do Perfil", use_container_width=True)
