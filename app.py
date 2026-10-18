@@ -1460,13 +1460,14 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
     with col_filtro2:
         st.write("")
         st.write("")
-        st.info(f"Exibindo demandas sob gestão da unidade **{unidade_ativa}**")
+        st.info(f"Exibindo demandas sob responsabilidade da unidade **{unidade_ativa}**")
 
     st.divider()
 
     try:
+        # Busca ações direcionadas à unidade consultada e faz o JOIN completo com os dados do risco
         res_cx_acoes = supabase.table("acoes_tratamento")\
-            .select("*, riscos(id, evento, unidade, gestor_risco, situacao_status)")\
+            .select("*, riscos(id, evento, causa, consequencia, unidade, gestor_risco, probabilidade, impacto, nivel_risco, objetivo_estrategico, categoria_risco, situacao_status)")\
             .eq("unidade_responsavel", unidade_ativa)\
             .order("risco_id")\
             .order("numero_sequencial")\
@@ -1567,8 +1568,10 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                 except Exception:
                     st.caption("Não foi possível carregar a última movimentação.")
 
-                col_btn_wf1, col_btn_wf2, col_btn_wf3 = st.columns([1, 1, 1])
+                # Botões de Ação na Demanda
+                col_btn_wf1, col_btn_wf2, col_btn_wf3, col_btn_wf4 = st.columns([1.2, 1.2, 1, 1])
 
+                # 1. BOTÃO DE ATUAÇÃO / RESPOSTA À DEMANDA
                 with col_btn_wf1:
                     if is_gestor:
                         pop_atuar = st.popover("⚡ Responder / Atualizar Demanda")
@@ -1690,9 +1693,40 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                         except Exception as e_wf:
                                             st.error(f"Erro ao processar workflow: {e_wf}")
 
+                # 2. VISUALIZADOR CONTEXTUAL DO RISCO MAPEADO (PARA UNIDADES PARCEIRAS)
                 with col_btn_wf2:
+                    pop_ver_risco = st.popover("👁️ Detalhes do Risco")
+                    with pop_ver_risco:
+                        st.markdown(f"### 🛡️ Contexto Completo do Risco #{r_id}")
+                        st.caption("Consulta técnica do risco de origem associado a esta ação de tratamento.")
+                        
+                        p_r = int(dados_risco.get("probabilidade") or 1)
+                        i_r = int(dados_risco.get("impacto") or 1)
+                        n_r = int(dados_risco.get("nivel_risco") or (p_r * i_r))
+                        cor_r = "🔴 Crítico" if n_r >= 15 else "🟡 Médio" if n_r >= 8 else "🟢 Baixo"
+
+                        col_rv1, col_rv2 = st.columns([2, 1])
+                        with col_rv1:
+                            st.markdown(f"**Evento de Risco:** {evento_risco}")
+                            st.markdown(f"**Causa(s):** {dados_risco.get('causa', '-')}")
+                            st.markdown(f"**Consequência(s):** {dados_risco.get('consequencia', '-')}")
+                            st.markdown(f"**Unidade de Origem / Gestora:** `{unidade_risco_origem}`")
+                            st.markdown(f"**Gestor do Risco:** `{gestor_risco_origem}`")
+                            st.markdown(f"**Objetivo Estratégico:** `{dados_risco.get('objetivo_estrategico', '-')}`")
+
+                        with col_rv2:
+                            st.info(f"""
+                            📊 **Avaliação do Risco:**
+                            * **Probabilidade:** {p_r} / 5
+                            * **Impacto:** {i_r} / 5
+                            * **Nível de Risco:** **{n_r}** ({cor_r})
+                            * **Situação:** `{situacao_risco}`
+                            """)
+
+                # 3. ENCERRAMENTO FORMAL DO RISCO
+                with col_btn_wf3:
                     if situacao_risco != "Encerrado" and is_gestor:
-                        pop_encerrar = st.popover("🔒 Encerrar Risco Formalmente")
+                        pop_encerrar = st.popover("🔒 Encerrar Risco")
                         with pop_encerrar:
                             st.markdown(f"### Encerramento Formal do Risco #{r_id}")
                             st.warning("⚠️ O encerramento formal finaliza o acompanhamento deste risco.")
@@ -1730,7 +1764,8 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                         except Exception as e_enc:
                                             st.error(f"Erro ao encerrar risco: {e_enc}")
              
-                with col_btn_wf3:
+                # 4. LINHA DO TEMPO / HISTÓRICO
+                with col_btn_wf4:
                     pop_hist = st.popover("🕒 Linha do Tempo")
                     with pop_hist:
                         renderizar_timeline_risco(r_id)
