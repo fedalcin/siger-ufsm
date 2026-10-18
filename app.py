@@ -1751,7 +1751,6 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
     sub_gr = st.session_state.sub_pagina_atual or "Riscos"
 
     unidade_usuario = usr_atual.get("unidade")
-    pode_ver_outras = is_admin or perms.get("dash_acomp", {}).get("ver_outras_unidades", False)
 
     # 1. TELA: RISCOS
     if sub_gr == "Riscos" and is_gestor:
@@ -1761,14 +1760,17 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
         with tab1:
             try:
                 query_r = supabase.table("riscos").select("*").order("id", desc=True)
-                if not pode_ver_outras and unidade_usuario:
+                
+                # Apenas Admin pode ver riscos de todas as unidades na gestão operacional.
+                # Qualquer outro perfil (incluindo Gestor) vê apenas a sua própria unidade.
+                if not is_admin and unidade_usuario:
                     query_r = query_r.eq("unidade", unidade_usuario)
                     
                 resposta = query_r.execute()
                 dados = resposta.data
                 
                 if dados:
-                    st.write(f"Total de riscos registrados: **{len(dados)}**")
+                    st.write(f"Total de riscos registrados para a unidade **{unidade_usuario or 'Todas'}**: **{len(dados)}**")
                     
                     for r_item in dados:
                         nivel = r_item.get('nivel_risco', 1)
@@ -1876,7 +1878,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                                     except Exception as e_enc:
                                                         st.error(f"Erro ao encerrar risco: {e_enc}")
                 else:
-                    st.info("Nenhum risco cadastrado para a sua unidade até o momento.")
+                    st.info(f"Nenhum risco cadastrado para a unidade '{unidade_usuario}' até o momento.")
             except Exception as e:
                 st.error(f"Erro ao carregar dados do banco: {e}")
                 
@@ -1896,8 +1898,8 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                 st.markdown("##### 1. Contexto do Risco")
                 col_c1, col_c2 = st.columns(2)
                 with col_c1:
-                    # Se não for Admin ou se tiver unidade vinculada, trava o cadastro na própria unidade
-                    if pode_ver_outras or not unidade_usuario:
+                    # Apenas Admin escolhe qualquer unidade. Gestor cadastra obrigatoriamente para a sua unidade.
+                    if is_admin or not unidade_usuario:
                         unid_label = st.selectbox("Unidade Responsável*", options=list(mapa_unidades.keys()))
                         unidade_sigla_final = mapa_unidades[unid_label]
                     else:
@@ -1982,7 +1984,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
 
         try:
             query_reav = supabase.table("riscos").select("*").order("id", desc=True)
-            if not pode_ver_outras and unidade_usuario:
+            if not is_admin and unidade_usuario:
                 query_reav = query_reav.eq("unidade", unidade_usuario)
                 
             res_riscos = query_reav.execute()
@@ -1992,7 +1994,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
             lista_riscos = []
 
         if not lista_riscos:
-            st.info("Nenhum risco sob gestão da sua unidade para reavaliação.")
+            st.info(f"Nenhum risco sob gestão da unidade '{unidade_usuario}' para reavaliação.")
         else:
             mapa_riscos_reav = {f"Risco #{r['id']} | {r['unidade']} - {r['evento'][:60]}...": r for r in lista_riscos}
             risco_sel_label = st.selectbox("🎯 Selecione o Risco para Reavaliar:", list(mapa_riscos_reav.keys()))
@@ -2083,8 +2085,8 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                 res_acoes = supabase.table("acoes_tratamento").select("*, riscos(id, evento, unidade)").order("risco_id").order("numero_sequencial").execute()
                 dados_acoes = res_acoes.data or []
 
-                # Filtrar apenas ações de riscos da unidade OU onde a unidade do usuário é a responsável
-                if not pode_ver_outras and unidade_usuario:
+                # Apenas Admin vê todas. Gestor vê ações vinculadas aos riscos da sua unidade + ações atribuídas à sua unidade
+                if not is_admin and unidade_usuario:
                     dados_acoes = [
                         ac for ac in dados_acoes
                         if ac.get("unidade_responsavel") == unidade_usuario 
@@ -2092,7 +2094,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                     ]
                 
                 if dados_acoes:
-                    st.write(f"Total de ações de tratamento visíveis: **{len(dados_acoes)}**")
+                    st.write(f"Total de ações de tratamento visíveis para **{unidade_usuario or 'Todas'}**: **{len(dados_acoes)}**")
                     
                     for acao_item in dados_acoes:
                         r_id = acao_item["risco_id"]
@@ -2170,7 +2172,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                             except Exception as e:
                                                 st.error(f"Erro ao excluir ação: {e}")
                 else:
-                    st.info("Nenhuma ação de tratamento cadastrada ou visível para a sua unidade até o momento.")
+                    st.info(f"Nenhuma ação de tratamento cadastrada ou visível para a unidade '{unidade_usuario}' até o momento.")
             except Exception as e:
                 st.error(f"Erro ao carregar ações de tratamento: {e}")
                 
@@ -2179,9 +2181,9 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                 st.warning("Seu perfil de usuário possui acesso apenas de leitura.")
             else:
                 try:
-                    # Carrega APENAS os riscos pertencentes à própria unidade do usuário (se não for Admin/Permissão total)
+                    # Carrega APENAS os riscos pertencentes à própria unidade do usuário (se não for Admin)
                     query_r_db = supabase.table("riscos").select("id, evento, unidade").order("id")
-                    if not pode_ver_outras and unidade_usuario:
+                    if not is_admin and unidade_usuario:
                         query_r_db = query_r_db.eq("unidade", unidade_usuario)
                         
                     res_riscos_db = query_r_db.execute().data or []
@@ -2190,7 +2192,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                     res_riscos_db, res_unid_db = [], []
                     
                 if not res_riscos_db:
-                    st.warning("⚠️ É necessário ter pelo menos um Risco cadastrado sob gestão da sua unidade para criar uma Ação de Tratamento.")
+                    st.warning(f"⚠️ É necessário ter pelo menos um Risco cadastrado sob gestão da unidade '{unidade_usuario}' para criar uma Ação de Tratamento.")
                 else:
                     mapa_riscos = {f"Risco #{r['id']} - {r['evento'] if r['evento'] else 'Sem Risco'}" : (r['id'], r['unidade']) for r in res_riscos_db}
                     
@@ -2213,7 +2215,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                             acao_input = st.text_input("Ação de Tratamento*", placeholder="Ex: Implantar rotina diária de backup automatizado")
                             carater_sel = st.selectbox("Caráter da Ação*", options=["Preventivo", "Corretivo", "Compensatório"])
                             
-                            # Permite destinar a ação para qualquer unidade responsável (para enviar para Caixa de Entrada de B)
+                            # Permite destinar a ação para qualquer unidade responsável
                             idx_unid_resp_def = opcoes_unid_siglas.index(unidade_usuario) if unidade_usuario in opcoes_unid_siglas else 0
                             unidade_resp_sel = st.selectbox("Unidade Responsável pela Execução*", options=opcoes_unid_siglas, index=idx_unid_resp_def)
                         
