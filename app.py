@@ -799,7 +799,7 @@ st.sidebar.divider()
 
 # 2. Expander Administração
 items_adm = [
-    ("👥 Usuários e Permissões", "Usuarios e Permissoes", "adm_usuarios"),
+    ("👥 Usuários", "Usuários", "adm_usuarios"),
     ("🔐 Perfis e Permissões", "Perfis e Permissões", "adm_perfis"),
     ("🖼️ Identidade Visual", "Identidade Visual", "adm_id_visual"),
     ("✍ Texto da Tela Inicial", "Texto da Tela Inicial", "adm_texto_home"),
@@ -834,7 +834,7 @@ items_gr = [
     ("📋 Ações de Tratamento", "Ações de Tratamento", "gr_acoes"),
     ("🎯 Reavaliação do Nível de Risco", "Reavaliação do Nível de Risco", "gr_reavaliacao")
 ]
-items_gr_visiveis = [item for item in items_gr if is_admin or perms.get(item[2], {}).get("acesso", False)]
+items_gr_visiveis = [item for item in items_gr if is_admin or is_gestor or perms.get(item[2], {}).get("acesso", True)]
 
 if items_gr_visiveis:
     with st.sidebar.expander("🛡️ Gestão de Riscos", expanded=False):
@@ -847,7 +847,7 @@ items_dash = [
     ("📌 Acompanhamento de Riscos", "Acompanhamento de Riscos", "dash_acomp"),
     ("📈 Painel Geral", "Painel Geral", "dash_geral")
 ]
-items_dash_visiveis = [item for item in items_dash if is_admin or perms.get(item[2], {}).get("acesso", False)]
+items_dash_visiveis = [item for item in items_dash if is_admin or is_gestor or perms.get(item[2], {}).get("acesso", True)]
 
 if items_dash_visiveis:
     with st.sidebar.expander("📊 Dashboards", expanded=False):
@@ -905,12 +905,12 @@ if st.session_state.pagina_atual == "Início":
 # PÁGINA: ADMINISTRAÇÃO DO SISTEMA
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Administração do Sistema" and is_admin:
-    sub = st.session_state.sub_pagina_atual or "Usuários e Permissões"
+    sub = st.session_state.sub_pagina_atual or "Usuários"
     
     # 1. SUBPÁGINA: USUÁRIOS E PERMISSÕES
-    if sub in ["Usuários e Permissões", "Usuários"]:
-        st.title("👥 Usuários e Permissões")
-        st.caption("Gerenciamento de acessos, perfis e permissões de usuários do sistema.")
+    if sub == "Usuários":
+        st.title("👥 Usuários")
+        st.caption("Gerenciamento e cadastro de usuários do sistema.")
         
         tab_users_list, tab_user_new = st.tabs(["🔍 Usuários Cadastrados", "➕ Cadastrar Novo Usuário"])
         
