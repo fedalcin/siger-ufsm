@@ -1040,10 +1040,8 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
             if not isinstance(m_perms, dict):
                 m_perms = {}
 
-            # Helper para resgatar a permissão exata salva no JSON (Admin possui acesso a tudo por padrão)
-            def def_perm(modulo, operacao, val_default=False):
-                if perfil_sel_nome == "Admin":
-                    return True
+            # Helper para resgatar o valor real gravado no JSON do banco de dados
+            def def_perm(modulo, operacao, val_default=True):
                 mod_dict = m_perms.get(modulo)
                 if isinstance(mod_dict, dict) and operacao in mod_dict:
                     return bool(mod_dict[operacao])
@@ -1051,57 +1049,58 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
 
             st.divider()
 
-            # Sufixo único para garantir que ao trocar de perfil as chaves sejam reinicializadas limpas
+            # Sufixo único associado ao ID do perfil
             sfx = f"p{p_id}"
 
-            # Garantir sincronização dos valores iniciais no session_state para edição consistente
+            # Mapeamento dos valores default extraídos do JSON gravado no banco
             keys_defaults = {
-                f"chk_usr_acc_{sfx}": def_perm("adm_usuarios", "acesso", True),
-                f"chk_usr_inc_{sfx}": def_perm("adm_usuarios", "incluir", True),
-                f"chk_usr_alt_{sfx}": def_perm("adm_usuarios", "alterar", True),
-                f"chk_usr_exc_{sfx}": def_perm("adm_usuarios", "excluir", True),
-                f"chk_prf_acc_{sfx}": def_perm("adm_perfis", "acesso", True),
-                f"chk_prf_inc_{sfx}": def_perm("adm_perfis", "incluir", True),
-                f"chk_prf_alt_{sfx}": def_perm("adm_perfis", "alterar", True),
-                f"chk_prf_exc_{sfx}": def_perm("adm_perfis", "excluir", True),
-                f"chk_idv_acc_{sfx}": def_perm("adm_id_visual", "acesso", True),
-                f"chk_idv_alt_{sfx}": def_perm("adm_id_visual", "alterar", True),
-                f"chk_txt_acc_{sfx}": def_perm("adm_texto_home", "acesso", True),
-                f"chk_txt_alt_{sfx}": def_perm("adm_texto_home", "alterar", True),
-                f"chk_cfg_acc_{sfx}": def_perm("adm_config_gerais", "acesso", True),
-                f"chk_cfg_alt_{sfx}": def_perm("adm_config_gerais", "alterar", True),
-                f"chk_und_acc_{sfx}": def_perm("cad_unidades", "acesso", True),
-                f"chk_und_inc_{sfx}": def_perm("cad_unidades", "incluir", True),
-                f"chk_und_alt_{sfx}": def_perm("cad_unidades", "alterar", True),
-                f"chk_und_exc_{sfx}": def_perm("cad_unidades", "excluir", True),
-                f"chk_oe_acc_{sfx}": def_perm("cad_objetivos", "acesso", True),
-                f"chk_oe_inc_{sfx}": def_perm("cad_objetivos", "incluir", True),
-                f"chk_oe_alt_{sfx}": def_perm("cad_objetivos", "alterar", True),
-                f"chk_oe_exc_{sfx}": def_perm("cad_objetivos", "excluir", True),
-                f"chk_cat_acc_{sfx}": def_perm("cad_categorias", "acesso", True),
-                f"chk_cat_inc_{sfx}": def_perm("cad_categorias", "incluir", True),
-                f"chk_cat_alt_{sfx}": def_perm("cad_categorias", "alterar", True),
-                f"chk_cat_exc_{sfx}": def_perm("cad_categorias", "excluir", True),
-                f"chk_doc_acc_{sfx}": def_perm("cad_doc_biblioteca", "acesso", True),
-                f"chk_doc_inc_{sfx}": def_perm("cad_doc_biblioteca", "incluir", True),
-                f"chk_doc_exc_{sfx}": def_perm("cad_doc_biblioteca", "excluir", True),
-                f"chk_rsk_acc_{sfx}": def_perm("gr_riscos", "acesso", True),
-                f"chk_rsk_inc_{sfx}": def_perm("gr_riscos", "incluir", True),
-                f"chk_rsk_alt_{sfx}": def_perm("gr_riscos", "alterar", True),
-                f"chk_rsk_exc_{sfx}": def_perm("gr_riscos", "excluir", True),
-                f"chk_act_acc_{sfx}": def_perm("gr_acoes", "acesso", True),
-                f"chk_act_inc_{sfx}": def_perm("gr_acoes", "incluir", True),
-                f"chk_act_alt_{sfx}": def_perm("gr_acoes", "alterar", True),
-                f"chk_act_exc_{sfx}": def_perm("gr_acoes", "excluir", True),
-                f"chk_rev_acc_{sfx}": def_perm("gr_reavaliacao", "acesso", True),
-                f"chk_rev_alt_{sfx}": def_perm("gr_reavaliacao", "alterar", True),
-                f"chk_d1_acc_{sfx}": def_perm("dash_acomp", "acesso", True),
-                f"chk_d1_out_{sfx}": def_perm("dash_acomp", "ver_outras_unidades", True),
-                f"chk_d2_acc_{sfx}": def_perm("dash_geral", "acesso", True),
-                f"chk_d2_out_{sfx}": def_perm("dash_geral", "ver_outras_unidades", True),
-                f"chk_bib_rd_{sfx}": def_perm("bib_normativas", "leitura", True),
+                f"chk_usr_acc_{sfx}": def_perm("adm_usuarios", "acesso"),
+                f"chk_usr_inc_{sfx}": def_perm("adm_usuarios", "incluir"),
+                f"chk_usr_alt_{sfx}": def_perm("adm_usuarios", "alterar"),
+                f"chk_usr_exc_{sfx}": def_perm("adm_usuarios", "excluir"),
+                f"chk_prf_acc_{sfx}": def_perm("adm_perfis", "acesso"),
+                f"chk_prf_inc_{sfx}": def_perm("adm_perfis", "incluir"),
+                f"chk_prf_alt_{sfx}": def_perm("adm_perfis", "alterar"),
+                f"chk_prf_exc_{sfx}": def_perm("adm_perfis", "excluir"),
+                f"chk_idv_acc_{sfx}": def_perm("adm_id_visual", "acesso"),
+                f"chk_idv_alt_{sfx}": def_perm("adm_id_visual", "alterar"),
+                f"chk_txt_acc_{sfx}": def_perm("adm_texto_home", "acesso"),
+                f"chk_txt_alt_{sfx}": def_perm("adm_texto_home", "alterar"),
+                f"chk_cfg_acc_{sfx}": def_perm("adm_config_gerais", "acesso"),
+                f"chk_cfg_alt_{sfx}": def_perm("adm_config_gerais", "alterar"),
+                f"chk_und_acc_{sfx}": def_perm("cad_unidades", "acesso"),
+                f"chk_und_inc_{sfx}": def_perm("cad_unidades", "incluir"),
+                f"chk_und_alt_{sfx}": def_perm("cad_unidades", "alterar"),
+                f"chk_und_exc_{sfx}": def_perm("cad_unidades", "excluir"),
+                f"chk_oe_acc_{sfx}": def_perm("cad_objetivos", "acesso"),
+                f"chk_oe_inc_{sfx}": def_perm("cad_objetivos", "incluir"),
+                f"chk_oe_alt_{sfx}": def_perm("cad_objetivos", "alterar"),
+                f"chk_oe_exc_{sfx}": def_perm("cad_objetivos", "excluir"),
+                f"chk_cat_acc_{sfx}": def_perm("cad_categorias", "acesso"),
+                f"chk_cat_inc_{sfx}": def_perm("cad_categorias", "incluir"),
+                f"chk_cat_alt_{sfx}": def_perm("cad_categorias", "alterar"),
+                f"chk_cat_exc_{sfx}": def_perm("cad_categorias", "excluir"),
+                f"chk_doc_acc_{sfx}": def_perm("cad_doc_biblioteca", "acesso"),
+                f"chk_doc_inc_{sfx}": def_perm("cad_doc_biblioteca", "incluir"),
+                f"chk_doc_exc_{sfx}": def_perm("cad_doc_biblioteca", "excluir"),
+                f"chk_rsk_acc_{sfx}": def_perm("gr_riscos", "acesso"),
+                f"chk_rsk_inc_{sfx}": def_perm("gr_riscos", "incluir"),
+                f"chk_rsk_alt_{sfx}": def_perm("gr_riscos", "alterar"),
+                f"chk_rsk_exc_{sfx}": def_perm("gr_riscos", "excluir"),
+                f"chk_act_acc_{sfx}": def_perm("gr_acoes", "acesso"),
+                f"chk_act_inc_{sfx}": def_perm("gr_acoes", "incluir"),
+                f"chk_act_alt_{sfx}": def_perm("gr_acoes", "alterar"),
+                f"chk_act_exc_{sfx}": def_perm("gr_acoes", "excluir"),
+                f"chk_rev_acc_{sfx}": def_perm("gr_reavaliacao", "acesso"),
+                f"chk_rev_alt_{sfx}": def_perm("gr_reavaliacao", "alterar"),
+                f"chk_d1_acc_{sfx}": def_perm("dash_acomp", "acesso"),
+                f"chk_d1_out_{sfx}": def_perm("dash_acomp", "ver_outras_unidades"),
+                f"chk_d2_acc_{sfx}": def_perm("dash_geral", "acesso"),
+                f"chk_d2_out_{sfx}": def_perm("dash_geral", "ver_outras_unidades"),
+                f"chk_bib_rd_{sfx}": def_perm("bib_normativas", "leitura"),
             }
 
+            # Sincroniza o estado da sessão ao trocar de perfil no selectbox
             for k_item, val_item in keys_defaults.items():
                 if k_item not in st.session_state:
                     st.session_state[k_item] = val_item
@@ -1240,15 +1239,23 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                     }
 
                     try:
-                        supabase.table("perfis").update({"permissoes_json": nova_matriz}).eq("id", p_id).execute()
-        
-                        if usr_atual.get("perfil_id") == p_id:
-                            st.session_state.usuario_logado["permissoes"] = nova_matriz
-            
-                        st.toast(f"✅ Permissões do perfil '{perfil_sel_nome}' atualizadas com sucesso!", icon="🎉")
-                        st.rerun()
+                        res_upd = supabase.table("perfis").update({"permissoes_json": nova_matriz}).eq("id", p_id).execute()
+                        
+                        if not res_upd.data:
+                            st.error("⚠️ O Supabase não permitiu salvar. Verifique se a Policy de UPDATE está criada no painel SQL do Supabase.")
+                        else:
+                            # Limpa os estados em memória do perfil para forçar o recarregamento do novo JSON
+                            for k_item in keys_defaults.keys():
+                                if k_item in st.session_state:
+                                    del st.session_state[k_item]
+
+                            if usr_atual.get("perfil_id") == p_id:
+                                st.session_state.usuario_logado["permissoes"] = nova_matriz
+                
+                            st.toast(f"✅ Permissões do perfil '{perfil_sel_nome}' atualizadas com sucesso!", icon="🎉")
+                            st.rerun()
                     except Exception as e:
-                        st.error(f"Erro ao salvar matriz de permissões: {e}")
+                        st.error(f"Erro no Supabase ao salvar matriz de permissões: {e}")
 
     # 2. SUBPÁGINA: IDENTIDADE VISUAL
     elif sub == "Identidade Visual":
