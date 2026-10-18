@@ -1465,7 +1465,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
     st.divider()
 
     try:
-        # Busca ações direcionadas à unidade consultada e faz o JOIN completo com os dados do risco
+        # Busca ações direcionadas à unidade consultada e faz o JOIN com os dados completos do risco
         res_cx_acoes = supabase.table("acoes_tratamento")\
             .select("*, riscos(id, evento, causa, consequencia, unidade, gestor_risco, probabilidade, impacto, nivel_risco, objetivo_estrategico, categoria_risco, situacao_status)")\
             .eq("unidade_responsavel", unidade_ativa)\
@@ -1568,132 +1568,174 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                 except Exception:
                     st.caption("Não foi possível carregar a última movimentação.")
 
-                # Botões de Ação na Demanda
+                # BOTÕES DE AÇÃO NA DEMANDA
                 col_btn_wf1, col_btn_wf2, col_btn_wf3, col_btn_wf4 = st.columns([1.2, 1.2, 1, 1])
 
-                # 1. BOTÃO DE ATUAÇÃO / RESPOSTA À DEMANDA
+                # 1. BOTÃO DE ATUAÇÃO COM DUAS OPÇÕES DENTRO DO POPOVER
                 with col_btn_wf1:
                     if is_gestor:
                         pop_atuar = st.popover("⚡ Responder / Atualizar Demanda")
                         with pop_atuar:
                             st.markdown(f"### Atuação na Ação nº {seq} (Risco #{r_id})")
+                            st.caption(f"Unidade Atual Responsável: **{unidade_ativa}**")
                             
-                            idx_dest_def = opcoes_unid.index(unidade_risco_origem) if unidade_risco_origem in opcoes_unid else 0
-                            unid_destino_wf = st.selectbox(
-                                "Encaminhar Para Unidade*", 
-                                opcoes_unid, 
-                                index=idx_dest_def, 
-                                key=f"sb_dest_out_{r_id}_{seq}"
-                            )
+                            tab_op_a, tab_op_b = st.tabs(["📝 Registrar Progresso", "🚀 Tramitar / Redirecionar"])
 
-                            try:
-                                res_u_dest = supabase.table("usuarios")\
-                                    .select("nome")\
-                                    .eq("unidade_sigla", unid_destino_wf)\
-                                    .eq("ativo", True)\
-                                    .order("nome")\
-                                    .execute().data or []
-                            except Exception:
-                                res_u_dest = []
-
-                            usrs_filtrados = [u["nome"] for u in res_u_dest if u.get("nome")]
-                            opts_resp_dest = ["Toda a Unidade"] + usrs_filtrados
-
-                            with st.form(f"form_wf_atuacao_{r_id}_{seq}"):
-                                st.markdown("##### 1. Progresso e Status da Ação")
-                                novo_pct = st.slider("Percentual de Execução Concluído", 0, 100, value=int(pct_atual), step=5, key=f"sld_pct_{r_id}_{seq}")
-                                
-                                opcoes_status_wf = ["Pendente", "Em andamento", "Devolvida", "Concluída"]
-                                idx_st_wf = opcoes_status_wf.index(status_ac) if status_ac in opcoes_status_wf else 1
-                                novo_status_ac = st.selectbox("Novo Status da Ação", opcoes_status_wf, index=idx_st_wf, key=f"sb_st_{r_id}_{seq}")
-                                
-                                st.markdown("##### 2. Relato de Avanço / Parecer Técnico")
-                                desc_avanco_wf = st.text_area(
-                                    "Relato de Avanço / Evidências / Justificativa*", 
-                                    placeholder="Descreva as medidas adotadas, providências tomadas...",
-                                    key=f"txt_av_{r_id}_{seq}"
-                                )
-                                
-                                st.markdown("##### 3. Encaminhamento e Tramitação")
-                                col_t_wf1, col_t_wf2 = st.columns(2)
-                                with col_t_wf1:
-                                    resp_destino_wf = st.selectbox(
-                                        "Destinatário / Responsável Específico*", 
-                                        options=opts_resp_dest, 
-                                        index=0, 
-                                        key=f"sb_resp_dest_{r_id}_{seq}"
+                            # --- OPÇÃO A: REGISTRAR PROGRESSO (MANTÉM NA MESMA UNIDADE) ---
+                            with tab_op_a:
+                                with st.form(f"form_progresso_interno_{r_id}_{seq}"):
+                                    st.markdown("##### Atualização Interna da Ação")
+                                    
+                                    pct_prog = st.slider("Percentual de Execução Concluído", 0, 100, value=int(pct_atual), step=5, key=f"sld_prog_{r_id}_{seq}")
+                                    
+                                    opts_st_a = ["Pendente", "Em andamento", "Concluída"]
+                                    idx_st_a = opts_st_a.index(status_ac) if status_ac in opts_st_a else 1
+                                    st_prog = st.selectbox("Status da Ação", opts_st_a, index=idx_st_a, key=f"sb_st_a_{r_id}_{seq}")
+                                    
+                                    relato_prog = st.text_area(
+                                        "Relato do Avanço / Providências Adotadas*", 
+                                        placeholder="Descreva as ações executadas no âmbito da própria unidade...",
+                                        key=f"txt_relato_a_{r_id}_{seq}"
                                     )
-                                with col_t_wf2:
-                                    st.text_input("Remetente (Seu Usuário)", value=usr_atual["nome"], disabled=True, key=f"txt_rem_dis_{r_id}_{seq}")
-                                
-                                btn_enviar_wf = st.form_submit_button("🚀 Gravar Avanço e Tramitar Demanda")
-                                
-                                if btn_enviar_wf:
-                                    if not desc_avanco_wf.strip():
-                                        st.warning("Por favor, preencha o relato do avanço / parecer técnico.")
-                                    else:
-                                        try:
-                                            remetente_efetivo = usr_atual["nome"]
-                                            resp_destino_final = resp_destino_wf
-                                            nome_para_email = None if resp_destino_final == "Toda a Unidade" else resp_destino_final
+                                    
+                                    if st.form_submit_button("💾 Salvar Progresso Interno"):
+                                        if not relato_prog.strip():
+                                            st.warning("Por favor, preencha o relato do avanço.")
+                                        else:
+                                            try:
+                                                upd_a = {
+                                                    "status_acao": st_prog,
+                                                    "percentual_execucao": pct_prog
+                                                }
+                                                if st_prog == "Concluída":
+                                                    upd_a["data_conclusao_efetiva"] = date.today().strftime("%Y-%m-%d")
 
-                                            dados_update_acao = {
-                                                "status_acao": novo_status_ac,
-                                                "percentual_execucao": novo_pct,
-                                                "unidade_responsavel": unid_destino_wf,
-                                                "nome_responsavel_implementacao": resp_destino_final
-                                            }
-                                            
-                                            if novo_status_ac == "Concluída":
-                                                dados_update_acao["data_conclusao_efetiva"] = date.today().strftime("%Y-%m-%d")
+                                                supabase.table("acoes_tratamento").update(upd_a).eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
 
-                                            supabase.table("acoes_tratamento").update(dados_update_acao).eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
-                                            
-                                            dados_mov_wf = {
-                                                "risco_id": r_id,
-                                                "numero_sequencial": seq,
-                                                "status_anterior": status_ac,
-                                                "status_novo": novo_status_ac,
-                                                "descricao_avanco": desc_avanco_wf,
-                                                "percentual_conclusao": novo_pct,
-                                                "unidade_responsavel": unid_destino_wf,
-                                                "usuario_responsavel": resp_destino_final
-                                            }
-                                            supabase.table("movimentacoes_acoes").insert(dados_mov_wf).execute()
+                                                mov_a = {
+                                                    "risco_id": r_id,
+                                                    "numero_sequencial": seq,
+                                                    "status_anterior": status_ac,
+                                                    "status_novo": st_prog,
+                                                    "descricao_avanco": relato_prog.strip(),
+                                                    "percentual_conclusao": pct_prog,
+                                                    "unidade_responsavel": unidade_ativa,
+                                                    "usuario_responsavel": usr_atual["nome"]
+                                                }
+                                                supabase.table("movimentacoes_acoes").insert(mov_a).execute()
 
-                                            dados_tram_wf = {
-                                                "risco_id": r_id,
-                                                "unidade_origem": unidade_ativa,
-                                                "unidade_destino": unid_destino_wf,
-                                                "usuario_remetente": remetente_efetivo,
-                                                "parecer_observacao": desc_avanco_wf
-                                            }
-                                            supabase.table("tramitacoes").insert(dados_tram_wf).execute()
+                                                recalcular_e_atualizar_status_risco(r_id)
 
-                                            recalcular_e_atualizar_status_risco(r_id)
+                                                st.success("✅ Progresso registrado com sucesso!")
+                                                st.rerun()
+                                            except Exception as e_a:
+                                                st.error(f"Erro ao salvar progresso: {e_a}")
 
-                                            emails_dest = obter_emails_unidade_ou_usuario(unidade_sigla=unid_destino_wf, nome_usuario=nome_para_email)
-                                            if emails_dest:
-                                                assunto_e = f"💬 [SIGER] Tramitação de Demanda - Risco #{r_id} (Ação {seq})"
-                                                corpo_html = f"""
-                                                <h3>Tramitação de Demanda no SIGER</h3>
-                                                <p>Olá,</p>
-                                                <p>A ação nº <b>{seq}</b> do Risco <b>#{r_id}</b> foi tramitada por <b>{remetente_efetivo}</b> ({unidade_ativa}) para a sua unidade (<b>{unid_destino_wf}</b>).</p>
-                                                <ul>
-                                                    <li><b>Status:</b> {novo_status_ac} ({novo_pct}%)</li>
-                                                    <li><b>Destinatário Atribuído:</b> {resp_destino_final}</li>
-                                                    <li><b>Relato / Parecer:</b> {desc_avanco_wf}</li>
-                                                </ul>
-                                                <p>Acesse a Caixa de Entrada do SIGER para acompanhar a demanda.</p>
-                                                """
-                                                enviar_email_notificacao_siger(emails_dest, assunto_e, corpo_html)
+                            # --- OPÇÃO B: TRAMITAR / REDIRECIONAR (ENCAMINHAR PARA OUTRA UNIDADE) ---
+                            with tab_op_b:
+                                idx_dest_def = opcoes_unid.index(unidade_risco_origem) if unidade_risco_origem in opcoes_unid else 0
+                                unid_dest_b = st.selectbox(
+                                    "Encaminhar / Devolver Para Unidade*", 
+                                    opcoes_unid, 
+                                    index=idx_dest_def, 
+                                    key=f"sb_dest_b_{r_id}_{seq}"
+                                )
 
-                                            st.success("✅ Demanda atualizada, tramitada e notificação por e-mail enviada!")
-                                            st.rerun()
-                                        except Exception as e_wf:
-                                            st.error(f"Erro ao processar workflow: {e_wf}")
+                                try:
+                                    res_u_dest = supabase.table("usuarios")\
+                                        .select("nome")\
+                                        .eq("unidade_sigla", unid_dest_b)\
+                                        .eq("ativo", True)\
+                                        .order("nome")\
+                                        .execute().data or []
+                                except Exception:
+                                    res_u_dest = []
 
-                # 2. VISUALIZADOR CONTEXTUAL DO RISCO MAPEADO (PARA UNIDADES PARCEIRAS)
+                                usrs_filtrados = [u["nome"] for u in res_u_dest if u.get("nome")]
+                                opts_resp_b = ["Toda a Unidade"] + usrs_filtrados
+
+                                with st.form(f"form_tramitar_externo_{r_id}_{seq}"):
+                                    st.markdown("##### Parecer e Tramitação Externa")
+                                    
+                                    resp_dest_b = st.selectbox("Destinatário / Responsável*", options=opts_resp_b, index=0, key=f"sb_resp_b_{r_id}_{seq}")
+                                    
+                                    opts_st_b = ["Em andamento", "Devolvida", "Concluída"]
+                                    idx_st_b = opts_st_b.index(status_ac) if status_ac in opts_st_b else 0
+                                    st_tram_b = st.selectbox("Novo Status da Ação", opts_st_b, index=idx_st_b, key=f"sb_st_b_{r_id}_{seq}")
+                                    
+                                    pct_tram_b = st.slider("Percentual de Execução Concluído", 0, 100, value=int(pct_atual), step=5, key=f"sld_pct_b_{r_id}_{seq}")
+                                    
+                                    parecer_b = st.text_area(
+                                        "Parecer Técnico / Despacho de Tramitação*", 
+                                        placeholder="Descreva o motivo do encaminhamento ou devolução...",
+                                        key=f"txt_parecer_b_{r_id}_{seq}"
+                                    )
+                                    
+                                    if st.form_submit_button("🚀 Confirmar Tramitação"):
+                                        if not parecer_b.strip():
+                                            st.warning("Preencha o parecer técnico de tramitação.")
+                                        else:
+                                            try:
+                                                remetente_txt = usr_atual["nome"]
+                                                resp_final_b = resp_dest_b
+                                                email_user_b = None if resp_final_b == "Toda a Unidade" else resp_final_b
+
+                                                upd_b = {
+                                                    "status_acao": st_tram_b,
+                                                    "percentual_execucao": pct_tram_b,
+                                                    "unidade_responsavel": unid_dest_b,
+                                                    "nome_responsavel_implementacao": resp_final_b
+                                                }
+                                                if st_tram_b == "Concluída":
+                                                    upd_b["data_conclusao_efetiva"] = date.today().strftime("%Y-%m-%d")
+
+                                                supabase.table("acoes_tratamento").update(upd_b).eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
+
+                                                mov_b = {
+                                                    "risco_id": r_id,
+                                                    "numero_sequencial": seq,
+                                                    "status_anterior": status_ac,
+                                                    "status_novo": st_tram_b,
+                                                    "descricao_avanco": parecer_b.strip(),
+                                                    "percentual_conclusao": pct_tram_b,
+                                                    "unidade_responsavel": unid_dest_b,
+                                                    "usuario_responsavel": resp_final_b
+                                                }
+                                                supabase.table("movimentacoes_acoes").insert(mov_b).execute()
+
+                                                tram_b = {
+                                                    "risco_id": r_id,
+                                                    "unidade_origem": unidade_ativa,
+                                                    "unidade_destino": unid_dest_b,
+                                                    "usuario_remetente": remetente_txt,
+                                                    "parecer_observacao": parecer_b.strip()
+                                                }
+                                                supabase.table("tramitacoes").insert(tram_b).execute()
+
+                                                recalcular_e_atualizar_status_risco(r_id)
+
+                                                emails_dest = obter_emails_unidade_ou_usuario(unidade_sigla=unid_dest_b, nome_usuario=email_user_b)
+                                                if emails_dest:
+                                                    assunto_e = f"💬 [SIGER] Tramitação de Demanda - Risco #{r_id} (Ação {seq})"
+                                                    corpo_html = f"""
+                                                    <h3>Tramitação de Demanda no SIGER</h3>
+                                                    <p>Olá,</p>
+                                                    <p>A ação nº <b>{seq}</b> do Risco <b>#{r_id}</b> foi tramitada por <b>{remetente_txt}</b> ({unidade_ativa}) para a sua unidade (<b>{unid_dest_b}</b>).</p>
+                                                    <ul>
+                                                        <li><b>Status:</b> {st_tram_b} ({pct_tram_b}%)</li>
+                                                        <li><b>Atribuído a:</b> {resp_final_b}</li>
+                                                        <li><b>Parecer:</b> {parecer_b.strip()}</li>
+                                                    </ul>
+                                                    <p>Acesse a Caixa de Entrada do SIGER para acompanhar a demanda.</p>
+                                                    """
+                                                    enviar_email_notificacao_siger(emails_dest, assunto_e, corpo_html)
+
+                                                st.success(f"✅ Demanda tramitada com sucesso para a unidade {unid_dest_b}!")
+                                                st.rerun()
+                                            except Exception as e_b:
+                                                st.error(f"Erro ao tramitar demanda: {e_b}")
+
+                # 2. VISUALIZADOR CONTEXTUAL DO RISCO MAPEADO (CARD SOMENTE LEITURA)
                 with col_btn_wf2:
                     pop_ver_risco = st.popover("👁️ Detalhes do Risco")
                     with pop_ver_risco:
