@@ -1024,15 +1024,26 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
             perfil_obj = mapa_p[perfil_sel_nome]
             p_id = perfil_obj["id"]
             
+            # Recarrega a matriz atual do perfil selecionado
+            m_perms = perfil_obj.get("permissoes_json") or {}
+            
+            # Garante a atualização imediata das permissões na sessão se o perfil for do usuário logado
+            if usr_atual.get("perfil_id") == p_id:
+                st.session_state.usuario_logado["permissoes"] = m_perms
+
             # Matriz de permissões do perfil selecionado
             m_perms = perfil_obj.get("permissoes_json") or {}
 
             # Função auxiliar para pegar permissão salvas (padrão é True para Admin, e False para os demais)
             eh_admin_sel = perfil_sel_nome == "Admin"
+
             def def_perm(modulo, operacao, val_default=False):
                 if eh_admin_sel:
                     return True
-                return m_perms.get(modulo, {}).get(operacao, val_default)
+                mod_dict = m_perms.get(modulo)
+                if isinstance(mod_dict, dict):
+                    return mod_dict.get(operacao, val_default)
+                return val_default
 
             st.divider()
 
@@ -1154,16 +1165,16 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                         "adm_id_visual": {"acesso": p_idv_acc, "alterar": p_idv_alt},
                         "adm_texto_home": {"acesso": p_txt_acc, "alterar": p_txt_alt},
                         "adm_config_gerais": {"acesso": p_cfg_acc, "alterar": p_cfg_alt},
-                        
+        
                         "cad_unidades": {"acesso": p_und_acc, "incluir": p_und_inc, "alterar": p_und_alt, "excluir": p_und_exc},
                         "cad_objetivos": {"acesso": p_oe_acc, "incluir": p_oe_inc, "alterar": p_oe_alt, "excluir": p_oe_exc},
                         "cad_categorias": {"acesso": p_cat_acc, "incluir": p_cat_inc, "alterar": p_cat_alt, "excluir": p_cat_exc},
                         "cad_doc_biblioteca": {"acesso": p_doc_acc, "incluir": p_doc_inc, "excluir": p_doc_exc},
-                        
+        
                         "gr_riscos": {"acesso": p_rsk_acc, "incluir": p_rsk_inc, "alterar": p_rsk_alt, "excluir": p_rsk_exc},
                         "gr_acoes": {"acesso": p_act_acc, "incluir": p_act_inc, "alterar": p_act_alt, "excluir": p_act_exc},
                         "gr_reavaliacao": {"acesso": p_rev_acc, "alterar": p_rev_alt},
-                        
+        
                         "dash_acomp": {"acesso": p_d1_acc, "ver_outras_unidades": p_d1_outras},
                         "dash_geral": {"acesso": p_d2_acc, "ver_outras_unidades": p_d2_outras},
                         "bib_normativas": {"leitura": p_bib_read}
@@ -1171,6 +1182,11 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
 
                     try:
                         supabase.table("perfis").update({"permissoes_json": nova_matriz}).eq("id", p_id).execute()
+        
+                        # Atualiza a sessão caso o perfil alterado seja o do usuário atual
+                        if usr_atual.get("perfil_id") == p_id:
+                            st.session_state.usuario_logado["permissoes"] = nova_matriz
+            
                         st.toast(f"✅ Permissões do perfil '{perfil_sel_nome}' atualizadas com sucesso!", icon="🎉")
                         st.rerun()
                     except Exception as e:
