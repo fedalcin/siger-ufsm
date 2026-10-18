@@ -1830,6 +1830,43 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
     unidade_usuario = usr_atual.get("unidade")
 
     # =========================================================
+    # FUNÇÃO AUXILIAR: RENDERIZAR GUIA ORIENTATIVO DE PROBABILIDADE E IMPACTO
+    # =========================================================
+    def renderizar_guia_avaliacao_risco():
+        with st.expander("💡 **Guia de Apoio: Como escolher os níveis de Probabilidade e Impacto (1 a 5)**"):
+            tab_prob_g, tab_imp_g, tab_mat_g = st.tabs(["📊 Probabilidade (Frequência)", "💥 Impacto (Gravidade)", "🎲 Matriz Resultante"])
+            
+            with tab_prob_g:
+                st.markdown("""
+                | Nota | Classificação | Critério Temporal / Frequência Estimada |
+                | :---: | :---: | :--- |
+                | **1** | **Muito Raro** | Ocorrência extraordinária. Menos de 10% de chance de ocorrer. |
+                | **2** | **Raro** | Pode ocorrer poucas vezes durante o ciclo ou processo (10% a 30%). |
+                | **3** | **Possível** | Ocorrência mediana. Pode acontecer ao longo do ano (30% a 60%). |
+                | **4** | **Provável** | Grande probabilidade de ocorrência no curto prazo (60% a 90%). |
+                | **5** | **Quase Certo** | Praticamente certo de acontecer com alta frequência (> 90%). |
+                """)
+                
+            with tab_imp_g:
+                st.markdown("""
+                | Nota | Classificação | Severidade e Consequência Institucional |
+                | :---: | :---: | :--- |
+                | **1** | **Insignificante** | Impacto irrisório, absorvido na rotina sem sobressaltos. |
+                | **2** | **Menor** | Pequeno desvio de prazo ou custo reduzido. Não afeta metas globais. |
+                | **3** | **Moderado** | Exige esforço adicional, remanejamento interno ou custos médios. |
+                | **4** | **Maior** | Compromete objetivos do setor, causa impacto financeiro/reputacional alto. |
+                | **5** | **Catastrófico** | Interrupção grave do serviço, sanções legais severas ou colapso da meta. |
+                """)
+
+            with tab_mat_g:
+                st.info("⚡ **Nível do Risco = Probabilidade x Impacto**")
+                st.markdown("""
+                * **🟢 Nível Baixo (1 a 7):** Monitoramento de rotina.
+                * **🟡 Nível Médio (8 a 14):** Ações de mitigação recomendadas.
+                * **🔴 Nível Crítico (15 a 25):** Exige plano de ação urgente e acompanhamento prioritário.
+                """)
+
+    # =========================================================
     # 1. TELA: RISCOS (CADASTRO E GESTÃO DE RISCOS)
     # =========================================================
     if sub_gr == "Riscos" and is_gestor:
@@ -1840,8 +1877,6 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
             try:
                 query_r = supabase.table("riscos").select("*").order("id", desc=True)
                 
-                # Apenas Admin pode ver riscos de todas as unidades na gestão operacional.
-                # Qualquer outro perfil (incluindo Gestor) vê apenas os riscos de sua unidade.
                 if not is_admin and unidade_usuario:
                     query_r = query_r.eq("unidade", unidade_usuario)
                     
@@ -1868,12 +1903,13 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                             with col_r_edit:
                                 pop_edit_r = st.popover("✏️ Editar Risco")
                                 with pop_edit_r:
+                                    renderizar_guia_avaliacao_risco()
                                     with st.form(f"form_edit_risco_{r_item['id']}"):
                                         e_evento = st.text_area("Risco", value=r_item.get('evento', ''))
                                         e_causa = st.text_area("Causa", value=r_item.get('causa', ''))
                                         e_cons = st.text_area("Consequência", value=r_item.get('consequencia', ''))
-                                        e_prob = st.slider("Probabilidade", 1, 5, value=r_item.get('probabilidade', 1))
-                                        e_imp = st.slider("Impacto", 1, 5, value=r_item.get('impacto', 1))
+                                        e_prob = st.slider("Probabilidade (1 a 5)", 1, 5, value=r_item.get('probabilidade', 1), help="1: Muito Raro | 2: Raro | 3: Possível | 4: Provável | 5: Quase Certo")
+                                        e_imp = st.slider("Impacto (1 a 5)", 1, 5, value=r_item.get('impacto', 1), help="1: Insignificante | 2: Menor | 3: Moderado | 4: Maior | 5: Catastrófico")
                                         e_resp = st.text_input("Gestor do Risco", value=r_item.get('gestor_risco', ''))
                                         
                                         options_status = ['Identificado', 'Em análise', 'Em tratamento', 'Monitorado', 'Encerrado', 'Cancelado']
@@ -1973,6 +2009,9 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
             mapa_oe = {f"{o['codigo']} - {o['descricao']}": o['codigo'] for o in res_oe} if res_oe else {"Nenhum": None}
             mapa_cat = {f"{c['tipo']} / {c['sub_tipo']}": c['id'] for c in res_cat} if res_cat else {"Nenhuma": None}
 
+            # GUIA ORIENTATIVO ANTES DO FORMULÁRIO DE NOVO RISCO
+            renderizar_guia_avaliacao_risco()
+
             with st.form("form_cadastrar_risco", clear_on_submit=True):
                 st.markdown("##### 1. Contexto do Risco")
                 col_c1, col_c2 = st.columns(2)
@@ -2000,9 +2039,9 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                 st.markdown("##### 3. Avaliação Qualitativa")
                 col_a1, col_a2 = st.columns(2)
                 with col_a1:
-                    prob_val = st.slider("Probabilidade (1 a 5)", 1, 5, 3)
+                    prob_val = st.slider("Probabilidade (1 a 5)", 1, 5, 3, help="1: Muito Raro | 2: Raro | 3: Possível | 4: Provável | 5: Quase Certo")
                 with col_a2:
-                    imp_val = st.slider("Impacto (1 a 5)", 1, 5, 3)
+                    imp_val = st.slider("Impacto (1 a 5)", 1, 5, 3, help="1: Insignificante | 2: Menor | 3: Moderado | 4: Maior | 5: Catastrófico")
 
                 st.markdown("##### 4. Governança e Prazos")
                 col_g1, col_g2, col_g3 = st.columns(3)
@@ -2105,13 +2144,15 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
 
             st.divider()
 
+            renderizar_guia_avaliacao_risco()
+
             st.markdown("### 📝 Formulário de Reavaliação")
             with st.form(f"form_reavaliar_dedicado_{r_id}"):
                 col_sl1, col_sl2 = st.columns(2)
                 with col_sl1:
-                    p_nova = st.slider("Nova Probabilidade (1 a 5)*", 1, 5, value=p_at)
+                    p_nova = st.slider("Nova Probabilidade (1 a 5)*", 1, 5, value=p_at, help="1: Muito Raro | 2: Raro | 3: Possível | 4: Provável | 5: Quase Certo")
                 with col_sl2:
-                    i_novo = st.slider("Novo Impacto (1 a 5)*", 1, 5, value=i_at)
+                    i_novo = st.slider("Novo Impacto (1 a 5)*", 1, 5, value=i_at, help="1: Insignificante | 2: Menor | 3: Moderado | 4: Maior | 5: Catastrófico")
 
                 just_reav = st.text_area(
                     "Justificativa da Reavaliação*", 
@@ -2167,7 +2208,6 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                 res_acoes = supabase.table("acoes_tratamento").select("*, riscos(id, evento, unidade)").order("risco_id").order("numero_sequencial").execute()
                 dados_acoes = res_acoes.data or []
 
-                # Apenas Admin vê todas. Gestor vê ações vinculadas aos riscos da sua unidade + ações atribuídas à sua unidade
                 if not is_admin and unidade_usuario:
                     dados_acoes = [
                         ac for ac in dados_acoes
@@ -2263,7 +2303,6 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                 st.warning("Seu perfil de usuário possui acesso apenas de leitura.")
             else:
                 try:
-                    # Carrega APENAS os riscos pertencentes à própria unidade do usuário (se não for Admin)
                     query_r_db = supabase.table("riscos").select("id, evento, unidade").order("id")
                     if not is_admin and unidade_usuario:
                         query_r_db = query_r_db.eq("unidade", unidade_usuario)
@@ -2290,7 +2329,6 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                         
                     st.info(f"📌 Esta será a **Ação nº {prox_seq}** associada ao **Risco #{id_risco_sel}** ({unidade_origem_risco}).")
 
-                    # Atualização dinâmica de usuários ao alterar a unidade responsável selecionada
                     idx_unid_resp_def = opcoes_unid_siglas.index(unidade_usuario) if unidade_usuario in opcoes_unid_siglas else 0
                     unidade_resp_sel = st.selectbox("Unidade Responsável pela Execução*", options=opcoes_unid_siglas, index=idx_unid_resp_def, key="sb_unid_resp_cad_acao")
 
