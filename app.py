@@ -1750,6 +1750,9 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
 elif st.session_state.pagina_atual == "Gestão de Riscos":
     sub_gr = st.session_state.sub_pagina_atual or "Riscos"
 
+    unidade_usuario = usr_atual.get("unidade")
+    pode_ver_outras = is_admin or perms.get("dash_acomp", {}).get("ver_outras_unidades", False)
+
     # 1. TELA: RISCOS
     if sub_gr == "Riscos" and is_gestor:
         st.title("📋 Riscos")
@@ -1757,7 +1760,11 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
         
         with tab1:
             try:
-                resposta = supabase.table("riscos").select("*").order("id", desc=True).execute()
+                query_r = supabase.table("riscos").select("*").order("id", desc=True)
+                if not pode_ver_outras and unidade_usuario:
+                    query_r = query_r.eq("unidade", unidade_usuario)
+                    
+                resposta = query_r.execute()
                 dados = resposta.data
                 
                 if dados:
@@ -1869,7 +1876,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                                     except Exception as e_enc:
                                                         st.error(f"Erro ao encerrar risco: {e_enc}")
                 else:
-                    st.info("Nenhum risco cadastrado até o momento.")
+                    st.info("Nenhum risco cadastrado para a sua unidade até o momento.")
             except Exception as e:
                 st.error(f"Erro ao carregar dados do banco: {e}")
                 
@@ -1889,7 +1896,14 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                 st.markdown("##### 1. Contexto do Risco")
                 col_c1, col_c2 = st.columns(2)
                 with col_c1:
-                    unid_label = st.selectbox("Unidade Responsável*", options=list(mapa_unidades.keys()))
+                    # Se não for Admin ou se tiver unidade vinculada, trava o cadastro na própria unidade
+                    if pode_ver_outras or not unidade_usuario:
+                        unid_label = st.selectbox("Unidade Responsável*", options=list(mapa_unidades.keys()))
+                        unidade_sigla_final = mapa_unidades[unid_label]
+                    else:
+                        st.text_input("Unidade Responsável*", value=f"{unidade_usuario}", disabled=True)
+                        unidade_sigla_final = unidade_usuario
+
                 with col_c2:
                     oe_label = st.selectbox("Objetivo Estratégico Relacionado*", options=list(mapa_oe.keys()))
                     cat_label = st.selectbox("Categoria do Risco*", options=list(mapa_cat.keys()))
@@ -1926,10 +1940,9 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                         st.warning("Preencha os campos obrigatórios.")
                     else:
                         nivel_calc = prob_val * imp_val
-                        unidade_sigla = mapa_unidades[unid_label]
                         
                         novo_risco_dados = {
-                            "unidade": unidade_sigla,
+                            "unidade": unidade_sigla_final,
                             "objetivo_estrategico": mapa_oe[oe_label],
                             "categoria_risco": mapa_cat[cat_label],
                             "evento": evento_input,
@@ -1950,8 +1963,8 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                 novo_risco_id = res_novo_risco.data[0]["id"]
                                 dados_tramitacao_inicial = {
                                     "risco_id": novo_risco_id,
-                                    "unidade_origem": unidade_sigla,
-                                    "unidade_destino": unidade_sigla,
+                                    "unidade_origem": unidade_sigla_final,
+                                    "unidade_destino": unidade_sigla_final,
                                     "usuario_remetente": resp_input,
                                     "parecer_observacao": "Registro inicial e identificação do risco no sistema."
                                 }
@@ -1968,14 +1981,18 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
         st.caption("Atualize a probabilidade e o impacto do risco com base na efetividade das ações executadas.")
 
         try:
-            res_riscos = supabase.table("riscos").select("*").order("id", desc=True).execute()
+            query_reav = supabase.table("riscos").select("*").order("id", desc=True)
+            if not pode_ver_outras and unidade_usuario:
+                query_reav = query_reav.eq("unidade", unidade_usuario)
+                
+            res_riscos = query_reav.execute()
             lista_riscos = res_riscos.data or []
         except Exception as e:
             st.error(f"Erro ao carregar lista de riscos: {e}")
             lista_riscos = []
 
         if not lista_riscos:
-            st.info("Nenhum risco cadastrado para reavaliação.")
+            st.info("Nenhum risco sob gestão da sua unidade para reavaliação.")
         else:
             mapa_riscos_reav = {f"Risco #{r['id']} | {r['unidade']} - {r['evento'][:60]}...": r for r in lista_riscos}
             risco_sel_label = st.selectbox("🎯 Selecione o Risco para Reavaliar:", list(mapa_riscos_reav.keys()))
@@ -2034,13 +2051,15 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
 
                         supabase.table("riscos").update({
                             "probabilidade": p_nova,
-                            "impacto": i_novo
+                            "impacto": i_novo,
+                            "nivel_risco": novo_nivel_calc
                         }).eq("id", r_id).execute()
 
                         supabase.table("avaliacoes_risco").insert({
                             "risco_id": r_id,
                             "probabilidade": p_nova,
                             "impacto": i_novo,
+                            "nivel_risco": novo_nivel_calc,
                             "data_avaliacao": datetime.now().isoformat(),
                             "usuario_avaliador": usr_atual["nome"],
                             "tipo_avaliacao": "Reavaliação Periódica",
@@ -2062,11 +2081,20 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
         with tab_list_acoes:
             try:
                 res_acoes = supabase.table("acoes_tratamento").select("*, riscos(id, evento, unidade)").order("risco_id").order("numero_sequencial").execute()
+                dados_acoes = res_acoes.data or []
+
+                # Filtrar apenas ações de riscos da unidade OU onde a unidade do usuário é a responsável
+                if not pode_ver_outras and unidade_usuario:
+                    dados_acoes = [
+                        ac for ac in dados_acoes
+                        if ac.get("unidade_responsavel") == unidade_usuario 
+                        or (ac.get("riscos") and ac["riscos"].get("unidade") == unidade_usuario)
+                    ]
                 
-                if res_acoes.data:
-                    st.write(f"Total de ações de tratamento registradas: **{len(res_acoes.data)}**")
+                if dados_acoes:
+                    st.write(f"Total de ações de tratamento visíveis: **{len(dados_acoes)}**")
                     
-                    for acao_item in res_acoes.data:
+                    for acao_item in dados_acoes:
                         r_id = acao_item["risco_id"]
                         seq = acao_item["numero_sequencial"]
                         carater = acao_item["carater_acao"]
@@ -2142,7 +2170,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                             except Exception as e:
                                                 st.error(f"Erro ao excluir ação: {e}")
                 else:
-                    st.info("Nenhuma ação de tratamento cadastrada até o momento.")
+                    st.info("Nenhuma ação de tratamento cadastrada ou visível para a sua unidade até o momento.")
             except Exception as e:
                 st.error(f"Erro ao carregar ações de tratamento: {e}")
                 
@@ -2151,19 +2179,24 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                 st.warning("Seu perfil de usuário possui acesso apenas de leitura.")
             else:
                 try:
-                    res_riscos_db = supabase.table("riscos").select("id, evento, unidade").order("id").execute().data or []
+                    # Carrega APENAS os riscos pertencentes à própria unidade do usuário (se não for Admin/Permissão total)
+                    query_r_db = supabase.table("riscos").select("id, evento, unidade").order("id")
+                    if not pode_ver_outras and unidade_usuario:
+                        query_r_db = query_r_db.eq("unidade", unidade_usuario)
+                        
+                    res_riscos_db = query_r_db.execute().data or []
                     res_unid_db = supabase.table("unidades").select("sigla, nome_extenso").order("sigla").execute().data or []
                 except Exception:
                     res_riscos_db, res_unid_db = [], []
                     
                 if not res_riscos_db:
-                    st.warning("⚠️ É necessário ter pelo menos um Risco cadastrado no sistema para criar um Plano de Tratamento.")
+                    st.warning("⚠️ É necessário ter pelo menos um Risco cadastrado sob gestão da sua unidade para criar uma Ação de Tratamento.")
                 else:
                     mapa_riscos = {f"Risco #{r['id']} - {r['evento'] if r['evento'] else 'Sem Risco'}" : (r['id'], r['unidade']) for r in res_riscos_db}
                     
                     opcoes_unid_siglas = [u['sigla'] for u in res_unid_db] if res_unid_db else ["S/U"]
 
-                    risco_selecionado_label = st.selectbox("Selecione o Risco Mapeado*", options=list(mapa_riscos.keys()))
+                    risco_selecionado_label = st.selectbox("Selecione o Risco Mapeado da Sua Unidade*", options=list(mapa_riscos.keys()))
                     id_risco_sel, unidade_origem_risco = mapa_riscos[risco_selecionado_label]
                     
                     try:
@@ -2172,14 +2205,18 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                     except Exception:
                         prox_seq = 1
                         
-                    st.info(f"📌 Esta será a **Ação nº {prox_seq}** associada ao **Risco #{id_risco_sel}**.")
+                    st.info(f"📌 Esta será a **Ação nº {prox_seq}** associada ao **Risco #{id_risco_sel}** ({unidade_origem_risco}).")
 
                     with st.form("form_cadastrar_acao_tratamento", clear_on_submit=True):
                         col_a1, col_a2 = st.columns(2)
                         with col_a1:
                             acao_input = st.text_input("Ação de Tratamento*", placeholder="Ex: Implantar rotina diária de backup automatizado")
                             carater_sel = st.selectbox("Caráter da Ação*", options=["Preventivo", "Corretivo", "Compensatório"])
-                            unidade_resp_sel = st.selectbox("Unidade Responsável pela Ação*", options=opcoes_unid_siglas)
+                            
+                            # Permite destinar a ação para qualquer unidade responsável (para enviar para Caixa de Entrada de B)
+                            idx_unid_resp_def = opcoes_unid_siglas.index(unidade_usuario) if unidade_usuario in opcoes_unid_siglas else 0
+                            unidade_resp_sel = st.selectbox("Unidade Responsável pela Execução*", options=opcoes_unid_siglas, index=idx_unid_resp_def)
+                        
                         with col_a2:
                             nome_resp_input = st.text_input("Nome do Responsável pela Implementação*", value=usr_atual["nome"])
                             dt_inicio = st.date_input("Previsão da Data do Início*", datetime.now(), format="DD/MM/YYYY")
@@ -2230,7 +2267,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                         "unidade_origem": unidade_origem_risco or unidade_resp_sel,
                                         "unidade_destino": unidade_resp_sel,
                                         "usuario_remetente": usr_atual["nome"],
-                                        "parecer_observacao": f"Ação nº {prox_seq} registrada e atribuída a {nome_resp_input}."
+                                        "parecer_observacao": f"Ação nº {prox_seq} registrada e atribuída à unidade {unidade_resp_sel} ({nome_resp_input})."
                                     }
                                     supabase.table("tramitacoes").insert(dados_tramitacao_acao).execute()
 
@@ -2242,17 +2279,17 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                         corpo_html = f"""
                                         <h3>Nova Ação de Tratamento Atribuída</h3>
                                         <p>Olá,</p>
-                                        <p>Uma nova ação foi vinculada ao Risco <b>#{id_risco_sel}</b> e atribuída para a sua unidade (<b>{unidade_resp_sel}</b>).</p>
+                                        <p>Uma nova ação foi vinculada ao Risco <b>#{id_risco_sel}</b> ({unidade_origem_risco}) e atribuída para a sua unidade (<b>{unidade_resp_sel}</b>).</p>
                                         <ul>
                                             <li><b>Ação:</b> {acao_input}</li>
                                             <li><b>Responsável:</b> {nome_resp_input}</li>
                                             <li><b>Prazo Conclusão:</b> {dt_conclusao.strftime('%d/%m/%Y')}</li>
                                         </ul>
-                                        <p>Acesse o SIGER para acompanhar a demanda.</p>
+                                        <p>Acesse a Caixa de Entrada do SIGER para acompanhar e responder a esta demanda.</p>
                                         """
                                         enviar_email_notificacao_siger(emails_dest, assunto_e, corpo_html)
 
-                                    st.success(f"✅ Ação nº {prox_seq} cadastrada e notificação por e-mail enviada!")
+                                    st.success(f"✅ Ação nº {prox_seq} cadastrada e enviada para a Caixa de Entrada da unidade '{unidade_resp_sel}'!")
                                     st.rerun()
                                 except Exception as e:
                                     st.error(f"Erro ao salvar ação no banco de dados: {e}")
