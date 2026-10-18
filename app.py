@@ -1832,30 +1832,33 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
     # =========================================================
     # FUNÇÃO AUXILIAR: RENDERIZAR GUIA ORIENTATIVO DE PROBABILIDADE E IMPACTO
     # =========================================================
+
     def renderizar_guia_avaliacao_risco():
         with st.expander("💡 **Guia de Apoio: Como escolher os níveis de Probabilidade e Impacto (1 a 5)**"):
-            tab_prob_g, tab_imp_g, tab_mat_g = st.tabs(["📊 Probabilidade (Frequência)", "💥 Impacto (Gravidade)", "🎲 Matriz Resultante"])
-            
+            tab_prob_g, tab_imp_g, tab_mat_g = st.tabs(["📊 Probabilidade", "💥 Impacto", "🎲 Matriz Resultante"])
+        
             with tab_prob_g:
+                st.markdown("**Pergunta orientadora:** *Qual é a chance de este risco ocorrer no período considerado para o objetivo institucional?*")
                 st.markdown("""
-                | Nota | Classificação | Critério Temporal / Frequência Estimada |
-                | :---: | :---: | :--- |
-                | **1** | **Muito Raro** | Ocorrência extraordinária. Menos de 10% de chance de ocorrer. |
-                | **2** | **Raro** | Pode ocorrer poucas vezes durante o ciclo ou processo (10% a 30%). |
-                | **3** | **Possível** | Ocorrência mediana. Pode acontecer ao longo do ano (30% a 60%). |
-                | **4** | **Provável** | Grande probabilidade de ocorrência no curto prazo (60% a 90%). |
-                | **5** | **Quase Certo** | Praticamente certo de acontecer com alta frequência (> 90%). |
+                | Nota | Classificação | Orientação para atribuição da nota |
+                | :---: | :--- | :--- |
+                | **1** | **Raro** | Ocorrência excepcional. Não há histórico conhecido nem indícios concretos de que o evento possa ocorrer no período avaliado. |
+                | **2** | **Pouco provável** | Há poucos registros ou indícios de ocorrência. O histórico sugere baixa frequência no período avaliado. |
+                | **3** | **Provável** | Há registros recorrentes ou indícios razoáveis de que o evento possa ocorrer no período avaliado. |
+                | **4** | **Muito provável** | Há histórico frequente ou evidências consistentes de que o evento ocorrerá no período avaliado. |
+                | **5** | **Praticamente certo** | A ocorrência é quase garantida, sendo esperada no período avaliado, com base no histórico ou nas evidências disponíveis. |
                 """)
-                
+            
             with tab_imp_g:
+                st.markdown("**Pergunta orientadora:** *Caso o risco se concretize, quanto ele poderá comprometer o alcance do objetivo institucional?*")
                 st.markdown("""
-                | Nota | Classificação | Severidade e Consequência Institucional |
-                | :---: | :---: | :--- |
-                | **1** | **Insignificante** | Impacto irrisório, absorvido na rotina sem sobressaltos. |
-                | **2** | **Menor** | Pequeno desvio de prazo ou custo reduzido. Não afeta metas globais. |
-                | **3** | **Moderado** | Exige esforço adicional, remanejamento interno ou custos médios. |
-                | **4** | **Maior** | Compromete objetivos do setor, causa impacto financeiro/reputacional alto. |
-                | **5** | **Catastrófico** | Interrupção grave do serviço, sanções legais severas ou colapso da meta. |
+                | Nota | Classificação | Orientação para atribuição da nota |
+                | :---: | :--- | :--- |
+                | **1** | **Muito baixo** | Efeito mínimo sobre o objetivo. Não altera significativamente o resultado esperado. |
+                | **2** | **Baixo** | Compromete parcialmente o objetivo, mas a maior parte do resultado esperado permanece alcançável. |
+                | **3** | **Médio** | Compromete de forma relevante o alcance do objetivo, exigindo medidas corretivas. |
+                | **4** | **Alto** | Compromete a maior parte do objetivo, podendo exigir mudanças significativas nas ações ou nos recursos previstos. |
+                | **5** | **Muito alto** | Compromete total ou quase totalmente o alcance do objetivo ou do resultado institucional esperado. |
                 """)
 
             with tab_mat_g:
@@ -1908,8 +1911,8 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                         e_evento = st.text_area("Risco", value=r_item.get('evento', ''))
                                         e_causa = st.text_area("Causa", value=r_item.get('causa', ''))
                                         e_cons = st.text_area("Consequência", value=r_item.get('consequencia', ''))
-                                        e_prob = st.slider("Probabilidade (1 a 5)", 1, 5, value=r_item.get('probabilidade', 1), help="1: Muito Raro | 2: Raro | 3: Possível | 4: Provável | 5: Quase Certo")
-                                        e_imp = st.slider("Impacto (1 a 5)", 1, 5, value=r_item.get('impacto', 1), help="1: Insignificante | 2: Menor | 3: Moderado | 4: Maior | 5: Catastrófico")
+                                        e_prob = st.slider("Probabilidade (1 a 5)", 1, 5, value=r_item.get('probabilidade', 1), help="1: Raro | 2: Pouco provável | 3: Provável | 4: Muito provável | 5: Praticamente certo")
+                                        e_imp = st.slider("Impacto (1 a 5)", 1, 5, value=r_item.get('impacto', 1), help="1: Muito baixo | 2: Baixo | 3: Médio | 4: Alto | 5: Muito alto")
                                         e_resp = st.text_input("Gestor do Risco", value=r_item.get('gestor_risco', ''))
                                         
                                         options_status = ['Identificado', 'Em análise', 'Em tratamento', 'Monitorado', 'Encerrado', 'Cancelado']
@@ -2039,9 +2042,9 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                 st.markdown("##### 3. Avaliação Qualitativa")
                 col_a1, col_a2 = st.columns(2)
                 with col_a1:
-                    prob_val = st.slider("Probabilidade (1 a 5)", 1, 5, 3, help="1: Muito Raro | 2: Raro | 3: Possível | 4: Provável | 5: Quase Certo")
+                    prob_val = st.slider("Probabilidade (1 a 5)", 1, 5, 3, help="1: Raro | 2: Pouco provável | 3: Provável | 4: Muito provável | 5: Praticamente certo")
                 with col_a2:
-                    imp_val = st.slider("Impacto (1 a 5)", 1, 5, 3, help="1: Insignificante | 2: Menor | 3: Moderado | 4: Maior | 5: Catastrófico")
+                    imp_val = st.slider("Impacto (1 a 5)", 1, 5, 3, help="1: Muito baixo | 2: Baixo | 3: Médio | 4: Alto | 5: Muito alto")
 
                 st.markdown("##### 4. Governança e Prazos")
                 col_g1, col_g2, col_g3 = st.columns(3)
@@ -2150,10 +2153,9 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
             with st.form(f"form_reavaliar_dedicado_{r_id}"):
                 col_sl1, col_sl2 = st.columns(2)
                 with col_sl1:
-                    p_nova = st.slider("Nova Probabilidade (1 a 5)*", 1, 5, value=p_at, help="1: Muito Raro | 2: Raro | 3: Possível | 4: Provável | 5: Quase Certo")
+                    p_nova = st.slider("Nova Probabilidade (1 a 5)*", 1, 5, value=p_at, help="1: Raro | 2: Pouco provável | 3: Provável | 4: Muito provável | 5: Praticamente certo")
                 with col_sl2:
-                    i_novo = st.slider("Novo Impacto (1 a 5)*", 1, 5, value=i_at, help="1: Insignificante | 2: Menor | 3: Moderado | 4: Maior | 5: Catastrófico")
-
+                    i_novo = st.slider("Novo Impacto (1 a 5)*", 1, 5, value=i_at, help="1: Muito baixo | 2: Baixo | 3: Médio | 4: Alto | 5: Muito alto")
                 just_reav = st.text_area(
                     "Justificativa da Reavaliação*", 
                     placeholder="Descreva as razões técnicas, ações implementadas ou evidências que justificam a alteração da nota..."
