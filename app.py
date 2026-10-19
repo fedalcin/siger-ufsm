@@ -1940,33 +1940,29 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                         curr_status = r_item.get('situacao_status', 'Identificado')
                                         idx_st = options_status.index(curr_status) if curr_status in options_status else 0
                                         e_sit = st.selectbox("Situação", options_status, index=idx_st)
-                                        
+
                                         if st.form_submit_button("💾 Salvar Alterações"):
-                                            novo_nivel = e_prob * e_imp
-    
                                             supabase.table("riscos").update({
                                                 "evento": e_evento,
                                                 "causa": e_causa,
                                                 "consequencia": e_cons,
                                                 "probabilidade": e_prob,
                                                 "impacto": e_imp,
-                                                "nivel_risco": novo_nivel,
                                                 "gestor_risco": e_resp,
                                                 "situacao_status": e_sit
                                             }).eq("id", r_item['id']).execute()
-    
+
                                             dados_avaliac = {
                                                 "risco_id": r_item['id'],
                                                 "probabilidade": e_prob,
                                                 "impacto": e_imp,
-                                                "nivel_risco": novo_nivel,
                                                 "data_avaliacao": datetime.now().isoformat(),
                                                 "usuario_avaliador": usr_atual["nome"],
                                                 "tipo_avaliacao": "Reavaliação Periódica",
                                                 "justificativa": "Reavaliação de probabilidade e impacto gravada via painel de edição."
                                             }
                                             supabase.table("avaliacoes_risco").insert(dados_avaliac).execute()
-    
+
                                             st.success("✅ Risco reavaliado e alteração salva!")
                                             st.rerun()
 
@@ -2206,24 +2202,21 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
 
             btn_sub_reav = st.button("💾 Confirmar e Gravar Nova Avaliação", type="primary", key=f"btn_salvar_reav_{r_id}")
 
+
             if btn_sub_reav:
                 if not just_reav.strip():
                     st.warning("Preencha a justificativa da reavaliação.")
                 else:
                     try:
-                        novo_nivel_calc = p_nova * i_novo
-
                         supabase.table("riscos").update({
                             "probabilidade": p_nova,
-                            "impacto": i_novo,
-                            "nivel_risco": novo_nivel_calc
+                            "impacto": i_novo
                         }).eq("id", r_id).execute()
 
                         supabase.table("avaliacoes_risco").insert({
                             "risco_id": r_id,
                             "probabilidade": p_nova,
                             "impacto": i_novo,
-                            "nivel_risco": novo_nivel_calc,
                             "data_avaliacao": datetime.now().isoformat(),
                             "usuario_avaliador": usr_atual["nome"],
                             "tipo_avaliacao": "Reavaliação Periódica",
