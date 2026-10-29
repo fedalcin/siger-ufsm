@@ -2854,7 +2854,7 @@ elif st.session_state.pagina_atual == "Dashboards":
             lista_riscos = []
 
         if not lista_riscos:
-            st.info("Nenhum risco cadastrado para acompanhamento.")
+            st.info("Nenum risco cadastrado para acompanhamento.")
         else:
             mapa_riscos_mon = {f"Risco #{r['id']} | {r['unidade']} - {r['evento'][:55]}...": r for r in lista_riscos}
             risco_sel_label = st.selectbox("🎯 Selecione o Risco para Análise Painel 360°:", list(mapa_riscos_mon.keys()))
@@ -2928,9 +2928,21 @@ elif st.session_state.pagina_atual == "Dashboards":
             kpi_c2.metric("Total Ações", tot_acoes_r)
             kpi_c3.metric("Concluídas", acoes_concluidas_r)
             kpi_c4.metric("Atrasadas", acoes_atrasadas_r)
-            kpi_c5.metric("Execução do Tratamento", f"{iet_r}%")
-            kpi_c6.metric("Cumprimento de Prazos", f"{icp_r}%")
-            kpi_c7.metric("Tratamento do Risco", f"{itr_r}%")
+            kpi_c5.metric(
+                "Execução do Tratamento", 
+                f"{iet_r}%", 
+                help="Índice de Execução do Tratamento: Mede o percentual médio de execução das ações de mitigação cadastradas.\n\nFórmula: (Soma do % de Conclusão das Ações / Total de Ações)"
+            )
+            kpi_c6.metric(
+                "Cumprimento de Prazos", 
+                f"{icp_r}%", 
+                help="Índice de Cumprimento de Prazos: Avalia a proporção de ações que estão dentro do prazo previsto.\n\nFórmula: ((Ações no Prazo / Total de Ações) * 100)"
+            )
+            kpi_c7.metric(
+                "Tratamento do Risco", 
+                f"{itr_r}%", 
+                help="Índice de Tratamento do Risco: Métrica consolidada que combina a taxa de execução, conclusão total e aderência aos prazos.\n\nFórmula: Ponderação entre Execução, Conclusão Total e Cumprimento de Prazos"
+            )
 
             st.divider()
 
