@@ -10,6 +10,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from cryptography.fernet import Fernet
 import base64
+from fpdf import FPDF
 
 # ---------------------------------------------------------
 # MÓDULO DE CRIPTOGRAFIA E NOTIFICAÇÕES POR E-MAIL (SMTP)
@@ -485,12 +486,30 @@ def pode(modulo, acao="acesso"):
     return bool(perm_modulo.get(acao, False))
 
 # ---------------------------------------------------------
-# FUNÇÕES DE EXPORTAÇÃO (EXCEL E PDF / HTML)
+# FUNÇÕES DE EXPORTAÇÃO (EXCEL E PDF NATIVO)
 # ---------------------------------------------------------
+def obter_dados_atuais_risco(risco_obj, df_hist_eval):
+    """Retorna os dados do risco considerando a reavaliação mais recente do histórico, se existir."""
+    prob = risco_obj.get("probabilidade")
+    imp = risco_obj.get("impacto")
+    nivel = risco_obj.get("nivel_risco")
+
+    if not df_hist_eval.empty:
+        col_dt = "created_at" if "created_at" in df_hist_eval.columns else "data_avaliacao"
+        df_hist_ord = df_hist_eval.sort_values(by=col_dt, ascending=False)
+        ultima_eval = df_hist_ord.iloc[0]
+        prob = ultima_eval.get("probabilidade", prob)
+        imp = ultima_eval.get("impacto", imp)
+        nivel = ultima_eval.get("nivel_risco", nivel)
+
+    return prob, imp, nivel
+
 def gerar_excel_acompanhamento_risco(risco_obj, df_ac_mon, df_hist_eval):
+    prob_atual, imp_atual, nivel_atual = obter_dados_atuais_risco(risco_obj, df_hist_eval)
     output = io.BytesIO()
+    
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # Aba 1: Resumo do Risco
+        # Aba 1: Resumo do Risco (Atualizado)
         df_resumo = pd.DataFrame([{
             "ID do Risco": risco_obj.get("id"),
             "Evento de Risco": risco_obj.get("evento"),
@@ -498,9 +517,9 @@ def gerar_excel_acompanhamento_risco(risco_obj, df_ac_mon, df_hist_eval):
             "Gestor do Risco": risco_obj.get("gestor_risco"),
             "Causa": risco_obj.get("causa"),
             "Consequência": risco_obj.get("consequencia"),
-            "Probabilidade": risco_obj.get("probabilidade"),
-            "Impacto": risco_obj.get("impacto"),
-            "Nível do Risco": risco_obj.get("nivel_risco"),
+            "Probabilidade Atual": prob_atual,
+            "Impacto Atual": imp_atual,
+            "Nível do Risco Atual": nivel_atual,
             "Situação/Status": risco_obj.get("situacao_status"),
             "Data de Identificação": risco_obj.get("data_identificacao"),
             "Periodicidade": risco_obj.get("periodicidade_revisao"),
@@ -533,47 +552,77 @@ def gerar_excel_acompanhamento_risco(risco_obj, df_ac_mon, df_hist_eval):
 
     return output.getvalue()
 
-def gerar_relatorio_pdf_risco_html(risco_obj, df_ac_mon):
-    r_id = risco_obj.get("id")
-    evento = risco_obj.get("evento", "")
-    unidade = risco_obj.get("unidade", "")
-    gestor = risco_obj.get("gestor_risco", "")
-    nivel = risco_obj.get("nivel_risco", 1)
+def gerar_relatorio_pdf_risco(risco_obj, df_ac_mon, df_hist_eval):
+    prob_atual, imp_atual, nivel_atual = obter_dados_atuais_risco(risco_obj, df_hist_eval)
     
-    html = f"""
-    <html>
-    <head>
-        <meta charset="utf-8">
-        <style>
-            body {{ font-family: Arial, sans-serif; margin: 20px; color: #333; }}
-            h1 {{ color: #002147; }}
-            .card {{ background-color: #f2f4f7; padding: 15px; border-radius: 5px; margin-bottom: 20px; }}
-            table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
-            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
-            th {{ background-color: #002147; color: white; }}
-        </style>
-    </head>
-    <body>
-        <h1>Relatório de Acompanhamento de Risco - SIGER</h1>
-        <div class="card">
-            <h2>Risco #{r_id}: {evento}</h2>
-            <p><b>Unidade:</b> {unidade} | <b>Gestor:</b> {gestor}</p>
-            <p><b>Probabilidade:</b> {risco_obj.get('probabilidade')} | <b>Impacto:</b> {risco_obj.get('impacto')} | <b>Nível do Risco:</b> {nivel}</p>
-            <p><b>Causa:</b> {risco_obj.get('causa', '-')}</p>
-            <p><b>Consequência:</b> {risco_obj.get('consequencia', '-')}</p>
-        </div>
-        <h3>Ações de Mitigação</h3>
-    """
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    
+    # Cabeçalho
+    pdf.set_font("Helvetica", "B", 16)
+    pdf.set_text_color(0, 33, 71)
+    pdf.cell(0, 10, f"SIGER - Relatorio de Risco #{risco_obj.get('id')}", new_x="LMARGIN", new_y="NEXT", align="L")
+    pdf.ln(2)
+
+    # Detalhes do Risco
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_fill_color(242, 244, 247)
+    pdf.set_text_color(0, 0, 0)
+    
+    evento_txt = str(risco_obj.get("evento", "")).encode('latin-1', 'replace').decode('latin-1')
+    pdf.multi_cell(0, 7, f"Evento: {evento_txt}", fill=True, new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+
+    pdf.set_font("Helvetica", "", 10)
+    unid_txt = str(risco_obj.get('unidade', '')).encode('latin-1', 'replace').decode('latin-1')
+    gestor_txt = str(risco_obj.get('gestor_risco', '')).encode('latin-1', 'replace').decode('latin-1')
+    pdf.cell(0, 6, f"Unidade Responsavel: {unid_txt} | Gestor: {gestor_txt}", new_x="LMARGIN", new_y="NEXT")
+    pdf.cell(0, 6, f"Probabilidade Atual: {prob_atual} | Impacto Atual: {imp_atual} | Nivel de Risco: {nivel_atual}", new_x="LMARGIN", new_y="NEXT")
+    
+    causa_txt = str(risco_obj.get('causa', '-')).encode('latin-1', 'replace').decode('latin-1')
+    conseq_txt = str(risco_obj.get('consequencia', '-')).encode('latin-1', 'replace').decode('latin-1')
+    pdf.multi_cell(0, 6, f"Causa: {causa_txt}")
+    pdf.multi_cell(0, 6, f"Consequencia: {conseq_txt}")
+    pdf.ln(4)
+
+    # Tabela de Planos de Ação
+    pdf.set_font("Helvetica", "B", 11)
+    pdf.set_text_color(0, 33, 71)
+    pdf.cell(0, 8, "Plano de Acoes de Mitigacao", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(1)
+
     if not df_ac_mon.empty:
-        html += "<table><tr><th>Nº</th><th>Ação</th><th>Responsável</th><th>Status</th><th>Conclusão Prevista</th></tr>"
-        for _, row in df_ac_mon.iterrows():
-            html += f"<tr><td>{row.get('numero_sequencial', '')}</td><td>{row.get('acao', '')}</td><td>{row.get('nome_responsavel_implementacao', '')}</td><td>{row.get('status_acao', '')}</td><td>{row.get('previsao_data_conclusao', '')}</td></tr>"
-        html += "</table>"
-    else:
-        html += "<p>Nenhuma ação cadastrada.</p>"
+        pdf.set_font("Helvetica", "B", 9)
+        pdf.set_fill_color(0, 33, 71)
+        pdf.set_text_color(255, 255, 255)
         
-    html += "</body></html>"
-    return html.encode("utf-8")
+        pdf.cell(10, 7, "N", border=1, fill=True)
+        pdf.cell(85, 7, "Acao", border=1, fill=True)
+        pdf.cell(40, 7, "Responsavel", border=1, fill=True)
+        pdf.cell(25, 7, "Status", border=1, fill=True)
+        pdf.cell(30, 7, "Conclusao", border=1, fill=True, new_x="LMARGIN", new_y="NEXT")
+
+        pdf.set_font("Helvetica", "", 8)
+        pdf.set_text_color(0, 0, 0)
+        for _, row in df_ac_mon.iterrows():
+            seq = str(row.get("numero_sequencial", ""))
+            acao = str(row.get("acao", "")).encode('latin-1', 'replace').decode('latin-1')[:50]
+            resp = str(row.get("nome_responsavel_implementacao", "")).encode('latin-1', 'replace').decode('latin-1')[:22]
+            st_ac = str(row.get("status_acao", ""))
+            dt_conc = str(row.get("previsao_data_conclusao", ""))[:10]
+
+            pdf.cell(10, 6, seq, border=1)
+            pdf.cell(85, 6, acao, border=1)
+            pdf.cell(40, 6, resp, border=1)
+            pdf.cell(25, 6, st_ac, border=1)
+            pdf.cell(30, 6, dt_conc, border=1, new_x="LMARGIN", new_y="NEXT")
+    else:
+        pdf.set_font("Helvetica", "I", 10)
+        pdf.set_text_color(100, 100, 100)
+        pdf.cell(0, 6, "Nenhuma acao de mitigacao cadastrada.", new_x="LMARGIN", new_y="NEXT")
+
+    return bytes(pdf.output())
 
 # ---------------------------------------------------------
 # FUNÇÕES AUXILIARES DE FORMATAÇÃO E REGRAS
