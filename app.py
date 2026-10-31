@@ -552,10 +552,15 @@ def gerar_excel_acompanhamento_risco(risco_obj, df_ac_mon, df_hist_eval):
 
     return output.getvalue()
 
-def gerar_relatorio_pdf_risco(risco_obj, df_ac_mon, df_hist_eval):
+def gerar_relatorio_pdf_risco(risco_obj, df_hist_eval, df_ac_mon=None):
+    # Trata caso receba df_ac_mon do parametro antigo
+    if df_ac_mon is None:
+        df_ac_mon = pd.DataFrame()
+
     prob_atual, imp_atual, nivel_atual = obter_dados_atuais_risco(risco_obj, df_hist_eval)
     
     pdf = FPDF()
+    pdf.set_margins(15, 15, 15)
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     
@@ -577,13 +582,21 @@ def gerar_relatorio_pdf_risco(risco_obj, df_ac_mon, df_hist_eval):
     pdf.set_font("Helvetica", "", 10)
     unid_txt = str(risco_obj.get('unidade', '')).encode('latin-1', 'replace').decode('latin-1')
     gestor_txt = str(risco_obj.get('gestor_risco', '')).encode('latin-1', 'replace').decode('latin-1')
+    
     pdf.cell(0, 6, f"Unidade Responsavel: {unid_txt} | Gestor: {gestor_txt}", new_x="LMARGIN", new_y="NEXT")
     pdf.cell(0, 6, f"Probabilidade Atual: {prob_atual} | Impacto Atual: {imp_atual} | Nivel de Risco: {nivel_atual}", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
     
     causa_txt = str(risco_obj.get('causa', '-')).encode('latin-1', 'replace').decode('latin-1')
     conseq_txt = str(risco_obj.get('consequencia', '-')).encode('latin-1', 'replace').decode('latin-1')
-    pdf.multi_cell(0, 6, f"Causa: {causa_txt}")
-    pdf.multi_cell(0, 6, f"Consequencia: {conseq_txt}")
+    
+    # Força o alinhamento à margem esquerda antes de cada multi_cell
+    pdf.set_x(15)
+    pdf.multi_cell(0, 6, f"Causa: {causa_txt}", new_x="LMARGIN", new_y="NEXT")
+    pdf.ln(2)
+    
+    pdf.set_x(15)
+    pdf.multi_cell(0, 6, f"Consequencia: {conseq_txt}", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
 
     # Tabela de Planos de Ação
@@ -601,7 +614,7 @@ def gerar_relatorio_pdf_risco(risco_obj, df_ac_mon, df_hist_eval):
         pdf.cell(85, 7, "Acao", border=1, fill=True)
         pdf.cell(40, 7, "Responsavel", border=1, fill=True)
         pdf.cell(25, 7, "Status", border=1, fill=True)
-        pdf.cell(30, 7, "Conclusao", border=1, fill=True, new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(20, 7, "Conclusao", border=1, fill=True, new_x="LMARGIN", new_y="NEXT")
 
         pdf.set_font("Helvetica", "", 8)
         pdf.set_text_color(0, 0, 0)
@@ -616,7 +629,7 @@ def gerar_relatorio_pdf_risco(risco_obj, df_ac_mon, df_hist_eval):
             pdf.cell(85, 6, acao, border=1)
             pdf.cell(40, 6, resp, border=1)
             pdf.cell(25, 6, st_ac, border=1)
-            pdf.cell(30, 6, dt_conc, border=1, new_x="LMARGIN", new_y="NEXT")
+            pdf.cell(20, 6, dt_conc, border=1, new_x="LMARGIN", new_y="NEXT")
     else:
         pdf.set_font("Helvetica", "I", 10)
         pdf.set_text_color(100, 100, 100)
