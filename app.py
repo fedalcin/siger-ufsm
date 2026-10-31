@@ -490,17 +490,30 @@ def pode(modulo, acao="acesso"):
 # ---------------------------------------------------------
 def obter_dados_atuais_risco(risco_obj, df_hist_eval):
     """Retorna os dados do risco considerando a reavaliação mais recente do histórico, se existir."""
-    prob = risco_obj.get("probabilidade")
-    imp = risco_obj.get("impacto")
-    nivel = risco_obj.get("nivel_risco")
+    # Valores padrão diretamente do cadastro do risco
+    prob = risco_obj.get("probabilidade") or 1
+    imp = risco_obj.get("impacto") or 1
+    nivel = risco_obj.get("nivel_risco") or (prob * imp)
 
-    if not df_hist_eval.empty:
-        col_dt = "created_at" if "created_at" in df_hist_eval.columns else "data_avaliacao"
-        df_hist_ord = df_hist_eval.sort_values(by=col_dt, ascending=False)
-        ultima_eval = df_hist_ord.iloc[0]
-        prob = ultima_eval.get("probabilidade", prob)
-        imp = ultima_eval.get("impacto", imp)
-        nivel = ultima_eval.get("nivel_risco", nivel)
+    # Verifica se o DataFrame de histórico existe, não está vazio e possui colunas
+    if isinstance(df_hist_eval, pd.DataFrame) and not df_hist_eval.empty:
+        # Identifica dinamicamente a coluna de data disponível
+        col_dt = None
+        if "created_at" in df_hist_eval.columns:
+            col_dt = "created_at"
+        elif "data_avaliacao" in df_hist_eval.columns:
+            col_dt = "data_avaliacao"
+
+        # Ordena e extrai a última reavaliação se houver coluna de data
+        if col_dt and col_dt in df_hist_eval.columns:
+            try:
+                df_hist_ord = df_hist_eval.sort_values(by=col_dt, ascending=False)
+                ultima_eval = df_hist_ord.iloc[0]
+                prob = ultima_eval.get("probabilidade", prob)
+                imp = ultima_eval.get("impacto", imp)
+                nivel = ultima_eval.get("nivel_risco", nivel)
+            except Exception as e:
+                print(f"Aviso ao ordenar histórico para PDF/Excel: {e}")
 
     return prob, imp, nivel
 
@@ -3060,9 +3073,17 @@ elif st.session_state.pagina_atual == "Dashboards":
                 except Exception:
                     df_hist_eval = pd.DataFrame()
 
-                # Geração dos arquivos para exportação
+
+
+                # ---------------------------------------------------------
+                # GERAÇÃO DOS ARQUIVOS DE EXPORTAÇÃO (EXCEL E PDF)
+                # ---------------------------------------------------------
+                # Garante que df_hist_eval seja um DataFrame válido antes da chamada
+                if df_hist_eval is None:
+                    df_hist_eval = pd.DataFrame()
+
                 excel_bytes = gerar_excel_acompanhamento_risco(risco_obj, df_ac_mon, df_hist_eval)
-                pdf_bytes = gerar_relatorio_pdf_risco(risco_obj, df_ac_mon, df_hist_eval)
+                pdf_bytes = gerar_relatorio_pdf_risco(risco_obj, df_hist_eval, df_ac_mon)
 
                 with col_exp_excel:
                     st.write("")
