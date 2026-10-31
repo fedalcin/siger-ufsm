@@ -3,18 +3,7 @@ from supabase import create_client, Client
 import pandas as pd
 from datetime import datetime, date
 import os
-import bcrypt
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from cryptography.fernet import Fernet
-import base64
-
-import streamlit as st
-from supabase import create_client, Client
-import pandas as pd
-from datetime import datetime, date
-import os
+import io
 import bcrypt
 import smtplib
 from email.mime.text import MIMEText
@@ -124,6 +113,7 @@ def enviar_email_notificacao_siger(destinatarios_list, assunto, mensagem_html):
         print(f"⚠️ Falha ao enviar e-mail de notificação: {e}")
         return False
 
+# Importação dos cálculos gerenciais e operacionais do SIGER
 from calculos_siger import (
     calcular_situacao_revisao_risco,
     calcular_situacao_prazo_acao,
@@ -218,6 +208,7 @@ st.markdown("""
         margin-bottom: 0.3rem !important;
     }
     
+    /* Cabeçalhos dos Expanders na Sidebar */
     section[data-testid="stSidebar"] div[data-testid="stExpander"] details summary {
         background-color: #002147 !important;
         color: #ffffff !important;
@@ -241,6 +232,7 @@ st.markdown("""
         fill: #ffffff !important;
     }
 
+    /* Botões Início e Caixa de Entrada */
     .btn-inicio-sidebar button {
         background-color: #002147 !important;
         color: #ffffff !important;
@@ -256,12 +248,14 @@ st.markdown("""
         color: #ffffff !important;
     }
 
+    /* Regra geral para o container dos botões da Sidebar */
     section[data-testid="stSidebar"] div.stButton > button {
         display: flex !important;
         justify-content: flex-start !important;
         align-items: center !important;
     }
 
+    /* Botões do Menu Interno (dentro dos Expanders) */
     section[data-testid="stSidebar"] div[data-testid="stExpander"] div.stButton > button {
         width: calc(100% - 20px) !important;
         margin-left: 20px !important;
@@ -282,6 +276,7 @@ st.markdown("""
         border-left: 4px solid #003366 !important;
     }
 
+    /* REGRA CHAVE: Força o alinhamento à esquerda em todos os elementos de texto internos do Streamlit */
     section[data-testid="stSidebar"] div.stButton > button * {
         text-align: left !important;
         justify-content: flex-start !important;
@@ -300,6 +295,7 @@ st.markdown("""
         line-height: 1.6;
     }
 
+    /* ESTILOS DA TIMELINE */
     .timeline-item {
         border-left: 3px solid #002147;
         padding-left: 15px;
@@ -332,6 +328,7 @@ st.markdown("""
         border-radius: 4px;
     }
 
+    /* ESTILOS DA MATRIZ DE RISCO 5X5 */
     .risk-matrix-table {
         width: 100%;
         border-collapse: collapse;
@@ -418,6 +415,7 @@ def realizar_login(email, senha):
         return False, f"Erro na conexão de autenticação: {e}"
 
 def recarregar_permissoes_usuario_logado():
+    """Recarrega dinamicamente do banco as permissões do usuário atual caso tenham sido alteradas"""
     if st.session_state.usuario_logado and st.session_state.usuario_logado.get("perfil_id"):
         try:
             p_id = st.session_state.usuario_logado["perfil_id"]
@@ -457,36 +455,125 @@ def tela_login():
                     else:
                         st.error(msg)
 
+# Bloqueia aplicação caso não esteja autenticado
 if not st.session_state.usuario_logado:
     tela_login()
     st.stop()
 
+# Atualiza dinamicamente as permissões do usuário em cada recarga
 recarregar_permissoes_usuario_logado()
 
 # ---------------------------------------------------------
-# HELPER DE PERMISSÕES DINÂMICAS (RBAC)
+# HELPER DE PERMISSÕES (RBAC DINÂMICO)
 # ---------------------------------------------------------
 usr_atual = st.session_state.usuario_logado
 perfil_usr = usr_atual.get("perfil", "Leitor")
-perms = usr_atual.get("permissoes", {})
+is_admin = perfil_usr == "Admin"
+is_gestor = perfil_usr in ["Admin", "Gestor"]
 
-is_admin = (perfil_usr == "Admin")
-
-def pode(modulo, operacao="acesso"):
+def pode(modulo, acao="acesso"):
+    """
+    Verifica se o usuário logado possui a permissão especificada.
+    Administradores têm acesso irrestrito por padrão.
+    """
     if is_admin:
         return True
-    mod_dict = perms.get(modulo)
-    if isinstance(mod_dict, dict):
-        return bool(mod_dict.get(operacao, False))
-    return False
+    
+    permissoes = usr_atual.get("permissoes") or {}
+    perm_modulo = permissoes.get(modulo) or {}
+    
+    return bool(perm_modulo.get(acao, False))
 
-def pode_ver_outras_unidades(modulo_dash):
-    if is_admin:
-        return True
-    mod_dict = perms.get(modulo_dash)
-    if isinstance(mod_dict, dict):
-        return bool(mod_dict.get("ver_outras_unidades", False))
-    return False
+# ---------------------------------------------------------
+# FUNÇÕES DE EXPORTAÇÃO (EXCEL E PDF / HTML)
+# ---------------------------------------------------------
+def gerar_excel_acompanhamento_risco(risco_obj, df_ac_mon, df_hist_eval):
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Aba 1: Resumo do Risco
+        df_resumo = pd.DataFrame([{
+            "ID do Risco": risco_obj.get("id"),
+            "Evento de Risco": risco_obj.get("evento"),
+            "Unidade": risco_obj.get("unidade"),
+            "Gestor do Risco": risco_obj.get("gestor_risco"),
+            "Causa": risco_obj.get("causa"),
+            "Consequência": risco_obj.get("consequencia"),
+            "Probabilidade": risco_obj.get("probabilidade"),
+            "Impacto": risco_obj.get("impacto"),
+            "Nível do Risco": risco_obj.get("nivel_risco"),
+            "Situação/Status": risco_obj.get("situacao_status"),
+            "Data de Identificação": risco_obj.get("data_identificacao"),
+            "Periodicidade": risco_obj.get("periodicidade_revisao"),
+            "Próxima Revisão": risco_obj.get("proxima_revisao") or risco_obj.get("data_proxima_revisao")
+        }])
+        df_resumo.to_excel(writer, sheet_name="Resumo do Risco", index=False)
+
+        # Aba 2: Plano de Ação (Mitigações)
+        if not df_ac_mon.empty:
+            df_ac_export = df_ac_mon.copy()
+            colunas_renomear = {
+                "numero_sequencial": "Ação nº",
+                "acao": "Descrição da Ação",
+                "carater_acao": "Caráter",
+                "nome_responsavel_implementacao": "Responsável",
+                "status_acao": "Status",
+                "percentual_execucao": "% Execução",
+                "previsao_data_inicio": "Início Previsto",
+                "previsao_data_conclusao": "Conclusão Prevista",
+                "como_sera_implementada": "Como Será Implementada"
+            }
+            cols_existentes = [c for c in colunas_renomear.keys() if c in df_ac_export.columns]
+            df_ac_export = df_ac_export[cols_existentes].rename(columns=colunas_renomear)
+            df_ac_export.to_excel(writer, sheet_name="Ações de Tratamento", index=False)
+
+        # Aba 3: Evolução Histórica
+        if not df_hist_eval.empty:
+            df_hist_export = df_hist_eval.copy()
+            df_hist_export.to_excel(writer, sheet_name="Histórico de Avaliações", index=False)
+
+    return output.getvalue()
+
+def gerar_relatorio_pdf_risco_html(risco_obj, df_ac_mon):
+    r_id = risco_obj.get("id")
+    evento = risco_obj.get("evento", "")
+    unidade = risco_obj.get("unidade", "")
+    gestor = risco_obj.get("gestor_risco", "")
+    nivel = risco_obj.get("nivel_risco", 1)
+    
+    html = f"""
+    <html>
+    <head>
+        <meta charset="utf-8">
+        <style>
+            body {{ font-family: Arial, sans-serif; margin: 20px; color: #333; }}
+            h1 {{ color: #002147; }}
+            .card {{ background-color: #f2f4f7; padding: 15px; border-radius: 5px; margin-bottom: 20px; }}
+            table {{ width: 100%; border-collapse: collapse; margin-top: 10px; }}
+            th, td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+            th {{ background-color: #002147; color: white; }}
+        </style>
+    </head>
+    <body>
+        <h1>Relatório de Acompanhamento de Risco - SIGER</h1>
+        <div class="card">
+            <h2>Risco #{r_id}: {evento}</h2>
+            <p><b>Unidade:</b> {unidade} | <b>Gestor:</b> {gestor}</p>
+            <p><b>Probabilidade:</b> {risco_obj.get('probabilidade')} | <b>Impacto:</b> {risco_obj.get('impacto')} | <b>Nível do Risco:</b> {nivel}</p>
+            <p><b>Causa:</b> {risco_obj.get('causa', '-')}</p>
+            <p><b>Consequência:</b> {risco_obj.get('consequencia', '-')}</p>
+        </div>
+        <h3>Ações de Mitigação</h3>
+    """
+    if not df_ac_mon.empty:
+        html += "<table><tr><th>Nº</th><th>Ação</th><th>Responsável</th><th>Status</th><th>Conclusão Prevista</th></tr>"
+        for _, row in df_ac_mon.iterrows():
+            html += f"<tr><td>{row.get('numero_sequencial', '')}</td><td>{row.get('acao', '')}</td><td>{row.get('nome_responsavel_implementacao', '')}</td><td>{row.get('status_acao', '')}</td><td>{row.get('previsao_data_conclusao', '')}</td></tr>"
+        html += "</table>"
+    else:
+        html += "<p>Nenhuma ação cadastrada.</p>"
+        
+    html += "</body></html>"
+    return html.encode("utf-8")
 
 # ---------------------------------------------------------
 # FUNÇÕES AUXILIARES DE FORMATAÇÃO E REGRAS
@@ -2889,7 +2976,13 @@ elif st.session_state.pagina_atual == "Dashboards":
                 st.info("Nenhum risco cadastrado para acompanhamento.")
             else:
                 mapa_riscos_mon = {f"Risco #{r['id']} | {r['unidade']} - {r['evento'][:55]}...": r for r in lista_riscos}
-                risco_sel_label = st.selectbox("🎯 Selecione o Risco para Análise Painel 360°:", list(mapa_riscos_mon.keys()))
+                
+                # Reorganização do cabeçalho com caixa de seleção e botões de exportação
+                col_sel_r, col_exp_excel, col_exp_pdf = st.columns([3, 1, 1])
+                
+                with col_sel_r:
+                    risco_sel_label = st.selectbox("🎯 Selecione o Risco para Análise Painel 360°:", list(mapa_riscos_mon.keys()))
+                
                 risco_obj = mapa_riscos_mon[risco_sel_label]
                 r_id = risco_obj["id"]
 
@@ -2904,6 +2997,32 @@ elif st.session_state.pagina_atual == "Dashboards":
                     df_hist_eval = pd.DataFrame(res_hist.data or [])
                 except Exception:
                     df_hist_eval = pd.DataFrame()
+
+                # Geração dos arquivos para exportação
+                excel_bytes = gerar_excel_acompanhamento_risco(risco_obj, df_ac_mon, df_hist_eval)
+                pdf_bytes = gerar_relatorio_pdf_risco_html(risco_obj, df_ac_mon)
+
+                with col_exp_excel:
+                    st.write("")
+                    st.write("")
+                    st.download_button(
+                        label="📊 Exportar Excel",
+                        data=excel_bytes,
+                        file_name=f"acompanhamento_risco_{r_id}.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True
+                    )
+
+                with col_exp_pdf:
+                    st.write("")
+                    st.write("")
+                    st.download_button(
+                        label="📄 Exportar PDF",
+                        data=pdf_bytes,
+                        file_name=f"relatorio_risco_{r_id}.html",
+                        mime="text/html",
+                        use_container_width=True
+                    )
 
                 data_prox_rev = risco_obj.get("proxima_revisao") or risco_obj.get("data_proxima_revisao")
                 sit_revisao = calcular_situacao_revisao_risco(data_prox_rev)
