@@ -3,3 +3,5 @@ supabase
 pandas
 bcrypt
 plotly
+cryptography
+openpyxl
