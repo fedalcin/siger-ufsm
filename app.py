@@ -3049,7 +3049,7 @@ elif st.session_state.pagina_atual == "Dashboards":
 
                 # Geração dos arquivos para exportação
                 excel_bytes = gerar_excel_acompanhamento_risco(risco_obj, df_ac_mon, df_hist_eval)
-                pdf_bytes = gerar_relatorio_pdf_risco_html(risco_obj, df_ac_mon)
+                pdf_bytes = gerar_relatorio_pdf_risco(risco_obj, df_ac_mon, df_hist_eval)
 
                 with col_exp_excel:
                     st.write("")
@@ -3068,8 +3068,8 @@ elif st.session_state.pagina_atual == "Dashboards":
                     st.download_button(
                         label="📄 Exportar PDF",
                         data=pdf_bytes,
-                        file_name=f"relatorio_risco_{r_id}.html",
-                        mime="text/html",
+                        file_name=f"relatorio_risco_{r_id}.pdf",
+                        mime="application/pdf",
                         use_container_width=True
                     )
 
