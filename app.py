@@ -440,21 +440,67 @@ def tela_login():
         
         st.subheader("Acesso ao Sistema")
         
-        with st.form("form_login"):
-            email_input = st.text_input("E-mail institucional", placeholder="usuario@instituicao.edu.br")
-            senha_input = st.text_input("Senha", type="password")
-            btn_entrar = st.form_submit_button("🔑 Entrar no Sistema", use_container_width=True)
-            
-            if btn_entrar:
-                if not email_input or not senha_input:
-                    st.warning("Preencha todos os campos para continuar.")
-                else:
-                    sucesso, msg = realizar_login(email_input, senha_input)
-                    if sucesso:
-                        st.success(msg)
-                        st.rerun()
+        tab_login, tab_esqueci = st.tabs(["🔑 Entrar", "❓ Esqueci / Alterar Senha"])
+        
+        with tab_login:
+            with st.form("form_login"):
+                email_input = st.text_input("E-mail institucional", placeholder="usuario@instituicao.edu.br")
+                senha_input = st.text_input("Senha", type="password")
+                btn_entrar = st.form_submit_button("🔑 Entrar no Sistema", use_container_width=True)
+                
+                if btn_entrar:
+                    if not email_input or not senha_input:
+                        st.warning("Preencha todos os campos para continuar.")
                     else:
-                        st.error(msg)
+                        sucesso, msg = realizar_login(email_input, senha_input)
+                        if sucesso:
+                            st.success(msg)
+                            st.rerun()
+                        else:
+                            st.error(msg)
+
+        with tab_esqueci:
+            st.caption("Solicite a redefinição de sua senha ou informe seu e-mail cadastrado.")
+            with st.form("form_esqueci_senha"):
+                email_recup = st.text_input("E-mail institucional cadastrado", placeholder="usuario@instituicao.edu.br")
+                nova_senha_recup = st.text_input("Nova Senha", type="password")
+                confirma_senha_recup = st.text_input("Confirme a Nova Senha", type="password")
+                
+                btn_recuperar = st.form_submit_button("🔄 Redefinir Senha", use_container_width=True)
+                
+                if btn_recuperar:
+                    if not email_recup or not nova_senha_recup or not confirma_senha_recup:
+                        st.warning("Preencha todos os campos do formulário.")
+                    elif nova_senha_recup != confirma_senha_recup:
+                        st.error("A nova senha e a confirmação não conferem.")
+                    elif len(nova_senha_recup) < 6:
+                        st.warning("A nova senha deve ter pelo menos 6 caracteres.")
+                    else:
+                        try:
+                            # Verifica se o usuário existe e está ativo
+                            res_u = supabase.table("usuarios").select("id, nome").eq("email", email_recup.strip().lower()).eq("ativo", True).execute()
+                            if res_u.data:
+                                u_id = res_u.data[0]["id"]
+                                hash_nova = gerar_hash_senha(nova_senha_recup)
+                                
+                                supabase.table("usuarios").update({"senha_hash": hash_nova}).eq("id", u_id).execute()
+                                
+                                # Envia e-mail de notificação se SMTP estiver configurado
+                                emails_dest = [email_recup.strip().lower()]
+                                assunto = "🔐 [SIGER] Senha Redefinida com Sucesso"
+                                corpo = f"""
+                                <h3>Redefinição de Senha - SIGER</h3>
+                                <p>Olá, <b>{res_u.data[0]['nome']}</b>,</p>
+                                <p>Sua senha no sistema SIGER foi alterada com sucesso.</p>
+                                <p>Se você não realizou esta solicitação, entre em contato imediatamente com o administrador do sistema.</p>
+                                """
+                                enviar_email_notificacao_siger(emails_dest, assunto, corpo)
+
+                                st.success("✅ Senha redefinida com sucesso! Você já pode realizar o login.")
+                            else:
+                                st.error("E-mail não encontrado ou usuário inativo.")
+                        except Exception as e:
+                            st.error(f"Erro ao redefinir senha: {e}")
 
 # Bloqueia aplicação caso não esteja autenticado
 if not st.session_state.usuario_logado:
@@ -952,6 +998,36 @@ st.sidebar.divider()
 
 st.sidebar.markdown(f"👤 **{usr_atual['nome']}**")
 st.sidebar.caption(f"Perfil: `{perfil_usr}` | Unidade: `{usr_atual['unidade'] or 'Todas'}`")
+
+# Botão Popover para alterar a própria senha quando logado
+pop_minha_senha = st.sidebar.popover("🔑 Alterar Minha Senha", use_container_width=True)
+with pop_minha_senha:
+    st.markdown("### 🔑 Alterar Minha Senha")
+    st.caption(f"Usuário: `{usr_atual['email']}`")
+    
+    with st.form("form_alterar_propria_senha"):
+        senha_atual_usr = st.text_input("Senha Atual*", type="password")
+        nova_senha_usr = st.text_input("Nova Senha*", type="password")
+        confirma_nova_usr = st.text_input("Confirme a Nova Senha*", type="password")
+        
+        if st.form_submit_button("💾 Atualizar Senha", use_container_width=True):
+            if not senha_atual_usr or not nova_senha_usr or not confirma_nova_usr:
+                st.warning("Preencha todos os campos do formulário.")
+            elif nova_senha_usr != confirma_nova_usr:
+                st.error("A nova senha e a confirmação não conferem.")
+            elif len(nova_senha_usr) < 6:
+                st.warning("A nova senha deve ter pelo menos 6 caracteres.")
+            else:
+                try:
+                    res_m_pw = supabase.table("usuarios").select("senha_hash").eq("id", usr_atual["id"]).execute()
+                    if res_m_pw.data and verificar_senha(senha_atual_usr, res_m_pw.data[0]["senha_hash"]):
+                        hash_novis = gerar_hash_senha(nova_senha_usr)
+                        supabase.table("usuarios").update({"senha_hash": hash_novis}).eq("id", usr_atual["id"]).execute()
+                        st.success("✅ Sua senha foi atualizada com sucesso!")
+                    else:
+                        st.error("Senha atual incorreta.")
+                except Exception as e:
+                    st.error(f"Erro ao atualizar senha: {e}")
 
 st.sidebar.divider()
 
