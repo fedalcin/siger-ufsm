@@ -2335,7 +2335,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                 try:
                     res_unidades = supabase.table("unidades").select("sigla, nome_extenso").order("sigla").execute().data or []
                     res_oe = supabase.table("objetivos_estrategicos").select("codigo, descricao").order("codigo").execute().data or []
-                    res_cat = supabase.table("categorias_riscos").select("id, tipo, sub_tipo").order("tipo").execute().data or []
+                    res_cat = supabase.table("categorias_riscos").select("id, tipo, sub_tipo, detalhamento").order("tipo").execute().data or []
                 except Exception:
                     res_unidades, res_oe, res_cat = [], [], []
 
