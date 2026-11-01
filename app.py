@@ -1062,7 +1062,7 @@ elif st.session_state.pagina_atual == "Início":
         st.title("SIGER - Sistema de Gestão de Riscos")
     
     if perfil_usr == "Banca":
-        st.success("🎓 **Bem-vindo(a), membro da Banca Examinadora!** Seu perfil foi habilitado para a navegação, simulações de teste e avaliação técnica dos módulos de gestão de riscos do SIGER.")
+        st.success("🎓 **Bem-vindo(a), membro da Banca Examinadora!** Seu perfil foi habilitado para a navegação e avaliação técnica dos módulos de gestão de riscos do SIGER.")
 
     texto_inicio_personalizado = ""
     try:
@@ -3034,7 +3034,7 @@ elif st.session_state.pagina_atual == "Dashboards":
 
     # 1. TELA: ACOMPANHAMENTO DE RISCOS
     if sub_dash == "Acompanhamento de Riscos":
-        if not pode("dash_acompanhamento", "acesso"):
+        if not pode("dash_acomp", "acesso"):
             st.warning("Seu perfil de usuário não possui permissão para acessar o Acompanhamento de Riscos.")
         else:
             st.title("📌 Acompanhamento de Riscos")
@@ -3268,7 +3268,7 @@ elif st.session_state.pagina_atual == "Dashboards":
 
     # 2. TELA: PAINEL GERAL
     elif sub_dash == "Painel Geral":
-        if not pode("dash_painel_geral", "acesso"):
+        if not pode("dash_geral", "acesso"):
             st.warning("Seu perfil de usuário não possui permissão para acessar o Painel Geral.")
         else:
             st.title("📈 Painel Geral")
