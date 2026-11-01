@@ -428,6 +428,8 @@ def recarregar_permissoes_usuario_logado():
         except Exception:
             pass
 
+import random
+
 def tela_login():
     col_c1, col_c2, col_c3 = st.columns([1, 1.2, 1])
     with col_c2:
@@ -440,8 +442,11 @@ def tela_login():
         
         st.subheader("Acesso ao Sistema")
         
-        tab_login, tab_esqueci = st.tabs(["🔑 Entrar", "❓ Esqueci / Alterar Senha"])
+        tab_login, tab_esqueci = st.tabs(["🔑 Entrar", "❓ Esqueci Minha Senha"])
         
+        # ---------------------------------------------------------
+        # ABA 1: LOGIN TRADICIONAL
+        # ---------------------------------------------------------
         with tab_login:
             with st.form("form_login"):
                 email_input = st.text_input("E-mail institucional", placeholder="usuario@instituicao.edu.br")
@@ -459,48 +464,101 @@ def tela_login():
                         else:
                             st.error(msg)
 
+        # ---------------------------------------------------------
+        # ABA 2: RECUPERAÇÃO SEGURA COM CÓDIGO DE VERIFICAÇÃO (OTP)
+        # ---------------------------------------------------------
         with tab_esqueci:
-            st.caption("Solicite a redefinição de sua senha ou informe seu e-mail cadastrado.")
-            with st.form("form_esqueci_senha"):
-                email_recup = st.text_input("E-mail institucional cadastrado", placeholder="usuario@instituicao.edu.br")
-                nova_senha_recup = st.text_input("Nova Senha", type="password")
-                confirma_senha_recup = st.text_input("Confirme a Nova Senha", type="password")
-                
-                btn_recuperar = st.form_submit_button("🔄 Redefinir Senha", use_container_width=True)
-                
-                if btn_recuperar:
-                    if not email_recup or not nova_senha_recup or not confirma_senha_recup:
-                        st.warning("Preencha todos os campos do formulário.")
-                    elif nova_senha_recup != confirma_senha_recup:
-                        st.error("A nova senha e a confirmação não conferem.")
-                    elif len(nova_senha_recup) < 6:
-                        st.warning("A nova senha deve ter pelo menos 6 caracteres.")
-                    else:
-                        try:
-                            # Verifica se o usuário existe e está ativo
-                            res_u = supabase.table("usuarios").select("id, nome").eq("email", email_recup.strip().lower()).eq("ativo", True).execute()
-                            if res_u.data:
-                                u_id = res_u.data[0]["id"]
-                                hash_nova = gerar_hash_senha(nova_senha_recup)
-                                
-                                supabase.table("usuarios").update({"senha_hash": hash_nova}).eq("id", u_id).execute()
-                                
-                                # Envia e-mail de notificação se SMTP estiver configurado
-                                emails_dest = [email_recup.strip().lower()]
-                                assunto = "🔐 [SIGER] Senha Redefinida com Sucesso"
-                                corpo = f"""
-                                <h3>Redefinição de Senha - SIGER</h3>
-                                <p>Olá, <b>{res_u.data[0]['nome']}</b>,</p>
-                                <p>Sua senha no sistema SIGER foi alterada com sucesso.</p>
-                                <p>Se você não realizou esta solicitação, entre em contato imediatamente com o administrador do sistema.</p>
-                                """
-                                enviar_email_notificacao_siger(emails_dest, assunto, corpo)
+            st.caption("Insira seu e-mail para receber um código de verificação antes de redefinir sua senha.")
+            
+            # Controle de estado para o fluxo em 2 etapas
+            if "recup_passo" not in st.session_state:
+                st.session_state.recup_passo = 1
+            if "recup_codigo_gerado" not in st.session_state:
+                st.session_state.recup_codigo_gerado = None
+            if "recup_email_alvo" not in st.session_state:
+                st.session_state.recup_email_alvo = None
 
-                                st.success("✅ Senha redefinida com sucesso! Você já pode realizar o login.")
-                            else:
-                                st.error("E-mail não encontrado ou usuário inativo.")
-                        except Exception as e:
-                            st.error(f"Erro ao redefinir senha: {e}")
+            # ETAPA 1: SOLICITAR CÓDIGO POR E-MAIL
+            if st.session_state.recup_passo == 1:
+                with st.form("form_solicitar_codigo_recup"):
+                    email_solicit = st.text_input("E-mail institucional cadastrado*", placeholder="usuario@instituicao.edu.br")
+                    btn_enviar_cod = st.form_submit_button("📩 Enviar Código de Verificação", use_container_width=True)
+                    
+                    if btn_enviar_cod:
+                        if not email_solicit.strip():
+                            st.warning("Por favor, informe seu e-mail cadastrado.")
+                        else:
+                            email_clean = email_solicit.strip().lower()
+                            try:
+                                res_u = supabase.table("usuarios").select("id, nome").eq("email", email_clean).eq("ativo", True).execute()
+                                if res_u.data:
+                                    # Gerar código numérico de 6 dígitos
+                                    codigo_otp = str(random.randint(100000, 999999))
+                                    st.session_state.recup_codigo_gerado = codigo_otp
+                                    st.session_state.recup_email_alvo = email_clean
+                                    
+                                    # Enviar por e-mail via SMTP
+                                    assunto = "🔐 [SIGER] Código de Verificação para Redefinição de Senha"
+                                    corpo_html = f"""
+                                    <h3>Solicitação de Redefinição de Senha - SIGER</h3>
+                                    <p>Olá, <b>{res_u.data[0]['nome']}</b>,</p>
+                                    <p>Seu código de verificação para redefinir a senha é:</p>
+                                    <h2 style="color: #002147; letter-spacing: 4px;">{codigo_otp}</h2>
+                                    <p>Se você não solicitou a alteração, ignore este e-mail.</p>
+                                    """
+                                    
+                                    sucesso_envio = enviar_email_notificacao_siger([email_clean], assunto, corpo_html)
+                                    
+                                    if sucesso_envio:
+                                        st.session_state.recup_passo = 2
+                                        st.success("✅ Código de verificação enviado para o seu e-mail!")
+                                        st.rerun()
+                                    else:
+                                        st.error("⚠️ Falha ao enviar e-mail. Verifique a configuração do servidor SMTP em Administração.")
+                                else:
+                                    st.error("E-mail não encontrado ou usuário inativo.")
+                            except Exception as e:
+                                st.error(f"Erro ao processar solicitação: {e}")
+
+            # ETAPA 2: VALIDAR CÓDIGO E DEFINIR NOVA SENHA
+            elif st.session_state.recup_passo == 2:
+                st.info(f"📧 Código enviado para: **{st.session_state.recup_email_alvo}**")
+                
+                with st.form("form_confirmar_codigo_recup"):
+                    codigo_input = st.text_input("Digite o Código de 6 dígitos recebido por e-mail*", max_chars=6)
+                    nova_senha_recup = st.text_input("Nova Senha*", type="password")
+                    confirma_senha_recup = st.text_input("Confirme a Nova Senha*", type="password")
+                    
+                    btn_confirmar_reset = st.form_submit_button("🔄 Alterar Senha", use_container_width=True)
+                    
+                    if btn_confirmar_reset:
+                        if not codigo_input or not nova_senha_recup or not confirma_senha_recup:
+                            st.warning("Preencha todos os campos do formulário.")
+                        elif codigo_input.strip() != st.session_state.recup_codigo_gerado:
+                            st.error("❌ Código de verificação incorreto. Verifique sua caixa de entrada.")
+                        elif nova_senha_recup != confirma_senha_recup:
+                            st.error("A nova senha e a confirmação não conferem.")
+                        elif len(nova_senha_recup) < 6:
+                            st.warning("A nova senha deve ter pelo menos 6 caracteres.")
+                        else:
+                            try:
+                                hash_nova = gerar_hash_senha(nova_senha_recup)
+                                supabase.table("usuarios").update({"senha_hash": hash_nova}).eq("email", st.session_state.recup_email_alvo).execute()
+                                
+                                # Limpa os dados de sessão temporários
+                                st.session_state.recup_passo = 1
+                                st.session_state.recup_codigo_gerado = None
+                                st.session_state.recup_email_alvo = None
+                                
+                                st.success("🎉 Senha alterada com sucesso! Você já pode realizar o login.")
+                            except Exception as e:
+                                st.error(f"Erro ao atualizar senha no banco: {e}")
+
+                if st.button("⬅️ Cancelar / Reenviar para outro e-mail", use_container_width=True):
+                    st.session_state.recup_passo = 1
+                    st.session_state.recup_codigo_gerado = None
+                    st.session_state.recup_email_alvo = None
+                    st.rerun()
 
 # Bloqueia aplicação caso não esteja autenticado
 if not st.session_state.usuario_logado:
