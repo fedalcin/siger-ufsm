@@ -2341,7 +2341,16 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
 
                 mapa_unidades = {f"{u['sigla']} - {u['nome_extenso']}": u['sigla'] for u in res_unidades} if res_unidades else {"S/U": None}
                 mapa_oe = {f"{o['codigo']} - {o['descricao']}": o['codigo'] for o in res_oe} if res_oe else {"Nenhum": None}
-                mapa_cat = {f"{c['tipo']} / {c['sub_tipo']}": c['id'] for c in res_cat} if res_cat else {"Nenhuma": None}
+
+                def formatar_nome_categoria(c):
+                    tipo = c.get('tipo', '')
+                    sub = c.get('sub_tipo', '')
+                    det = c.get('detalhamento', '')
+                    if det:
+                        return f"{tipo} / {sub} / {det}"
+                    return f"{tipo} / {sub}"
+
+                mapa_cat = {formatar_nome_categoria(c): c['id'] for c in res_cat} if res_cat else {"Nenhuma": None}
 
                 st.markdown("##### 1. Contexto do Risco")
                 col_c1, col_c2 = st.columns(2)
@@ -3004,11 +3013,14 @@ elif st.session_state.pagina_atual == "Cadastros":
                         ctipo = c_item.get("tipo", "")
                         csub = c_item.get("sub_tipo", "")
                         cdet = c_item.get("detalhamento", "")
-                        
-                        with st.expander(f"🏷️ **{ctipo}** / {csub}"):
-                            st.write(f"**Tipo:** {ctipo}")
-                            st.write(f"**Subtipo:** {csub}")
-                            st.write(f"**Detalhamento:** {cdet or '-'}")
+
+                        # Título do expander exibindo os 3 níveis completos
+                        rotulo_3_niveis = f"🏷️ **{ctipo}** / {csub} / {cdet}" if cdet else f"🏷️ **{ctipo}** / {csub}"
+
+                        with st.expander(rotulo_3_niveis):
+                            st.write(f"**1º Nível (Tipo):** {ctipo}")
+                            st.write(f"**2º Nível (Subtipo):** {csub}")
+                            st.write(f"**3º Nível (Detalhamento):** {cdet or '-'}")
                             st.caption(f"Criado em: {formatar_data_hora_br(c_item.get('criado_em'))}")
                             
                             col_c_edit, col_c_del = st.columns([1, 1])
@@ -3421,7 +3433,12 @@ elif st.session_state.pagina_atual == "Dashboards":
                 df_acoes_base = pd.DataFrame(res_a.data or [])
 
                 res_cat_db = supabase.table("categorias_riscos").select("id, tipo, sub_tipo").execute().data or []
-                mapa_cat_nomes = {c["id"]: f"{c['tipo']} / {c['sub_tipo']}" for c in res_cat_db}
+
+                mapa_cat_nomes = {
+                    c["id"]: f"{c['tipo']} / {c['sub_tipo']} / {c['detalhamento']}" if c.get('detalhamento') else f"{c['tipo']} / {c['sub_tipo']}" 
+                    for c in res_cat_db
+                }
+
             except Exception as e:
                 st.error(f"Erro ao carregar dados do banco de dados: {e}")
                 df_riscos_base = pd.DataFrame()
