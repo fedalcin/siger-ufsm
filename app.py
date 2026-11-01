@@ -1392,57 +1392,60 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                     p_bib_read = st.toggle("Permitir Leitura/Download Normativas", key=f"chk_bib_rd_{sfx}")
 
                 st.write("")
-                btn_salvar_matriz = st.form_submit_button("💾 Salvar Matriz de Permissões do Perfil", use_container_width=True)
+                if pode("adm_perfis", "alterar"):
+                    btn_salvar_matriz = st.form_submit_button("💾 Salvar Matriz de Permissões do Perfil", use_container_width=True)
 
-                if btn_salvar_matriz:
-                    usr_acc_val = True if eh_perfil_admin else p_usr_acc
-                    usr_inc_val = True if eh_perfil_admin else p_usr_inc
-                    usr_alt_val = True if eh_perfil_admin else p_usr_alt
-                    usr_exc_val = True if eh_perfil_admin else p_usr_exc
+                    if btn_salvar_matriz:
+                        usr_acc_val = True if eh_perfil_admin else p_usr_acc
+                        usr_inc_val = True if eh_perfil_admin else p_usr_inc
+                        usr_alt_val = True if eh_perfil_admin else p_usr_alt
+                        usr_exc_val = True if eh_perfil_admin else p_usr_exc
 
-                    prf_acc_val = True if eh_perfil_admin else p_prf_acc
-                    prf_inc_val = True if eh_perfil_admin else p_prf_inc
-                    prf_alt_val = True if eh_perfil_admin else p_prf_alt
-                    prf_exc_val = True if eh_perfil_admin else p_prf_exc
+                        prf_acc_val = True if eh_perfil_admin else p_prf_acc
+                        prf_inc_val = True if eh_perfil_admin else p_prf_inc
+                        prf_alt_val = True if eh_perfil_admin else p_prf_alt
+                        prf_exc_val = True if eh_perfil_admin else p_prf_exc
 
-                    nova_matriz = {
-                        "adm_usuarios": {"acesso": usr_acc_val, "incluir": usr_inc_val, "alterar": usr_alt_val, "excluir": usr_exc_val},
-                        "adm_perfis": {"acesso": prf_acc_val, "incluir": prf_inc_val, "alterar": prf_alt_val, "excluir": prf_exc_val},
-                        "adm_id_visual": {"acesso": p_idv_acc, "alterar": p_idv_alt},
-                        "adm_texto_home": {"acesso": p_txt_acc, "alterar": p_txt_alt},
-                        "adm_config_gerais": {"acesso": p_cfg_acc, "alterar": p_cfg_alt},
-        
-                        "cad_unidades": {"acesso": p_und_acc, "incluir": p_und_inc, "alterar": p_und_alt, "excluir": p_und_exc},
-                        "cad_objetivos": {"acesso": p_oe_acc, "incluir": p_oe_inc, "alterar": p_oe_alt, "excluir": p_oe_exc},
-                        "cad_categorias": {"acesso": p_cat_acc, "incluir": p_cat_inc, "alterar": p_cat_alt, "excluir": p_cat_exc},
-                        "cad_doc_biblioteca": {"acesso": p_doc_acc, "incluir": p_doc_inc, "excluir": p_doc_exc},
-        
-                        "gr_riscos": {"acesso": p_rsk_acc, "incluir": p_rsk_inc, "alterar": p_rsk_alt, "excluir": p_rsk_exc},
-                        "gr_acoes": {"acesso": p_act_acc, "incluir": p_act_inc, "alterar": p_act_alt, "excluir": p_act_exc},
-                        "gr_reavaliacao": {"acesso": p_rev_acc, "alterar": p_rev_alt},
-        
-                        "dash_acomp": {"acesso": p_d1_acc, "ver_outras_unidades": p_d1_outras},
-                        "dash_geral": {"acesso": p_d2_acc, "ver_outras_unidades": p_d2_outras},
-                        "bib_normativas": {"leitura": p_bib_read}
-                    }
+                        nova_matriz = {
+                            "adm_usuarios": {"acesso": usr_acc_val, "incluir": usr_inc_val, "alterar": usr_alt_val, "excluir": usr_exc_val},
+                            "adm_perfis": {"acesso": prf_acc_val, "incluir": prf_inc_val, "alterar": prf_alt_val, "excluir": prf_exc_val},
+                            "adm_id_visual": {"acesso": p_idv_acc, "alterar": p_idv_alt},
+                            "adm_texto_home": {"acesso": p_txt_acc, "alterar": p_txt_alt},
+                            "adm_config_gerais": {"acesso": p_cfg_acc, "alterar": p_cfg_alt},
+            
+                            "cad_unidades": {"acesso": p_und_acc, "incluir": p_und_inc, "alterar": p_und_alt, "excluir": p_und_exc},
+                            "cad_objetivos": {"acesso": p_oe_acc, "incluir": p_oe_inc, "alterar": p_oe_alt, "excluir": p_oe_exc},
+                            "cad_categorias": {"acesso": p_cat_acc, "incluir": p_cat_inc, "alterar": p_cat_alt, "excluir": p_cat_exc},
+                            "cad_doc_biblioteca": {"acesso": p_doc_acc, "incluir": p_doc_inc, "excluir": p_doc_exc},
+            
+                            "gr_riscos": {"acesso": p_rsk_acc, "incluir": p_rsk_inc, "alterar": p_rsk_alt, "excluir": p_rsk_exc},
+                            "gr_acoes": {"acesso": p_act_acc, "incluir": p_act_inc, "alterar": p_act_alt, "excluir": p_act_exc},
+                            "gr_reavaliacao": {"acesso": p_rev_acc, "alterar": p_rev_alt},
+            
+                            "dash_acomp": {"acesso": p_d1_acc, "ver_outras_unidades": p_d1_outras},
+                            "dash_geral": {"acesso": p_d2_acc, "ver_outras_unidades": p_d2_outras},
+                            "bib_normativas": {"leitura": p_bib_read}
+                        }
 
-                    try:
-                        res_upd = supabase.table("perfis").update({"permissoes_json": nova_matriz}).eq("id", p_id).execute()
-                        
-                        if not res_upd.data:
-                            st.error("⚠️ O Supabase não permitiu salvar. Verifique se a Policy de UPDATE está criada no painel SQL do Supabase.")
-                        else:
-                            for k_item in keys_defaults.keys():
-                                if k_item in st.session_state:
-                                    del st.session_state[k_item]
+                        try:
+                            res_upd = supabase.table("perfis").update({"permissoes_json": nova_matriz}).eq("id", p_id).execute()
+                            
+                            if not res_upd.data:
+                                st.error("⚠️ O Supabase não permitiu salvar. Verifique se a Policy de UPDATE está criada no painel SQL do Supabase.")
+                            else:
+                                for k_item in keys_defaults.keys():
+                                    if k_item in st.session_state:
+                                        del st.session_state[k_item]
 
-                            if usr_atual.get("perfil_id") == p_id:
-                                st.session_state.usuario_logado["permissoes"] = nova_matriz
-                
-                            st.toast(f"✅ Permissões do perfil '{perfil_sel_nome}' atualizadas com sucesso!", icon="🎉")
-                            st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro no Supabase ao salvar matriz de permissões: {e}")
+                                if usr_atual.get("perfil_id") == p_id:
+                                    st.session_state.usuario_logado["permissoes"] = nova_matriz
+                    
+                                st.toast(f"✅ Permissões do perfil '{perfil_sel_nome}' atualizadas com sucesso!", icon="🎉")
+                                st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro no Supabase ao salvar matriz de permissões: {e}")
+                else:
+                    st.info("🔒 Seu perfil não possui permissão para alterar as matrizes de permissões.")
 
     # 3. SUBPÁGINA: IDENTIDADE VISUAL
     elif sub == "Identidade Visual" and pode("adm_id_visual", "acesso"):
@@ -1633,7 +1636,7 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
 
     col_filtro1, col_filtro2 = st.columns([2, 2])
     with col_filtro1:
-        if is_admin or pode_ver_outras_unidades("dash_acomp") or not unidade_usuario:
+        if is_admin or pode("dash_acomp", "ver_outras_unidades") or not unidade_usuario:
             unidade_ativa = st.selectbox("🏢 Unidade Consultada:", options=opcoes_unid, index=idx_unid_def)
         else:
             unidade_ativa = unidade_usuario
@@ -3504,7 +3507,7 @@ elif st.session_state.pagina_atual == "Dashboards":
 # PÁGINA: BIBLIOTECA
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Biblioteca":
-    if not pode("biblioteca", "acesso"):
+    if not pode("bib_normativas", "leitura"):
         st.warning("Seu perfil de usuário não possui permissão para acessar a Biblioteca de Documentos.")
     else:
         st.title("📄 Documentos e Normativas")
