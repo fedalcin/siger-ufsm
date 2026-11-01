@@ -1576,44 +1576,45 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
         except Exception as e:
             st.error(f"Erro ao carregar configurações de e-mail: {e}")
 
-        if pode("adm_config_gerais", "alterar"):
-            with st.form("form_config_smtp"):
-                c_s1, c_s2 = st.columns(2)
-                with c_s1:
-                    smtp_servidor = st.text_input("Servidor SMTP*", value=cfg_smtp.get("smtp_server", "smtp.gmail.com"), placeholder="smtp.instituicao.edu.br")
-                    smtp_porta = st.number_input("Porta SMTP*", value=int(cfg_smtp.get("smtp_port", 587)), step=1)
-                with c_s2:
-                    smtp_email = st.text_input("E-mail Remetente*", value=cfg_smtp.get("smtp_email", ""), placeholder="siger-notificacoes@instituicao.edu.br")
-                    
-                    senha_salva_cripto = cfg_smtp.get("smtp_password", "")
-                    senha_descriptografada = descriptografar_texto(senha_salva_cripto)
-                    
-                    smtp_senha = st.text_input("Senha do E-mail / App Password*", value=senha_descriptografada, type="password")
+        with st.form("form_config_smtp"):
+            c_s1, c_s2 = st.columns(2)
+            with c_s1:
+                smtp_servidor = st.text_input("Servidor SMTP*", value=cfg_smtp.get("smtp_server", "smtp.gmail.com"), placeholder="smtp.instituicao.edu.br")
+                smtp_porta = st.number_input("Porta SMTP*", value=int(cfg_smtp.get("smtp_port", 587)), step=1)
+            with c_s2:
+                smtp_email = st.text_input("E-mail Remetente*", value=cfg_smtp.get("smtp_email", ""), placeholder="siger-notificacoes@instituicao.edu.br")
+                
+                senha_salva_cripto = cfg_smtp.get("smtp_password", "")
+                senha_descriptografada = descriptografar_texto(senha_salva_cripto)
+                
+                smtp_senha = st.text_input("Senha do E-mail / App Password*", value=senha_descriptografada, type="password")
 
-                st.caption("🔒 *A senha é mantida de forma criptografada na tabela de configurações.*")
+            st.caption("🔒 *A senha é mantida de forma criptografada na tabela de configurações.*")
+            
+            if pode("adm_config_gerais", "alterar"):
                 btn_salvar_smtp = st.form_submit_button("💾 Salvar Credenciais SMTP")
-
-            if btn_salvar_smtp:
-                if not smtp_servidor or not smtp_email or not smtp_senha:
-                    st.warning("Preencha todos os campos obrigatórios da configuração SMTP.")
-                else:
-                    try:
-                        senha_criptografada = criptografar_texto(smtp_senha)
-                        configs_para_salvar = [
-                            {"chave": "smtp_server", "valor": smtp_servidor.strip()},
-                            {"chave": "smtp_port", "valor": str(smtp_porta)},
-                            {"chave": "smtp_email", "valor": smtp_email.strip()},
-                            {"chave": "smtp_password", "valor": senha_criptografada}
-                        ]
-                        for item in configs_para_salvar:
-                            supabase.table("configuracoes").upsert(item, on_conflict="chave").execute()
-                            
-                        st.success("✅ Servidor de e-mail registrado e pronto para envio de notificações!")
-                        st.rerun()
-                    except Exception as e:
-                        st.error(f"Erro ao salvar credenciais: {e}")
-        else:
-            st.info("Servidor SMTP configurado e ativo.")
+                if btn_salvar_smtp:
+                    if not smtp_servidor or not smtp_email or not smtp_senha:
+                        st.warning("Preencha todos os campos obrigatórios da configuração SMTP.")
+                    else:
+                        try:
+                            senha_criptografada = criptografar_texto(smtp_senha)
+                            configs_para_salvar = [
+                                {"chave": "smtp_server", "valor": smtp_servidor.strip()},
+                                {"chave": "smtp_port", "valor": str(smtp_porta)},
+                                {"chave": "smtp_email", "valor": smtp_email.strip()},
+                                {"chave": "smtp_password", "valor": senha_criptografada}
+                            ]
+                            for item in configs_para_salvar:
+                                supabase.table("configuracoes").upsert(item, on_conflict="chave").execute()
+                                
+                            st.success("✅ Servidor de e-mail registrado e pronto para envio de notificações!")
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"Erro ao salvar credenciais: {e}")
+            else:
+                st.write("")
+                st.info("🔒 Seu perfil possui permissão apenas de leitura para visualizar as configurações do servidor SMTP.")
 
 # ---------------------------------------------------------
 # PÁGINA: CAIXA DE ENTRADA
@@ -2405,7 +2406,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                         except Exception as e:
                             st.error(f"Erro ao salvar reavaliação: {e}")
             else:
-                st.info("Seu perfil possui acesso apenas para visualização deste módulo.")
+                st.info("🔒 Seu perfil possui permissão apenas para visualização e simulação deste módulo.")
 
     # =========================================================
     # 3. TELA: AÇÕES DE TRATAMENTO (FLUXO DE CRIAÇÃO E TRAMITAÇÃO)
