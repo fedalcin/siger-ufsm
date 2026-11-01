@@ -2377,6 +2377,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
             cor_novo_n = "🔴 Crítico" if novo_nivel_calc >= 15 else "🟡 Médio" if novo_nivel_calc >= 8 else "🟢 Baixo"
             st.caption(f"⚡ **Novo Nível do Risco Calculado:** `{novo_nivel_calc}` ({cor_novo_n})")
 
+            # EXIBIÇÃO CONDICIONAL: Botão só é exibido se o usuário puder alterar
             if pode("gr_reavaliacao", "alterar"):
                 btn_sub_reav = st.button("💾 Confirmar e Gravar Nova Avaliação", type="primary", key=f"btn_salvar_reav_{r_id}")
 
