@@ -1378,20 +1378,20 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
         st.divider()
 
         # Botão para disparar a consulta de inspeção
-            if st.button("🔍 Inspecionar 5 Contratos Reais da UFSM (PNCP)", type="primary"):
-                with st.spinner("Buscando amostra bruta da API do Compras.gov / PNCP..."):
-                    sucesso, itens_brutos, mensagem = buscar_dados_contratos_ufsm_comprasgov()
+        if st.button("🔍 Inspecionar 5 Contratos Reais da UFSM (PNCP)", type="primary"):
+            with st.spinner("Buscando amostra bruta da API do Compras.gov / PNCP..."):
+                sucesso, itens_brutos, mensagem = buscar_dados_contratos_ufsm_comprasgov()
             
-                    if sucesso:
-                        st.success(mensagem)
-                        st.subheader("📋 Payload Bruto Retornado (Primeiros 5 Contratos)")
+                if sucesso:
+                    st.success(mensagem)
+                    st.subheader("📋 Payload Bruto Retornado (Primeiros 5 Contratos)")
                 
-                        # Exibe o visualizador interativo JSON do Streamlit
-                        for idx, contrato in enumerate(itens_brutos, 1):
-                            with st.expander(f"📄 Contrato {idx} - N° {contrato.get('numeroContratoEmpenho', 'S/N')} / {contrato.get('anoContrato', '')}"):
-                                st.json(contrato)
-                    else:
-                        st.error(f"⚠️ {mensagem}")
+                    # Exibe o visualizador interativo JSON do Streamlit
+                    for idx, contrato in enumerate(itens_brutos, 1):
+                        with st.expander(f"📄 Contrato {idx} - N° {contrato.get('numeroContratoEmpenho', 'S/N')} / {contrato.get('anoContrato', '')}"):
+                            st.json(contrato)
+                else:
+                    st.error(f"⚠️ {mensagem}")
 
 
 
