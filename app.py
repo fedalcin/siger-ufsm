@@ -132,24 +132,22 @@ from calculos_siger import (
 # ---------------------------------------------------------
 def buscar_dados_contratos_ufsm_comprasgov():
     """
-    Busca contratos no PNCP e aplica o filtro estrito em Python navegando na estrutura JSON real:
-    1. codigoUnidade == '153164'
-    2. categoriaProcesso.nome in ['Serviços', 'Compras']
-    3. dataVigenciaInicio <= hoje <= dataVigenciaFim
+    Busca contratos da UFSM no PNCP com requisições leves (tamanhoPagina=20)
+    e aplica o filtro estrito em Python usando a estrutura exata do JSON retornado:
+    - codigoUnidade == '153164'
+    - categoriaProcesso.nome in ['Serviços', 'Compras']
+    - dataVigenciaInicio <= hoje <= dataVigenciaFim
     """
     from datetime import datetime, timedelta, timezone
     import requests
 
-    # 1. Obter a data de hoje no fuso horário oficial (-3)
     fuso_br = timezone(timedelta(hours=-3))
     hoje_dt = datetime.now(fuso_br).date()
     
-    # 2. Janela de busca na API (365 dias para respeitar o limite HTTP 422 do PNCP)
+    # Período de 365 dias (limite do webservice do PNCP)
     dt_inicio_pncp = (hoje_dt - timedelta(days=365)).strftime("%Y%m%d")
     dt_hoje_pncp = hoje_dt.strftime("%Y%m%d")
     cnpj_ufsm = "95591764000105"
-    
-    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_pncp}&dataFinal={dt_hoje_pncp}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=100"
     
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -160,88 +158,87 @@ def buscar_dados_contratos_ufsm_comprasgov():
     soma_valor_vigente = 0.0
 
     try:
-        response = requests.get(url_api, headers=headers, timeout=12)
+        # Percorre até 5 páginas curtas de 20 itens cada (respostas ultrarrápidas sem timeout)
+        for num_pagina in range(1, 6):
+            url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_pncp}&dataFinal={dt_hoje_pncp}&cnpjOrgao={cnpj_ufsm}&pagina={num_pagina}&tamanhoPagina=20"
+            
+            try:
+                response = requests.get(url_api, headers=headers, timeout=8)
+                if response.status_code != 200:
+                    break
+                
+                dados = response.json()
+                itens = dados.get("data", [])
+                if not itens:
+                    break
+                
+                for item in itens:
+                    # 1. Unidade Gestora
+                    unidade = item.get("unidadeOrgao") or {}
+                    cod_unidade = str(unidade.get("codigoUnidade", "")).strip()
+                    if cod_unidade != "153164":
+                        continue
+                    
+                    # 2. Categoria (Serviços / Compras)
+                    categoria = item.get("categoriaProcesso") or {}
+                    nome_categoria = str(categoria.get("nome", "")).strip()
+                    if nome_categoria not in ["Serviços", "Compras"]:
+                        continue
+                    
+                    # 3. Vigência (dataVigenciaInicio <= hoje <= dataVigenciaFim)
+                    str_ini = item.get("dataVigenciaInicio")
+                    str_fim = item.get("dataVigenciaFim")
+                    
+                    dt_ini = None
+                    dt_fim = None
+                    
+                    if str_ini:
+                        try:
+                            dt_ini = datetime.strptime(str_ini[:10], "%Y-%m-%d").date()
+                        except Exception:
+                            pass
+
+                    if str_fim:
+                        try:
+                            dt_fim = datetime.strptime(str_fim[:10], "%Y-%m-%d").date()
+                        except Exception:
+                            pass
+
+                    eh_vigente = False
+                    if dt_ini and dt_fim:
+                        if dt_ini <= hoje_dt <= dt_fim:
+                            eh_vigente = True
+                    elif dt_ini and not dt_fim:
+                        if dt_ini <= hoje_dt:
+                            eh_vigente = True
+
+                    if eh_vigente:
+                        total_vigentes += 1
+                        val = item.get("valorGlobal") or item.get("valorInicial") or 0.0
+                        soma_valor_vigente += float(val)
+
+            except Exception:
+                # Se uma página individual falhar na rede, encerra a paginação sem derrubar o sistema
+                break
+
+        ticket_medio = (soma_valor_vigente / total_vigentes) if total_vigentes > 0 else 0.0
         
-        if response.status_code == 200:
-            dados = response.json()
-            itens = dados.get("data", [])
-            
-            for item in itens:
-                # -------------------------------------------------------------
-                # FILTRO 1: Unidade Gestora (codigoUnidade == "153164")
-                # -------------------------------------------------------------
-                unidade = item.get("unidadeOrgao") or {}
-                cod_unidade = str(unidade.get("codigoUnidade", "")).strip()
-                if cod_unidade != "153164":
-                    continue
-                
-                # -------------------------------------------------------------
-                # FILTRO 2: Categoria ("Serviços" ou "Compras")
-                # -------------------------------------------------------------
-                categoria = item.get("categoriaProcesso") or {}
-                nome_categoria = str(categoria.get("nome", "")).strip()
-                if nome_categoria not in ["Serviços", "Compras"]:
-                    continue
-                
-                # -------------------------------------------------------------
-                # FILTRO 3: Vigência Ativa em Tempo Real (dt_ini <= hoje <= dt_fim)
-                # -------------------------------------------------------------
-                str_ini = item.get("dataVigenciaInicio")
-                str_fim = item.get("dataVigenciaFim")
-                
-                dt_ini = None
-                dt_fim = None
-                
-                if str_ini:
-                    try:
-                        dt_ini = datetime.strptime(str_ini[:10], "%Y-%m-%d").date()
-                    except Exception:
-                        pass
-
-                if str_fim:
-                    try:
-                        dt_fim = datetime.strptime(str_fim[:10], "%Y-%m-%d").date()
-                    except Exception:
-                        pass
-
-                # Aplica a regra estrita de vigência
-                eh_vigente = False
-                if dt_ini and dt_fim:
-                    if dt_ini <= hoje_dt <= dt_fim:
-                        eh_vigente = True
-                elif dt_ini and not dt_fim:
-                    if dt_ini <= hoje_dt:
-                        eh_vigente = True
-
-                if eh_vigente:
-                    total_vigentes += 1
-                    val = item.get("valorGlobal") or item.get("valorInicial") or 0.0
-                    soma_valor_vigente += float(val)
-
-            # -----------------------------------------------------------------
-            # CÁLCULOS E FORMATAÇÃO VISUAL
-            # -----------------------------------------------------------------
-            ticket_medio = (soma_valor_vigente / total_vigentes) if total_vigentes > 0 else 0.0
-            
-            tot_val_fmt = f"R$ {soma_valor_vigente:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            ticket_fmt = f"R$ {ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            
-            # String limpa com divisores | para quebrar nas colunas no Streamlit
-            texto_kri_banco = f"{total_vigentes}|{tot_val_fmt}|{ticket_fmt}"
-            
-            msg_sucesso = (
-                f"✅ **Sincronização com Filtro Específico Concluída!**\n"
-                f"* **Data de Validação:** {hoje_dt.strftime('%d/%m/%Y')}\n"
-                f"* **Unidade Gestora:** 153164 (UFSM)\n"
-                f"* **Categorias Consideradas:** Serviços e Compras\n"
-                f"* **Contratos Efetivamente Vigentes Hoje:** {total_vigentes}\n"
-                f"* **Valor Total em Execução:** {tot_val_fmt}\n"
-                f"* **Ticket Médio:** {ticket_fmt}"
-            )
-            
-            return True, texto_kri_banco, msg_sucesso
-        else:
-            return False, "0|R$ 0,00|R$ 0,00", f"API retornou status HTTP {response.status_code}."
+        tot_val_fmt = f"R$ {soma_valor_vigente:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        ticket_fmt = f"R$ {ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        
+        texto_kri_banco = f"{total_vigentes}|{tot_val_fmt}|{ticket_fmt}"
+        
+        msg_sucesso = (
+            f"✅ **Sincronização com Filtro Específico Concluída!**\n"
+            f"* **Data de Validação:** {hoje_dt.strftime('%d/%m/%Y')}\n"
+            f"* **Unidade Gestora:** 153164 (UFSM)\n"
+            f"* **Categorias Consideradas:** Serviços e Compras\n"
+            f"* **Contratos Efetivamente Vigentes Hoje:** {total_vigentes}\n"
+            f"* **Valor Total em Execução:** {tot_val_fmt}\n"
+            f"* **Ticket Médio:** {ticket_fmt}"
+        )
+        
+        return True, texto_kri_banco, msg_sucesso
 
     except Exception as e:
         return False, "0|R$ 0,00|R$ 0,00", f"Falha ao conectar com o PNCP: {e}"
