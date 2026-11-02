@@ -286,10 +286,11 @@ def buscar_dados_contratos_ufsm_comprasgov():
                 # Contabiliza os tipos encontrados para diagnóstico
                 contagem_tipos[nome_tipo] = contagem_tipos.get(nome_tipo, 0) + 1
 
-                # Considera somente contratos
-                if nome_tipo.lower() != "contrato":
+                # Considera contratos e seus termos iniciais.
+                # Exclui empenhos e concessões.
+                if not nome_tipo.lower().startswith("contrato"):
                     continue
-                    
+                
                 valor = item.get("valorGlobal") or item.get("valorInicial") or 0
 
                 lista_contratos.append({
