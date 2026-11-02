@@ -280,7 +280,21 @@ def buscar_dados_contratos_ufsm_comprasgov():
                     timeout=60
                 )
 
-                if response.status_code != 200:
+                # HTTP 204 significa que não existem registros neste período.
+                if response.status_code == 204:
+                    itens = []
+                    total_paginas = 0
+
+                elif response.status_code == 200:
+                    dados = response.json()
+                    itens = dados.get("data", [])
+
+                    if not isinstance(itens, list):
+                        return False, "", "Formato inesperado de resposta do PNCP.", []
+
+                    total_paginas = int(dados.get("totalPaginas", 1) or 1)
+
+                else:
                     return (
                         False,
                         "",
@@ -289,10 +303,7 @@ def buscar_dados_contratos_ufsm_comprasgov():
                         f"{response.text[:1000]}",
                         []
                     )
-
-                dados = response.json()
-                itens = dados.get("data", [])
-
+                
                 if not isinstance(itens, list):
                     return False, "", "Formato inesperado de resposta do PNCP.", []
 
