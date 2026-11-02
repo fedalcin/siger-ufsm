@@ -1415,6 +1415,8 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                 f"chk_prf_inc_{sfx}": def_perm("adm_perfis", "incluir"),
                 f"chk_prf_alt_{sfx}": def_perm("adm_perfis", "alterar"),
                 f"chk_prf_exc_{sfx}": def_perm("adm_perfis", "excluir"),
+                f"chk_aud_acc_{sfx}": def_perm("adm_auditoria", "acesso"),
+                f"chk_aud_alt_{sfx}": def_perm("adm_auditoria", "alterar"),
                 f"chk_idv_acc_{sfx}": def_perm("adm_id_visual", "acesso"),
                 f"chk_idv_alt_{sfx}": def_perm("adm_id_visual", "alterar"),
                 f"chk_txt_acc_{sfx}": def_perm("adm_texto_home", "acesso"),
@@ -1459,7 +1461,7 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
 
             with st.form(key=f"form_matriz_perm_{sfx}"):
                 st.markdown("### ⚙️ 1. Módulo Administração")
-                c1, c2, c3, c4, c5 = st.columns(5)
+                c1, c2, c3, c4, c5, c6 = st.columns(6)
                 
                 with c1:
                     st.markdown("**👥 Usuários**")
@@ -1476,16 +1478,21 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                     p_prf_exc = st.checkbox("Excluir Perfis", key=f"chk_prf_exc_{sfx}", disabled=eh_perfil_admin)
 
                 with c3:
+                    st.markdown("**📜 Auditoria**")
+                    p_aud_acc = st.checkbox("Acessar Auditoria", key=f"chk_aud_acc_{sfx}")
+                    p_aud_alt = st.checkbox("Exportar/Gerenciar", key=f"chk_aud_alt_{sfx}")
+
+                with c4:
                     st.markdown("**🖼️ Identidade Visual**")
                     p_idv_acc = st.checkbox("Acessar Id. Visual", key=f"chk_idv_acc_{sfx}")
                     p_idv_alt = st.checkbox("Alterar Id. Visual", key=f"chk_idv_alt_{sfx}")
 
-                with c4:
+                with c5:
                     st.markdown("**✍ Texto Inicial**")
                     p_txt_acc = st.checkbox("Acessar Texto Initial", key=f"chk_txt_acc_{sfx}")
                     p_txt_alt = st.checkbox("Alterar Texto Initial", key=f"chk_txt_alt_{sfx}")
 
-                with c5:
+                with c6:
                     st.markdown("**🔧 Config. Gerais**")
                     p_cfg_acc = st.checkbox("Acessar Config. Gerais", key=f"chk_cfg_acc_{sfx}")
                     p_cfg_alt = st.checkbox("Alterar Config. Gerais", key=f"chk_cfg_alt_{sfx}")
@@ -1583,6 +1590,7 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                         nova_matriz = {
                             "adm_usuarios": {"acesso": usr_acc_val, "incluir": usr_inc_val, "alterar": usr_alt_val, "excluir": usr_exc_val},
                             "adm_perfis": {"acesso": prf_acc_val, "incluir": prf_inc_val, "alterar": prf_alt_val, "excluir": prf_exc_val},
+                            "adm_auditoria": {"acesso": p_aud_acc, "alterar": p_aud_alt},
                             "adm_id_visual": {"acesso": p_idv_acc, "alterar": p_idv_alt},
                             "adm_texto_home": {"acesso": p_txt_acc, "alterar": p_txt_alt},
                             "adm_config_gerais": {"acesso": p_cfg_acc, "alterar": p_cfg_alt},
