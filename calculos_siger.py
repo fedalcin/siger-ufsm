@@ -274,12 +274,21 @@ def buscar_dados_contratos_ufsm_comprasgov():
 
             for item in itens:
                 tipo = item.get("tipoContrato") or {}
-                nome_tipo = tipo.get("nome", "").strip().lower()
 
-                # Considera somente contratos, excluindo empenhos
-                if nome_tipo != "contrato":
+                if isinstance(tipo, dict):
+                    nome_tipo = tipo.get("nome", "Não informado")
+                else:
+                    nome_tipo = str(tipo)
+
+                nome_tipo = nome_tipo.strip()
+
+                # Contabiliza os tipos encontrados para diagnóstico
+                contagem_tipos[nome_tipo] = contagem_tipos.get(nome_tipo, 0) + 1
+
+                # Considera somente contratos
+                if nome_tipo.lower() != "contrato":
                     continue
-
+                    
                 valor = item.get("valorGlobal") or item.get("valorInicial") or 0
 
                 lista_contratos.append({
