@@ -211,14 +211,13 @@ def calcular_exposicao_agregada(
 # =============================================================================
 def buscar_dados_contratos_ufsm_comprasgov():
     """
-    Busca contratos da UFSM no PNCP (últimos 5 anos), percorrendo todas as páginas.
+    Busca TODOS os contratos da UFSM no PNCP (últimos 5 anos), percorrendo todas as páginas.
     Retorna: (sucesso: bool, valor_kri_formatado: str, mensagem: str, lista_contratos: list)
     """
     fuso_br = timezone(timedelta(hours=-3))
     agora = datetime.now(fuso_br)
     hoje_dt = agora.date()
     
-    # Busca dos últimos 5 anos (1825 dias) para não perder contratos vigentes de longa duração
     dt_inicio_pncp = (hoje_dt - timedelta(days=1825)).strftime("%Y%m%d")
     dt_hoje_pncp = hoje_dt.strftime("%Y%m%d")
     cnpj_ufsm = "95591764000105"
@@ -243,7 +242,7 @@ def buscar_dados_contratos_ufsm_comprasgov():
             
             response = requests.get(url_api, headers=headers, timeout=30)
             if response.status_code != 200:
-                return False, "", f"Erro na API (Pág {pagina_atual}): HTTP {response.status_code}", []
+                return False, "", f"Erro na API PNCP (Página {pagina_atual}): Status HTTP {response.status_code}", []
                 
             dados = response.json()
             itens = dados.get("data", [])
@@ -261,7 +260,6 @@ def buscar_dados_contratos_ufsm_comprasgov():
                 except ValueError:
                     continue
 
-                # Regra de vigência: data inicial <= hoje E (data final >= hoje OU sem data final)
                 if dt_ini and dt_ini <= hoje_dt and (not dt_fim or dt_fim >= hoje_dt):
                     v_item = float(item.get("valorGlobal") or item.get("valorInicial") or 0.0)
                     valor_total_vigente += v_item
