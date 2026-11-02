@@ -132,98 +132,52 @@ from calculos_siger import (
 # ---------------------------------------------------------
 def buscar_dados_contratos_ufsm_comprasgov():
     """
-    Busca via API do PNCP todos os contratos da UFSM firmados nos últimos 5 anos,
-    validando contrato por contrato se a data atual está dentro da vigência real (dt_ini <= hoje <= dt_fim).
+    Realiza uma consulta direta e única de 5 contratos da UFSM no PNCP
+    e retorna o payload bruto completo para inspeção de campos e estrutura.
     """
     from datetime import datetime, timedelta, timezone
-    import re
-
-    # Data atual no fuso de Brasília
-    fuso_br = timezone(timedelta(hours=-3))
-    hoje = datetime.now(fuso_br).date()
     
+    fuso_br = timezone(timedelta(hours=-3))
+    agora = datetime.now(fuso_br)
+    
+    dt_inicio_ano = f"{agora.year}0101"
+    dt_hoje = agora.strftime("%Y%m%d")
     cnpj_ufsm = "95591764000105"
+    
+    # Consulta simples de 1 página com 5 registros
+    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_ano}&dataFinal={dt_hoje}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=5"
+    
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "accept": "application/json"
     }
     
-    total_vigentes = 0
-    soma_valor_vigente = 0.0
-    contratos_processados = set()  # Garante unicidade dos registros
-
-    def extrair_data(str_data):
-        if not str_data:
-            return None
-        try:
-            match = re.search(r'\d{4}-\d{2}-\d{2}', str_data)
-            if match:
-                return datetime.strptime(match.group(0), "%Y-%m-%d").date()
-        except Exception:
-            pass
-        return None
-
-    # Monta 5 janelas móveis de 365 dias para cobrir o ciclo completo de 5 anos de vigência
-    janelas = []
-    for i in range(5):
-        dt_fim_j = hoje - timedelta(days=i * 365)
-        dt_ini_j = hoje - timedelta(days=(i + 1) * 365 - 1)
-        janelas.append((dt_ini_j.strftime("%Y%m%d"), dt_fim_j.strftime("%Y%m%d")))
-
     try:
-        for dt_ini_req, dt_fim_req in janelas:
-            url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_ini_req}&dataFinal={dt_fim_req}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=100"
-            response = requests.get(url_api, headers=headers, timeout=10)
+        response = requests.get(url_api, headers=headers, timeout=10)
+        
+        if response.status_code == 200:
+            dados = response.json()
+            total_registros = dados.get("totalRegistros", 0)
+            itens = dados.get("data", [])
             
-            if response.status_code == 200:
-                dados = response.json()
-                itens = dados.get("data", [])
-                
-                for item in itens:
-                    # Identificador único do contrato no PNCP
-                    item_id = item.get("id") or f"{item.get('numeroContratoEmpenho')}_{item.get('anoContrato')}"
-                    
-                    if item_id in contratos_processados:
-                        continue
-                    
-                    dt_ini = extrair_data(item.get("dataInicialVigencia"))
-                    dt_fim = extrair_data(item.get("dataFinalVigencia"))
-                    
-                    if dt_ini:
-                        eh_vigente = False
-                        if dt_fim and (dt_ini <= hoje <= dt_fim):
-                            eh_vigente = True
-                        elif not dt_fim and (dt_ini <= hoje):
-                            eh_vigente = True
-
-                        if eh_vigente:
-                            contratos_processados.add(item_id)
-                            total_vigentes += 1
-                            val = item.get("valorGlobal") or item.get("valorInicial") or 0.0
-                            soma_valor_vigente += float(val)
-
-        # Cálculo do Ticket Médio Real
-        ticket_medio = (soma_valor_vigente / total_vigentes) if total_vigentes > 0 else 0.0
-        
-        # Formatação Moeda BR
-        tot_val_fmt = f"R$ {soma_valor_vigente:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        ticket_fmt = f"R$ {ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        
-        texto_kri_banco = f"{total_vigentes}|{tot_val_fmt}|{ticket_fmt}"
-        
-        msg_sucesso = (
-            f"✅ **Sincronização Plurianual Concluída com Sucesso!**\n"
-            f"* **Data de Validação:** {hoje.strftime('%d/%m/%Y')}\n"
-            f"* **Janela Analisada:** Últimos 5 anos (cobertura de contratos contínuos e de longa duração)\n"
-            f"* **Contratos Efetivamente Vigentes Hoje:** {total_vigentes}\n"
-            f"* **Valor Total em Execução:** {tot_val_fmt}\n"
-            f"* **Ticket Médio:** {ticket_fmt}"
-        )
-        
-        return True, texto_kri_banco, msg_sucesso
+            # Formata os 5 contratos recebidos em texto/json legível para a tela
+            import json
+            payload_inspecao = json.dumps(itens[:5], indent=2, ensure_ascii=False)
+            
+            msg_diagnostico = (
+                f"📊 **Consulta Realizada com Sucesso!**\n"
+                f"* **Total de Registros Encontrados na Base:** `{total_registros}`\n"
+                f"* **Registros Retornados para Inspeção:** `{len(itens)}`\n\n"
+                f"```json\n{payload_inspecao}\n```"
+            )
+            
+            # Retorna o texto formatado no lugar da métrica para visualização imediata
+            return True, f"{total_registros} registros", msg_diagnostico
+        else:
+            return False, "Erro", f"API retornou status HTTP {response.status_code}: `{response.text[:200]}`"
 
     except Exception as e:
-        return False, "0|R$ 0,00|R$ 0,00", f"Erro na conexão com webservice PNCP: {e}"
+        return False, "Erro", f"Falha de conexão: {e}"
 
 # ---------------------------------------------------------
 # CONEXÃO COM SUPABASE
