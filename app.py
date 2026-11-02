@@ -1463,29 +1463,11 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
         if st.button("🔄 Sincronizar e Inspecionar Contratos da UFSM", type="primary"):
             with st.spinner("Buscando todas as páginas de contratos no PNCP/Compras.gov..."):
                 sucesso, valor_kri_formatado, msg, lista_contratos = buscar_dados_contratos_ufsm_comprasgov()
-                
+
                 if sucesso:
                     st.session_state["dados_conferencia_pncp"] = lista_contratos
                     st.session_state["msg_pncp"] = msg
-
                     st.success(msg)
-
-                else:
-                    st.error(f"⚠️ {msg}")
-                    
-                    # Atualiza as configurações no Supabase
-                    fuso_br = timezone(timedelta(hours=-3))
-                    dt_agora = datetime.now(fuso_br).isoformat()
-                    try:
-                        supabase.table("integracoes_sistemas").update({
-                            "ultima_sincronizacao": dt_agora,
-                            "dados_compartilhados": valor_kri_formatado
-                        }).ilike("nome_sistema", "%Compras.gov%").execute()
-                    except Exception as e_upd:
-                        st.error(f"Erro ao atualizar cache no banco: {e_upd}")
-                        
-                    st.success(msg)
-                    st.rerun()
                 else:
                     st.error(f"⚠️ {msg}")
 
