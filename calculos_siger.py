@@ -212,100 +212,142 @@ def calcular_exposicao_agregada(
 # =============================================================================
 def buscar_dados_contratos_ufsm_comprasgov():
     """
-    Busca automatizada na API do PNCP para a Unidade Gestora da UFSM (UG 153164).
-    Utiliza tamanho de página otimizado (50 itens) para evitar timeouts da API pública.
+    Consulta contratos da UFSM no PNCP.
+    Retorna:
+    (sucesso, valor_kri_formatado, mensagem, lista_contratos)
     """
+
+    from datetime import datetime, timedelta, timezone
+    import requests
+
     fuso_br = timezone(timedelta(hours=-3))
-    agora = datetime.now(fuso_br)
-    hoje_dt = agora.date()
-    
+    hoje = datetime.now(fuso_br).date()
+
+    # Mantemos inicialmente o período original para testar
+    data_inicial = (hoje - timedelta(days=365)).strftime("%Y%m%d")
+    data_final = hoje.strftime("%Y%m%d")
+
     cnpj_ufsm = "95591764000105"
-    ug_ufsm = "153164"
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "accept": "application/json"
+
+    url = "https://pncp.gov.br/api/consulta/v1/contratos"
+
+    parametros = {
+        "dataInicial": data_inicial,
+        "dataFinal": data_final,
+        "cnpjOrgao": cnpj_ufsm,
+        "pagina": 1,
+        "tamanhoPagina": 10
     }
-    
-    contratos_vigentes = []
-    valor_total_vigente = 0.0
-    pagina_atual = 1
-    total_paginas = 1
-    timeout_segundos = 60  # Aumentado para dar margem à API pública
+
+    headers = {
+        "accept": "application/json",
+        "User-Agent": "SIGER-UFSM/1.0"
+    }
 
     try:
-        while pagina_atual <= total_paginas:
-            # Requisita páginas menores (50 itens) para que o PNCP responda instantaneamente
-            url_api = (
-                f"https://pncp.gov.br/api/consulta/v1/contratos"
-                f"?cnpjOrgao={cnpj_ufsm}&codigoUnidade={ug_ufsm}"
-                f"&pagina={pagina_atual}&tamanhoPagina=50"
+        # TESTE INICIAL: consultar somente a primeira página
+        response = requests.get(
+            url,
+            params=parametros,
+            headers=headers,
+            timeout=40
+        )
+
+        if response.status_code != 200:
+            return (
+                False, "", 
+                f"Erro HTTP {response.status_code}. "
+                f"Resposta: {response.text[:1500]}",
+                []
             )
-            
-            # Tolerância a falhas: até 3 tentativas por página em caso de oscilação do governo
-            resposta_sucesso = False
-            for tentativa in range(1, 4):
-                try:
-                    response = requests.get(url_api, headers=headers, timeout=timeout_segundos)
-                    if response.status_code == 200:
-                        resposta_sucesso = True
-                        break
-                    time.sleep(1)
-                except requests.exceptions.RequestException:
-                    time.sleep(2)
 
-            if not resposta_sucesso:
-                # Se após 3 tentativas a página não responder, interrompe a busca mantendo os dados já coletados
-                break
-                
+        try:
             dados = response.json()
-            itens = dados.get("data", []) or dados.get("resultado", [])
-            
-            if pagina_atual == 1:
-                total_paginas = dados.get("totalPaginas", 1)
+        except ValueError:
+            return (
+                False, "",
+                f"A API não retornou JSON válido. "
+                f"Resposta: {response.text[:1500]}",
+                []
+            )
 
-            if not itens:
-                break
+        # Verifica a estrutura da resposta
+        itens = dados.get("data", [])
 
-            for item in itens:
-                dt_ini_raw = str(item.get("dataVigenciaInicio") or "")[:10]
-                dt_fim_raw = str(item.get("dataVigenciaFim") or "")[:10]
+        if not isinstance(itens, list):
+            return (
+                False, "",
+                f"Estrutura inesperada da API: "
+                f"'data' não é uma lista. "
+                f"Retorno: {str(dados)[:1500]}",
+                []
+            )
+
+        if not itens:
+            return (
+                False, "",
+                "A API respondeu HTTP 200, mas não encontrou "
+                "contratos para o CNPJ e período consultados.",
+                []
+            )
+
+        # IMPORTANTE:
+        # Nesta primeira etapa não filtramos a vigência.
+        # Queremos visualizar os registros originais recebidos.
+
+        lista_contratos = []
+
+        for item in itens:
+            categoria = item.get("categoriaProcesso") or {}
+
+            if isinstance(categoria, dict):
+                categoria = categoria.get("nome", "")
                 
-                try:
-                    dt_ini = datetime.strptime(dt_ini_raw, "%Y-%m-%d").date() if dt_ini_raw else None
-                    dt_fim = datetime.strptime(dt_fim_raw, "%Y-%m-%d").date() if dt_fim_raw else None
-                except ValueError:
-                    continue
+            valor = (
+                item.get("valorGlobal")
+                or item.get("valorInicial")
+                or 0
+            )
 
-                if dt_ini and dt_ini <= hoje_dt and (not dt_fim or dt_fim >= hoje_dt):
-                    v_item = float(item.get("valorGlobal") or item.get("valorInicial") or 0.0)
-                    valor_total_vigente += v_item
-                    
-                    contratos_vigentes.append({
-                        "Número Contrato / Empenho": str(item.get("numeroContratoEmpenho", "S/N")),
-                        "Ano": item.get("anoContrato"),
-                        "Objeto / Categoria": (item.get("categoriaProcesso") or {}).get("nome") or item.get("objetoContrato", "-"),
-                        "Valor Global": v_item,
-                        "Início Vigência": dt_ini_raw,
-                        "Fim Vigência": dt_fim_raw or "Não informada",
-                        "Unidade Gestora": (item.get("unidadeOrgao") or {}).get("codigoUnidade", ug_ufsm)
-                    })
+            lista_contratos.append({
+                "Número Contrato / Empenho":
+                    item.get("numeroContratoEmpenho", "Não informado"),
 
-            pagina_atual += 1
+                "Objeto / Categoria":
+                    item.get("objetoContrato") or str(categoria),
 
-        qtd_vigentes = len(contratos_vigentes)
-        if qtd_vigentes == 0:
-            return False, "", "A API respondeu, mas nenhum contrato ativo foi identificado na receita/vigência atual.", []
+                "Valor Global": float(valor or 0),
 
-        ticket_medio = valor_total_vigente / qtd_vigentes
-        
-        val_total_fmt = f"R$ {valor_total_vigente:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        ticket_fmt = f"R$ {ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        
-        string_kri_formatada = f"{qtd_vigentes}|{val_total_fmt}|{ticket_fmt}"
-        msg_sucesso = f"Sincronização concluída: {qtd_vigentes} contratos vigentes mapeados com sucesso."
-        
-        return True, string_kri_formatada, msg_sucesso, contratos_vigentes
+                "Data Inicial":
+                    item.get("dataVigenciaInicio"),
+
+                "Data Final":
+                    item.get("dataVigenciaFim"),
+
+                "Número Controle PNCP":
+                    item.get("numeroControlePNCP"),
+
+                "Dados Originais":
+                    str(item)
+            })
+
+        # Informação apenas para diagnóstico.
+        mensagem = (
+            f"Conexão realizada! HTTP {response.status_code}. "
+            f"Registros recebidos nesta página: {len(itens)}. "
+            f"Total de páginas informado pela API: "
+            f"{dados.get('totalPaginas', 'Não informado')}."
+        )
+
+        # Ainda não calculamos o KRI definitivo.
+        return True, "TESTE", mensagem, lista_contratos
+
+    except requests.exceptions.Timeout:
+        return False, "", "Tempo limite excedido na conexão com o PNCP.", []
+
+    except requests.exceptions.ConnectionError as e:
+        return False, "", f"Erro de conexão com o PNCP: {str(e)}", []
 
     except Exception as e:
-        return False, "", f"Erro na sincronização automatizada com o PNCP: {str(e)}", []
+        return False, "", f"Erro inesperado: {str(e)}", []
+
