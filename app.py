@@ -132,40 +132,119 @@ from calculos_siger import (
 # ---------------------------------------------------------
 def buscar_dados_contratos_ufsm_comprasgov():
     """
-    Realiza uma consulta direta de 10 contratos da UFSM no PNCP
-    e retorna a lista de objetos Python brutos para inspeção detalhada na tela.
+    Busca contratos no PNCP e aplica o filtro estrito em Python navegando na estrutura JSON real:
+    1. codigoUnidade == '153164'
+    2. categoriaProcesso.nome in ['Serviços', 'Compras']
+    3. dataVigenciaInicio <= hoje <= dataVigenciaFim
     """
     from datetime import datetime, timedelta, timezone
-    
+    import requests
+
+    # 1. Obter a data de hoje no fuso horário oficial (-3)
     fuso_br = timezone(timedelta(hours=-3))
-    agora = datetime.now(fuso_br)
+    hoje_dt = datetime.now(fuso_br).date()
     
-    dt_inicio_ano = f"{agora.year}0101"
-    dt_hoje = agora.strftime("%Y%m%d")
+    # 2. Janela de busca na API (365 dias para respeitar o limite HTTP 422 do PNCP)
+    dt_inicio_pncp = (hoje_dt - timedelta(days=365)).strftime("%Y%m%d")
+    dt_hoje_pncp = hoje_dt.strftime("%Y%m%d")
     cnpj_ufsm = "95591764000105"
     
-    # tamanhoPagina=10 atende ao limite mínimo exigido pela API pública do PNCP
-    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_ano}&dataFinal={dt_hoje}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=10"
+    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_pncp}&dataFinal={dt_hoje_pncp}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=100"
     
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "accept": "application/json"
     }
     
+    total_vigentes = 0
+    soma_valor_vigente = 0.0
+
     try:
-        response = requests.get(url_api, headers=headers, timeout=10)
+        response = requests.get(url_api, headers=headers, timeout=12)
         
         if response.status_code == 200:
             dados = response.json()
-            total_registros = dados.get("totalRegistros", 0)
             itens = dados.get("data", [])
             
-            return True, itens[:5], f"Consulta OK! `{total_registros}` contratos encontrados na base oficial da UFSM."
+            for item in itens:
+                # -------------------------------------------------------------
+                # FILTRO 1: Unidade Gestora (codigoUnidade == "153164")
+                # -------------------------------------------------------------
+                unidade = item.get("unidadeOrgao") or {}
+                cod_unidade = str(unidade.get("codigoUnidade", "")).strip()
+                if cod_unidade != "153164":
+                    continue
+                
+                # -------------------------------------------------------------
+                # FILTRO 2: Categoria ("Serviços" ou "Compras")
+                # -------------------------------------------------------------
+                categoria = item.get("categoriaProcesso") or {}
+                nome_categoria = str(categoria.get("nome", "")).strip()
+                if nome_categoria not in ["Serviços", "Compras"]:
+                    continue
+                
+                # -------------------------------------------------------------
+                # FILTRO 3: Vigência Ativa em Tempo Real (dt_ini <= hoje <= dt_fim)
+                # -------------------------------------------------------------
+                str_ini = item.get("dataVigenciaInicio")
+                str_fim = item.get("dataVigenciaFim")
+                
+                dt_ini = None
+                dt_fim = None
+                
+                if str_ini:
+                    try:
+                        dt_ini = datetime.strptime(str_ini[:10], "%Y-%m-%d").date()
+                    except Exception:
+                        pass
+
+                if str_fim:
+                    try:
+                        dt_fim = datetime.strptime(str_fim[:10], "%Y-%m-%d").date()
+                    except Exception:
+                        pass
+
+                # Aplica a regra estrita de vigência
+                eh_vigente = False
+                if dt_ini and dt_fim:
+                    if dt_ini <= hoje_dt <= dt_fim:
+                        eh_vigente = True
+                elif dt_ini and not dt_fim:
+                    if dt_ini <= hoje_dt:
+                        eh_vigente = True
+
+                if eh_vigente:
+                    total_vigentes += 1
+                    val = item.get("valorGlobal") or item.get("valorInicial") or 0.0
+                    soma_valor_vigente += float(val)
+
+            # -----------------------------------------------------------------
+            # CÁLCULOS E FORMATAÇÃO VISUAL
+            # -----------------------------------------------------------------
+            ticket_medio = (soma_valor_vigente / total_vigentes) if total_vigentes > 0 else 0.0
+            
+            tot_val_fmt = f"R$ {soma_valor_vigente:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            ticket_fmt = f"R$ {ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            
+            # String limpa com divisores | para quebrar nas colunas no Streamlit
+            texto_kri_banco = f"{total_vigentes}|{tot_val_fmt}|{ticket_fmt}"
+            
+            msg_sucesso = (
+                f"✅ **Sincronização com Filtro Específico Concluída!**\n"
+                f"* **Data de Validação:** {hoje_dt.strftime('%d/%m/%Y')}\n"
+                f"* **Unidade Gestora:** 153164 (UFSM)\n"
+                f"* **Categorias Consideradas:** Serviços e Compras\n"
+                f"* **Contratos Efetivamente Vigentes Hoje:** {total_vigentes}\n"
+                f"* **Valor Total em Execução:** {tot_val_fmt}\n"
+                f"* **Ticket Médio:** {ticket_fmt}"
+            )
+            
+            return True, texto_kri_banco, msg_sucesso
         else:
-            return False, [], f"API retornou status HTTP {response.status_code}: `{response.text}`"
+            return False, "0|R$ 0,00|R$ 0,00", f"API retornou status HTTP {response.status_code}."
 
     except Exception as e:
-        return False, [], f"Falha de conexão: {e}"
+        return False, "0|R$ 0,00|R$ 0,00", f"Falha ao conectar com o PNCP: {e}"
 
 # ---------------------------------------------------------
 # CONEXÃO COM SUPABASE
@@ -1378,60 +1457,58 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
         st.divider()
 
         # Botão para disparar a consulta de inspeção
-        if st.button("🔍 Inspecionar 5 Contratos Reais da UFSM (PNCP)", type="primary"):
-            with st.spinner("Buscando amostra bruta da API do Compras.gov / PNCP..."):
-                sucesso, itens_brutos, mensagem = buscar_dados_contratos_ufsm_comprasgov()
-            
-                if sucesso:
-                    st.success(mensagem)
-                    st.subheader("📋 Payload Bruto Retornado (Primeiros 5 Contratos)")
-                
-                    # Exibe o visualizador interativo JSON do Streamlit
-                    for idx, contrato in enumerate(itens_brutos, 1):
-                        with st.expander(f"📄 Contrato {idx} - N° {contrato.get('numeroContratoEmpenho', 'S/N')} / {contrato.get('anoContrato', '')}"):
-                            st.json(contrato)
-                else:
-                    st.error(f"⚠️ {mensagem}")
-
-
+#        if st.button("🔍 Inspecionar 5 Contratos Reais da UFSM (PNCP)", type="primary"):
+#            with st.spinner("Buscando amostra bruta da API do Compras.gov / PNCP..."):
+#                sucesso, itens_brutos, mensagem = buscar_dados_contratos_ufsm_comprasgov()
+#            
+#                if sucesso:
+#                    st.success(mensagem)
+#                    st.subheader("📋 Payload Bruto Retornado (Primeiros 5 Contratos)")
+#                
+#                    # Exibe o visualizador interativo JSON do Streamlit
+#                    for idx, contrato in enumerate(itens_brutos, 1):
+#                        with st.expander(f"📄 Contrato {idx} - N° {contrato.get('numeroContratoEmpenho', 'S/N')} / {contrato.get('anoContrato', '')}"):
+#                            st.json(contrato)
+#                else:
+#                    st.error(f"⚠️ {mensagem}")
 
         # 2. Botão de sincronização manual sob demanda
-#        if st.button("🔄 Sincronizar Dados via API Agora", type="primary"):
-#            with st.spinner("Conectando aos servidores do Compras.gov.br / PNCP..."):
-#                sucesso, valor_kri_formatado, msg = buscar_dados_contratos_ufsm_comprasgov()
-#                
-#                fuso_br = timezone(timedelta(hours=-3))
-#                dt_agora = datetime.now(fuso_br).isoformat()
-#
-#                if sucesso:
-#                    st.success("✅ **Sincronização Efetuada com Sucesso!**")
-#                    st.markdown(msg)
-#                    
-#                    try:
-#                        res_upd = supabase.table("integracoes_sistemas").update({
-#                            "ultima_sincronizacao": dt_agora,
-#                            "dados_compartilhados": valor_kri_formatado
-#                        }).ilike("nome_sistema", "%Compras.gov%").execute()
-#
-#                        # Grava ponto no histórico para o gráfico do dashboard
-#                        try:
-#                            qtd_num = int(valor_kri_formatado.split("|")[0])
-#                            res_sys = supabase.table("integracoes_sistemas").select("id").ilike("nome_sistema", "%Compras.gov%").execute()
-#                            if res_sys.data:
-#                                sys_id = res_sys.data[0]["id"]
-#                                supabase.table("historico_kri").insert({
-#                                    "integracao_id": sys_id,
-#                                    "valor_medido": qtd_num,
-#                                    "texto_exibicao": f"{qtd_num} contratos vigentes ({valor_kri_formatado.split('|')[1]})"
-#                                }).execute()
-#                        except Exception as e_hist:
-#                            print(f"Aviso histórico KRI: {e_hist}")
-#
-#                        st.rerun()
-#                    except Exception as e_upd:
-#                        st.error(f"Erro ao salvar dados sincronizados no banco: {e_upd}")
-#                else:
-#                    st.warning(f"⚠️ {msg}")
+        if st.button("🔄 Sincronizar Dados via API Agora", type="primary"):
+            with st.spinner("Conectando aos servidores do Compras.gov.br / PNCP..."):
+                sucesso, valor_kri_formatado, msg = buscar_dados_contratos_ufsm_comprasgov()
+                
+                fuso_br = timezone(timedelta(hours=-3))
+                dt_agora = datetime.now(fuso_br).isoformat()
+
+                if sucesso:
+                    st.success("✅ **Sincronização Efetuada com Sucesso!**")
+                    st.markdown(msg)
+                    
+                    try:
+                        res_upd = supabase.table("integracoes_sistemas").update({
+                            "ultima_sincronizacao": dt_agora,
+                            "dados_compartilhados": valor_kri_formatado
+                        }).ilike("nome_sistema", "%Compras.gov%").execute()
+
+                        # Grava ponto no histórico para o gráfico do dashboard
+                        try:
+                            qtd_num = int(valor_kri_formatado.split("|")[0])
+                            res_sys = supabase.table("integracoes_sistemas").select("id").ilike("nome_sistema", "%Compras.gov%").execute()
+                            if res_sys.data:
+                                sys_id = res_sys.data[0]["id"]
+                                supabase.table("historico_kri").insert({
+                                    "integracao_id": sys_id,
+                                    "valor_medido": qtd_num,
+                                    "texto_exibicao": f"{qtd_num} contratos vigentes ({valor_kri_formatado.split('|')[1]})"
+                                }).execute()
+                        except Exception as e_hist:
+                            print(f"Aviso histórico KRI: {e_hist}")
+
+                        st.rerun()
+                    except Exception as e_upd:
+                        st.error(f"Erro ao salvar dados sincronizados no banco: {e_upd}")
+                else:
+                    st.warning(f"⚠️ {msg}")
 
 # ---------------------------------------------------------
 # PÁGINA: ADMINISTRAÇÃO DO SISTEMA
