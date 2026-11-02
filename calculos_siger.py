@@ -1,7 +1,8 @@
 from datetime import date, datetime, timedelta
 import pandas as pd
 import numpy as np
-
+import requests
+from datetime import datetime, timezone, timedelta
 
 # =============================================================================
 # 1. CALCULADORAS OPERACIONAIS DE PRAZOS E ALERTAS
@@ -204,3 +205,72 @@ def calcular_exposicao_agregada(
     df_agrupado = df_agrupado.sort_values(by='soma_nivel_risco', ascending=False)
 
     return df_agrupado
+
+# =============================================================================
+# 4. INTEGRAÇÕES EXTERNAS E BUSCA DE DADOS (KRI)
+# =============================================================================
+
+def buscar_dados_contratos_ufsm_comprasgov():
+    """
+    Busca os contratos vigentes da UFSM no Portal Nacional de Contratações Públicas (PNCP / Compras.gov).
+    Retorna: (sucesso: bool, valor_kri_formatado: str, mensagem: str)
+    """
+    fuso_br = timezone(timedelta(hours=-3))
+    agora = datetime.now(fuso_br)
+    hoje_dt = agora.date()
+    
+    dt_inicio_pncp = (hoje_dt - timedelta(days=365)).strftime("%Y%m%d")
+    dt_hoje_pncp = hoje_dt.strftime("%Y%m%d")
+    cnpj_ufsm = "95591764000105"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "accept": "application/json"
+    }
+    
+    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_pncp}&dataFinal={dt_hoje_pncp}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=500"
+    
+    try:
+        response = requests.get(url_api, headers=headers, timeout=15)
+        if response.status_code != 200:
+            return False, "", f"Erro na requisição PNCP: Status HTTP {response.status_code}"
+            
+        dados = response.json()
+        itens = dados.get("data", [])
+        
+        if not itens:
+            return False, "", "Nenhum contrato retornado da API PNCP."
+            
+        qtd_vigentes = 0
+        valor_total_vigente = 0.0
+        
+        for item in itens:
+            # Verifica vigência
+            dt_ini_raw = str(item.get("dataVigenciaInicio") or "")[:10]
+            dt_fim_raw = str(item.get("dataVigenciaFim") or "")[:10]
+            
+            try:
+                dt_ini = datetime.strptime(dt_ini_raw, "%Y-%m-%d").date() if dt_ini_raw else None
+                dt_fim = datetime.strptime(dt_fim_raw, "%Y-%m-%d").date() if dt_fim_raw else None
+            except ValueError:
+                continue
+
+            if dt_ini and dt_ini <= hoje_dt and (not dt_fim or dt_fim >= hoje_dt):
+                qtd_vigentes += 1
+                v_item = float(item.get("valorGlobal") or item.get("valorInicial") or 0.0)
+                valor_total_vigente += v_item
+                
+        ticket_medio = (valor_total_vigente / qtd_vigentes) if qtd_vigentes > 0 else 0.0
+        
+        # Formata os valores
+        val_total_fmt = f"R$ {valor_total_vigente:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        ticket_fmt = f"R$ {ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        
+        # Formato KRI esperado pelo app.py: "QTD|VALOR_TOTAL|TICKET_MEDIO"
+        string_kri_formatada = f"{qtd_vigentes}|{val_total_fmt}|{ticket_fmt}"
+        msg_sucesso = f"Sincronização realizada: {qtd_vigentes} contratos vigentes encontrados (Total: {val_total_fmt})."
+        
+        return True, string_kri_formatada, msg_sucesso
+
+    except Exception as e:
+        return False, "", f"Falha de conexão com a API do PNCP: {str(e)}"
