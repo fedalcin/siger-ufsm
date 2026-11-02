@@ -1459,43 +1459,61 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
 
         st.divider()
 
-        # 2. Botão de sincronização manual sob demanda
-        if st.button("🔄 Sincronizar Dados via API Agora", type="primary"):
-            with st.spinner("Conectando aos servidores do Compras.gov.br / PNCP..."):
-                sucesso, valor_kri_formatado, msg = buscar_dados_contratos_ufsm_comprasgov()
+        # Botão de sincronização com visualizador de relatório e conferência
+        if st.button("🔄 Sincronizar e Inspecionar Contratos da UFSM", type="primary"):
+            with st.spinner("Buscando todas as páginas de contratos no PNCP/Compras.gov..."):
+                sucesso, valor_kri_formatado, msg, lista_contratos = buscar_dados_contratos_ufsm_comprasgov()
                 
-                fuso_br = timezone(timedelta(hours=-3))
-                dt_agora = datetime.now(fuso_br).isoformat()
-
                 if sucesso:
-                    st.success("✅ **Sincronização Efetuada com Sucesso!**")
-                    st.markdown(msg)
+                    st.session_state["dados_conferencia_pncp"] = lista_contratos
+                    st.session_state["msg_pncp"] = msg
+                    st.session_state["kri_pncp"] = valor_kri_formatado
                     
+                    # Atualiza as configurações no Supabase
+                    fuso_br = timezone(timedelta(hours=-3))
+                    dt_agora = datetime.now(fuso_br).isoformat()
                     try:
-                        res_upd = supabase.table("integracoes_sistemas").update({
+                        supabase.table("integracoes_sistemas").update({
                             "ultima_sincronizacao": dt_agora,
                             "dados_compartilhados": valor_kri_formatado
                         }).ilike("nome_sistema", "%Compras.gov%").execute()
-
-                        # Grava ponto no histórico para o gráfico do dashboard
-                        try:
-                            qtd_num = int(valor_kri_formatado.split("|")[0])
-                            res_sys = supabase.table("integracoes_sistemas").select("id").ilike("nome_sistema", "%Compras.gov%").execute()
-                            if res_sys.data:
-                                sys_id = res_sys.data[0]["id"]
-                                supabase.table("historico_kri").insert({
-                                    "integracao_id": sys_id,
-                                    "valor_medido": qtd_num,
-                                    "texto_exibicao": f"{qtd_num} contratos vigentes ({valor_kri_formatado.split('|')[1]})"
-                                }).execute()
-                        except Exception as e_hist:
-                            print(f"Aviso histórico KRI: {e_hist}")
-
-                        st.rerun()
                     except Exception as e_upd:
-                        st.error(f"Erro ao salvar dados sincronizados no banco: {e_upd}")
+                        st.error(f"Erro ao atualizar cache no banco: {e_upd}")
+                        
+                    st.success(msg)
+                    st.rerun()
                 else:
-                    st.warning(f"⚠️ {msg}")
+                    st.error(f"⚠️ {msg}")
+
+        # Se houver dados carregados para conferência, exibe o relatório na tela
+        if "dados_conferencia_pncp" in st.session_state and st.session_state["dados_conferencia_pncp"]:
+            df_pncp = pd.DataFrame(st.session_state["dados_conferencia_pncp"])
+            
+            st.divider()
+            st.subheader(f"📋 Relatório de Conferência ({len(df_pncp)} Contratos Retornados)")
+            
+            # Filtro por número de contrato para conferência rápida
+            busca_num = st.text_input("🔍 Filtrar por Número de Contrato/Empenho ou Objeto:", placeholder="Digite para pesquisar...")
+            if busca_num:
+                df_pncp = df_pncp[
+                    df_pncp["Número Contrato / Empenho"].astype(str).str.contains(busca_num, case=False, na=False) |
+                    df_pncp["Objeto / Categoria"].astype(str).str.contains(busca_num, case=False, na=False)
+                ]
+
+            # Formata moeda na tabela para facilitar a leitura
+            df_exibicao = df_pncp.copy()
+            df_exibicao["Valor Global"] = df_exibicao["Valor Global"].apply(lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+            
+            st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
+            
+            # Botão para exportar o relatório em CSV para cruzamento de dados no Excel
+            csv_pncp = df_pncp.to_csv(index=False).encode('utf-8-sig')
+            st.download_button(
+                label="📥 Baixar Relatório de Contratos em CSV",
+                data=csv_pncp,
+                file_name=f"contratos_vigentes_ufsm_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+                mime="text/csv"
+            )
 
 # ---------------------------------------------------------
 # PÁGINA: ADMINISTRAÇÃO DO SISTEMA
