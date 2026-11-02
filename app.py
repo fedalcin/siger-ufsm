@@ -13,6 +13,7 @@ import base64
 from fpdf import FPDF
 from datetime import datetime, date, timezone, timedelta
 import requests
+import sqlite3
 
 # ---------------------------------------------------------
 # MÓDULO DE CRIPTOGRAFIA E NOTIFICAÇÕES POR E-MAIL (SMTP)
@@ -128,134 +129,6 @@ from calculos_siger import (
 )
 
 # ---------------------------------------------------------
-# CONEXÃO COM PNCP
-# ---------------------------------------------------------
-def buscar_dados_contratos_ufsm_comprasgov():
-    """
-    Realiza a varredura COMPLETA de todos os contratos da UFSM (UG 153164)
-    utilizando blocos grandes (tamanhoPagina=500) para cobrir +700 contratos 
-    em apenas 2 requisições rápidas sem estourar o timeout.
-    """
-    from datetime import datetime, timedelta, timezone
-    import requests
-
-    fuso_br = timezone(timedelta(hours=-3))
-    hoje_dt = datetime.now(fuso_br).date()
-    
-    # Período abrangendo o ano corrente
-    dt_inicio_pncp = f"{hoje_dt.year}0101"
-    dt_hoje_pncp = hoje_dt.strftime("%Y%m%d")
-    cnpj_ufsm = "95591764000105"
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
-        "accept": "application/json"
-    }
-    
-    total_vigentes = 0
-    soma_valor_vigente = 0.0
-    total_contratos_analisados = 0
-    
-    pagina_atual = 1
-    total_paginas = 1
-    tamanho_pagina = 500  # Lote máximo aceito pela API para zerar requisições extras
-
-    try:
-        while pagina_atual <= total_paginas:
-            url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_pncp}&dataFinal={dt_hoje_pncp}&cnpjOrgao={cnpj_ufsm}&pagina={pagina_atual}&tamanhoPagina={tamanho_pagina}"
-            
-            try:
-                response = requests.get(url_api, headers=headers, timeout=15)
-                if response.status_code != 200:
-                    break
-                
-                dados = response.json()
-                
-                # Identifica quantas páginas de 500 itens existem
-                if pagina_atual == 1:
-                    total_paginas = dados.get("totalPaginas", 1)
-                    
-                itens = dados.get("data", [])
-                if not itens:
-                    break
-                
-                for item in itens:
-                    total_contratos_analisados += 1
-                    
-                    # 1. Filtro Unidade Gestora (UG 153164)
-                    unidade = item.get("unidadeOrgao") or {}
-                    cod_unidade = str(unidade.get("codigoUnidade", "")).strip()
-                    if cod_unidade and cod_unidade != "153164":
-                        continue
-                    
-                    # 2. Filtro Categoria (Serviços ou Compras)
-                    categoria = item.get("categoriaProcesso") or {}
-                    nome_categoria = str(categoria.get("nome", "")).strip()
-                    if nome_categoria and nome_categoria not in ["Serviços", "Compras"]:
-                        continue
-                    
-                    # 3. Validação da Vigência Real (dt_ini <= hoje <= dt_fim)
-                    str_ini = item.get("dataVigenciaInicio")
-                    str_fim = item.get("dataVigenciaFim")
-                    
-                    dt_ini = None
-                    dt_fim = None
-                    
-                    if str_ini:
-                        try:
-                            dt_ini = datetime.strptime(str_ini[:10], "%Y-%m-%d").date()
-                        except Exception:
-                            pass
-
-                    if str_fim:
-                        try:
-                            dt_fim = datetime.strptime(str_fim[:10], "%Y-%m-%d").date()
-                        except Exception:
-                            pass
-
-                    eh_vigente = False
-                    if dt_ini and dt_fim:
-                        if dt_ini <= hoje_dt <= dt_fim:
-                            eh_vigente = True
-                    elif dt_ini and not dt_fim:
-                        if dt_ini <= hoje_dt:
-                            eh_vigente = True
-                    elif not dt_ini and not dt_fim:
-                        eh_vigente = True
-
-                    if eh_vigente:
-                        total_vigentes += 1
-                        val = item.get("valorGlobal") or item.get("valorInicial") or 0.0
-                        soma_valor_vigente += float(val)
-
-            except Exception:
-                # Se houver falha pontual em uma página, preserva o que já foi acumulado
-                break
-
-            pagina_atual += 1
-
-        ticket_medio = (soma_valor_vigente / total_vigentes) if total_vigentes > 0 else 0.0
-        
-        tot_val_fmt = f"R$ {soma_valor_vigente:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        ticket_fmt = f"R$ {ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        
-        texto_kri_banco = f"{total_vigentes}|{tot_val_fmt}|{ticket_fmt}"
-        
-        msg_sucesso = (
-            f"✅ **Varredura Completa e Otimizada Concluída!**\n"
-            f"* **Contratos Processados:** {total_contratos_analisados} (Lote de {tamanho_pagina} itens/pág)\n"
-            f"* **Unidade Gestora:** 153164 (UFSM)\n"
-            f"* **Contratos Efetivamente Vigentes Hoje:** {total_vigentes}\n"
-            f"* **Valor Total em Execução:** {tot_val_fmt}\n"
-            f"* **Ticket Médio:** {ticket_fmt}"
-        )
-        
-        return True, texto_kri_banco, msg_sucesso
-
-    except Exception as e:
-        return False, "0|R$ 0,00|R$ 0,00", f"Falha ao conectar com o PNCP: {e}"
-
-# ---------------------------------------------------------
 # CONEXÃO COM SUPABASE
 # ---------------------------------------------------------
 @st.cache_resource
@@ -267,6 +140,148 @@ def init_supabase():
     return create_client(url, key)
 
 supabase = init_supabase()
+
+# ---------------------------------------------------------
+# ARQUITETURA GENÉRICA DE INTEGRAÇÕES & KRI
+# ---------------------------------------------------------
+DB_LOCAL_BUFFER = "buffer_integracoes.db"
+
+def preparar_buffer_local():
+    """Cria/Zera a tabela_temporaria_integracao local (buffer agnóstico no SQLite)."""
+    conn = sqlite3.connect(DB_LOCAL_BUFFER)
+    cursor = conn.cursor()
+    cursor.execute("DROP TABLE IF EXISTS tabela_temporaria_integracao")
+    cursor.execute("""
+        CREATE TABLE tabela_temporaria_integracao (
+            id TEXT PRIMARY KEY,
+            campo1 TEXT, -- Ex: N° Contrato / Empenho / Matrícula
+            campo2 TEXT, -- Ex: Valor Global / Status
+            campo3 TEXT, -- Ex: Data Inicial Vigência
+            campo4 TEXT, -- Ex: Data Final Vigência
+            campo5 TEXT, -- Ex: Categoria Processo
+            campo6 TEXT, -- Ex: Unidade Gestora / Centro
+            data_carga TEXT
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def carregar_pncp_no_buffer_local():
+    """Ingestão bruta de dados do PNCP para a tabela temporária local sem filtros analíticos."""
+    preparar_buffer_local()
+    
+    fuso_br = timezone(timedelta(hours=-3))
+    agora = datetime.now(fuso_br)
+    hoje_dt = agora.date()
+    
+    dt_inicio_pncp = (hoje_dt - timedelta(days=365)).strftime("%Y%m%d")
+    dt_hoje_pncp = hoje_dt.strftime("%Y%m%d")
+    cnpj_ufsm = "95591764000105"
+    
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "accept": "application/json"
+    }
+    
+    conn = sqlite3.connect(DB_LOCAL_BUFFER)
+    cursor = conn.cursor()
+    
+    pagina = 1
+    total_paginas = 1
+    registros_carregados = 0
+    
+    try:
+        while pagina <= total_paginas:
+            url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_pncp}&dataFinal={dt_hoje_pncp}&cnpjOrgao={cnpj_ufsm}&pagina={pagina}&tamanhoPagina=500"
+            response = requests.get(url_api, headers=headers, timeout=15)
+            
+            if response.status_code != 200:
+                break
+                
+            dados = response.json()
+            if pagina == 1:
+                total_paginas = dados.get("totalPaginas", 1)
+                
+            itens = dados.get("data", [])
+            if not itens:
+                break
+                
+            for item in itens:
+                item_id = str(item.get("numeroControlePNCP") or f"{item.get('numeroContratoEmpenho')}_{item.get('anoContrato')}")
+                empenho = str(item.get("numeroContratoEmpenho", "S/N"))
+                valor = str(item.get("valorGlobal") or item.get("valorInicial") or "0.0")
+                dt_ini = str(item.get("dataVigenciaInicio") or "")
+                dt_fim = str(item.get("dataVigenciaFim") or "")
+                cat = str((item.get("categoriaProcesso") or {}).get("nome") or "")
+                unid = str((item.get("unidadeOrgao") or {}).get("codigoUnidade") or "")
+                
+                cursor.execute("""
+                    INSERT OR REPLACE INTO tabela_temporaria_integracao 
+                    (id, campo1, campo2, campo3, campo4, campo5, campo6, data_carga)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (item_id, empenho, valor, dt_ini, dt_fim, cat, unid, agora.isoformat()))
+                
+                registros_carregados += 1
+                
+            pagina += 1
+            
+        conn.commit()
+        conn.close()
+        return True, registros_carregados, "Carga bruta no buffer concluída com sucesso."
+    except Exception as e:
+        conn.close()
+        return False, 0, f"Erro na carga do buffer local: {e}"
+
+def processar_kri_e_salvar_supabase(integracao_id=1):
+    """
+    Calcula as métricas numéricas puras a partir da tabela_temporaria_integracao
+    e persiste o snapshot na tabela historico_kri no Supabase.
+    """
+    fuso_br = timezone(timedelta(hours=-3))
+    agora = datetime.now(fuso_br)
+    hoje_dt = agora.date()
+    
+    conn = sqlite3.connect(DB_LOCAL_BUFFER)
+    df = pd.read_sql_query("SELECT * FROM tabela_temporaria_integracao", conn)
+    conn.close()
+    
+    if df.empty:
+        return False, 0.0, 0.0, "Tabela temporária de integração está vazia."
+        
+    df['valor_num'] = pd.to_numeric(df['campo2'], errors='coerce').fillna(0.0)
+    df['dt_ini_clean'] = pd.to_datetime(df['campo3'].str[:10], errors='coerce').dt.date
+    df['dt_fim_clean'] = pd.to_datetime(df['campo4'].str[:10], errors='coerce').dt.date
+    
+    # Regra de Vigência Ativa em Tempo Real
+    cond_vigente = (
+        (df['dt_ini_clean'] <= hoje_dt) & 
+        ((df['dt_fim_clean'] >= hoje_dt) | (df['dt_fim_clean'].isna()))
+    )
+    
+    df_vigentes = df[cond_vigente]
+    
+    # 1. Métrica Principal: Número de Contratos Vigentes
+    qtd_contratos = float(len(df_vigentes))
+    
+    # 2. Métrica Secundária: Montante Financeiro Total Vigente
+    valor_total = float(df_vigentes['valor_num'].sum())
+    
+    try:
+        payload = {
+            "integracao_id": integracao_id,
+            "valor_principal": qtd_contratos,
+            "valor_secundario": valor_total,
+            "data_medicao": agora.isoformat()
+        }
+        
+        supabase.table("historico_kri").insert(payload).execute()
+        
+        # Limpa o buffer local após a gravação
+        preparar_buffer_local()
+        
+        return True, qtd_contratos, valor_total, "Métricas numéricas gravadas com sucesso no Supabase!"
+    except Exception as e:
+        return False, 0.0, 0.0, f"Erro ao gravar no Supabase: {e}"
 
 # ---------------------------------------------------------
 # CARREGAMENTO DINÂMICO DA IDENTIDADE VISUAL & FAVICON
@@ -545,7 +560,6 @@ def realizar_login(email, senha):
                     if hasattr(st, "context") and hasattr(st.context, "headers"):
                         ip_origem = st.context.headers.get("X-Forwarded-For", st.context.headers.get("Host", "127.0.0.1")).split(",")[0]
 
-                    # Força a hora no fuso de Brasília (UTC-3)
                     fuso_br = timezone(timedelta(hours=-3))
                     data_hora_br = datetime.now(fuso_br).isoformat()
 
@@ -626,7 +640,6 @@ def tela_login():
         with tab_esqueci:
             st.caption("Insira seu e-mail para receber um código de verificação antes de redefinir sua senha.")
             
-            # Controle de estado para o fluxo em 2 etapas
             if "recup_passo" not in st.session_state:
                 st.session_state.recup_passo = 1
             if "recup_codigo_gerado" not in st.session_state:
@@ -648,12 +661,10 @@ def tela_login():
                             try:
                                 res_u = supabase.table("usuarios").select("id, nome").eq("email", email_clean).eq("ativo", True).execute()
                                 if res_u.data:
-                                    # Gerar código numérico de 6 dígitos
                                     codigo_otp = str(random.randint(100000, 999999))
                                     st.session_state.recup_codigo_gerado = codigo_otp
                                     st.session_state.recup_email_alvo = email_clean
                                     
-                                    # Enviar por e-mail via SMTP
                                     assunto = "🔐 [SIGER] Código de Verificação para Redefinição de Senha"
                                     corpo_html = f"""
                                     <h3>Solicitação de Redefinição de Senha - SIGER</h3>
@@ -701,7 +712,6 @@ def tela_login():
                                 hash_nova = gerar_hash_senha(nova_senha_recup)
                                 supabase.table("usuarios").update({"senha_hash": hash_nova}).eq("email", st.session_state.recup_email_alvo).execute()
                                 
-                                # Limpa os dados de sessão temporários
                                 st.session_state.recup_passo = 1
                                 st.session_state.recup_codigo_gerado = None
                                 st.session_state.recup_email_alvo = None
@@ -750,21 +760,17 @@ def pode(modulo, acao="acesso"):
 # ---------------------------------------------------------
 def obter_dados_atuais_risco(risco_obj, df_hist_eval):
     """Retorna os dados do risco considerando a reavaliação mais recente do histórico, se existir."""
-    # Valores padrão diretamente do cadastro do risco
     prob = risco_obj.get("probabilidade") or 1
     imp = risco_obj.get("impacto") or 1
     nivel = risco_obj.get("nivel_risco") or (prob * imp)
 
-    # Verifica se o DataFrame de histórico existe, não está vazio e possui colunas
     if isinstance(df_hist_eval, pd.DataFrame) and not df_hist_eval.empty:
-        # Identifica dinamicamente a coluna de data disponível
         col_dt = None
         if "created_at" in df_hist_eval.columns:
             col_dt = "created_at"
         elif "data_avaliacao" in df_hist_eval.columns:
             col_dt = "data_avaliacao"
 
-        # Ordena e extrai a última reavaliação se houver coluna de data
         if col_dt and col_dt in df_hist_eval.columns:
             try:
                 df_hist_ord = df_hist_eval.sort_values(by=col_dt, ascending=False)
@@ -782,7 +788,6 @@ def gerar_excel_acompanhamento_risco(risco_obj, df_ac_mon, df_hist_eval):
     output = io.BytesIO()
     
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
-        # Aba 1: Resumo do Risco (Atualizado)
         df_resumo = pd.DataFrame([{
             "ID do Risco": risco_obj.get("id"),
             "Evento de Risco": risco_obj.get("evento"),
@@ -800,7 +805,6 @@ def gerar_excel_acompanhamento_risco(risco_obj, df_ac_mon, df_hist_eval):
         }])
         df_resumo.to_excel(writer, sheet_name="Resumo do Risco", index=False)
 
-        # Aba 2: Plano de Ação (Mitigações)
         if not df_ac_mon.empty:
             df_ac_export = df_ac_mon.copy()
             colunas_renomear = {
@@ -818,7 +822,6 @@ def gerar_excel_acompanhamento_risco(risco_obj, df_ac_mon, df_hist_eval):
             df_ac_export = df_ac_export[cols_existentes].rename(columns=colunas_renomear)
             df_ac_export.to_excel(writer, sheet_name="Ações de Tratamento", index=False)
 
-        # Aba 3: Evolução Histórica
         if not df_hist_eval.empty:
             df_hist_export = df_hist_eval.copy()
             df_hist_export.to_excel(writer, sheet_name="Histórico de Avaliações", index=False)
@@ -826,7 +829,6 @@ def gerar_excel_acompanhamento_risco(risco_obj, df_ac_mon, df_hist_eval):
     return output.getvalue()
 
 def gerar_relatorio_pdf_risco(risco_obj, df_hist_eval, df_ac_mon=None):
-    # Trata caso receba df_ac_mon do parametro antigo
     if df_ac_mon is None:
         df_ac_mon = pd.DataFrame()
 
@@ -837,13 +839,11 @@ def gerar_relatorio_pdf_risco(risco_obj, df_hist_eval, df_ac_mon=None):
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     
-    # Cabeçalho
     pdf.set_font("Helvetica", "B", 16)
     pdf.set_text_color(0, 33, 71)
     pdf.cell(0, 10, f"SIGER - Relatorio de Risco #{risco_obj.get('id')}", new_x="LMARGIN", new_y="NEXT", align="L")
     pdf.ln(2)
 
-    # Detalhes do Risco
     pdf.set_font("Helvetica", "B", 11)
     pdf.set_fill_color(242, 244, 247)
     pdf.set_text_color(0, 0, 0)
@@ -863,7 +863,6 @@ def gerar_relatorio_pdf_risco(risco_obj, df_hist_eval, df_ac_mon=None):
     causa_txt = str(risco_obj.get('causa', '-')).encode('latin-1', 'replace').decode('latin-1')
     conseq_txt = str(risco_obj.get('consequencia', '-')).encode('latin-1', 'replace').decode('latin-1')
     
-    # Força o alinhamento à margem esquerda antes de cada multi_cell
     pdf.set_x(15)
     pdf.multi_cell(0, 6, f"Causa: {causa_txt}", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(2)
@@ -872,7 +871,6 @@ def gerar_relatorio_pdf_risco(risco_obj, df_hist_eval, df_ac_mon=None):
     pdf.multi_cell(0, 6, f"Consequencia: {conseq_txt}", new_x="LMARGIN", new_y="NEXT")
     pdf.ln(4)
 
-    # Tabela de Planos de Ação
     pdf.set_font("Helvetica", "B", 11)
     pdf.set_text_color(0, 33, 71)
     pdf.cell(0, 8, "Plano de Acoes de Mitigacao", new_x="LMARGIN", new_y="NEXT")
@@ -926,17 +924,12 @@ def formatar_data_hora_br(data_hora_str):
     if not data_hora_str:
         return "-"
     try:
-        # Se contiver fuso horário ISO (ex: com Z ou +00:00 do Supabase)
         dt = datetime.fromisoformat(data_hora_str.replace("Z", "+00:00"))
-        
-        # Converte para Fuso Horário de Brasília (UTC-3)
         fuso_br = timezone(timedelta(hours=-3))
         dt_br = dt.astimezone(fuso_br)
-        
         return dt_br.strftime("%d/%m/%Y %H:%M")
     except Exception:
         try:
-            # Fallback para caso o formato seja simples sem fuso
             dt = datetime.strptime(data_hora_str[:16].replace("T", " "), "%Y-%m-%d %H:%M")
             return dt.strftime("%d/%m/%Y %H:%M")
         except Exception:
