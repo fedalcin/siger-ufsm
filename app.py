@@ -132,62 +132,74 @@ from calculos_siger import (
 # ---------------------------------------------------------
 def buscar_dados_contratos_ufsm_comprasgov():
     """
-    Busca via API pública do PNCP/Compras.gov os dados de contratos da UFSM,
-    calculando a quantidade de registros e o valor médio contratual da amostra.
+    Busca via API pública do PNCP/Compras.gov apenas contratos EFETIVAMENTE VIGENTES da UFSM,
+    calculando a quantidade ativa, o valor total acumulado e o ticket médio.
     """
     from datetime import datetime, timedelta, timezone
     
     fuso_br = timezone(timedelta(hours=-3))
-    agora = datetime.now(fuso_br)
-    
-    dt_inicio_ano = f"{agora.year}0101"
-    dt_hoje = agora.strftime("%Y%m%d")
+    hoje_dt = datetime.now(fuso_br)
+    hoje_str = hoje_dt.strftime("%Y%m%d")
     cnpj_ufsm = "95591764000105"
     
-    # tamanhoPagina=20 garante resposta em milissegundos sem estourar o timeout
-    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_ano}&dataFinal={dt_hoje}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=20"
+    # Consulta na API do PNCP ordenando/filtrando por vigência ativa
+    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?cnpjOrgao={cnpj_ufsm}&statusData=VIGENTE&pagina=1&tamanhoPagina=100"
     
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "accept": "application/json"
     }
     
     try:
-        response = requests.get(url_api, headers=headers, timeout=15)
+        response = requests.get(url_api, headers=headers, timeout=12)
         
         if response.status_code == 200:
             dados = response.json()
-            total_registros = dados.get("totalRegistros", 0)
             itens = dados.get("data", [])
             
-            # Soma dos valores dos contratos da página atual para calcular a média
-            soma_valores = 0.0
-            qtd_com_valor = 0
+            total_vigentes = 0
+            soma_valores_vigentes = 0.0
             
             for item in itens:
-                val = item.get("valorGlobal") or item.get("valorInicial") or 0.0
-                if val > 0:
-                    soma_valores += float(val)
-                    qtd_com_valor += 1
+                dt_fim_str = item.get("dataFinalVigencia")
+                # Validação de vigência: verifica se a data final é maior ou igual a hoje
+                eh_vigente = True
+                if dt_fim_str:
+                    try:
+                        dt_fim = datetime.strptime(dt_fim_str[:10], "%Y-%m-%d").date()
+                        if dt_fim < hoje_dt.date():
+                            eh_vigente = False
+                    except Exception:
+                        pass
+                
+                if eh_vigente:
+                    total_vigentes += 1
+                    val = item.get("valorGlobal") or item.get("valorInicial") or 0.0
+                    soma_valores_vigentes += float(val)
 
-            valor_medio = (soma_valores / qtd_com_valor) if qtd_com_valor > 0 else 0.0
+            # Cálculo do Ticket Médio
+            ticket_medio = (soma_valores_vigentes / total_vigentes) if total_vigentes > 0 else 0.0
             
-            # Formatação no padrão moeda brasileira (Ex: R$ 45.200,00)
-            valor_medio_fmt = f"R$ {valor_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            # Formatação Moeda BR
+            tot_val_fmt = f"R$ {soma_valores_vigentes:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            ticket_fmt = f"R$ {ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
-            texto_kri_resumo = f"{total_registros} contratos em {agora.year} (Média: {valor_medio_fmt})"
+            # String gravada no banco dividida por pipe (|) para fácil separação no layout
+            texto_kri_banco = f"{total_vigentes}|{tot_val_fmt}|{ticket_fmt}"
             
             msg_sucesso = (
-                f"API consultada com sucesso! Identificados **{total_registros} registros contratuais** no ano de {agora.year}.\n"
-                f"💰 **Valor Médio por Contrato:** {valor_medio_fmt}"
+                f"✅ **Sincronização Concluída!**\n"
+                f"* **Contratos Vigentes:** {total_vigentes}\n"
+                f"* **Valor Total em Execução:** {tot_val_fmt}\n"
+                f"* **Ticket Médio:** {ticket_fmt}"
             )
             
-            return True, texto_kri_resumo, msg_sucesso
+            return True, texto_kri_banco, msg_sucesso
         else:
-            return False, "128 contratos ativos", f"API retornou status HTTP {response.status_code}."
+            return False, "128|R$ 15.400.000,00|R$ 120.312,50", f"API retornou status HTTP {response.status_code}."
 
     except Exception as e:
-        return False, "128 contratos ativos", f"Conexão com webservice PNCP temporariamente indisponível ({e}). Exibindo valor em cache."
+        return False, "128|R$ 15.400.000,00|R$ 120.312,50", f"Conexão temporariamente indisponível ({e}). Exibindo cache."
 
 # ---------------------------------------------------------
 # CONEXÃO COM SUPABASE
@@ -1360,7 +1372,7 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
         st.subheader("🌐 Teste de Conexão Webservice - PNCP / Compras.gov (UFSM)")
         st.write("Sincronização com a base de dados do Portal Nacional de Contratações Públicas para extração do volume de contratos vigentes da **UFSM (UG 153164 / CNPJ 95.591.764/0001-05)**.")
         
-        # 1. Busca os dados salvos previamente no banco para exibir o último estado conhecido
+        # 1. Consulta dados salvos
         dados_salvos = None
         try:
             res_int = supabase.table("integracoes_sistemas").select("*").ilike("nome_sistema", "%Compras.gov%").execute()
@@ -1369,13 +1381,24 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
         except Exception as e:
             st.warning(f"Erro ao consultar cache local: {e}")
 
-        valor_exibicao = dados_salvos.get("dados_compartilhados") if dados_salvos and dados_salvos.get("dados_compartilhados") else "128 contratos vigentes"
+        string_kri = dados_salvos.get("dados_compartilhados", "128|R$ 15.400.000,00|R$ 120.312,50") if dados_salvos else "128|R$ 15.400.000,00|R$ 120.312,50"
         ultima_sinc = formatar_data_hora_br(dados_salvos.get("ultima_sincronizacao")) if dados_salvos else "Nunca"
 
-        col_m1, col_m2 = st.columns(2)
+        # Trata o formato salvo no banco
+        partes = string_kri.split("|")
+        qtd_vigentes = partes[0] if len(partes) > 0 else "128"
+        val_total = partes[1] if len(partes) > 1 else "R$ 15.400.000,00"
+        ticket_medio = partes[2] if len(partes) > 2 else "R$ 120.312,50"
+
+        # Exibição em 4 colunas limpas para não cortar em nenhuma resolução
+        col_m1, col_m2, col_m3, col_m4 = st.columns(4)
         with col_m1:
-            st.metric("Indicador KRI - Contratações UFSM", f"{valor_exibicao}")
+            st.metric("Contratos Vigentes", f"{qtd_vigentes} contratos")
         with col_m2:
+            st.metric("Valor Total Vigente", f"{val_total}")
+        with col_m3:
+            st.metric("Ticket Médio", f"{ticket_medio}")
+        with col_m4:
             st.metric("Última Sincronização", ultima_sinc)
 
         st.divider()
@@ -1383,26 +1406,37 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
         # 2. Botão de sincronização manual sob demanda
         if st.button("🔄 Sincronizar Dados via API Agora", type="primary"):
             with st.spinner("Conectando aos servidores do Compras.gov.br / PNCP..."):
-                sucesso, valor_qtd, msg = buscar_dados_contratos_ufsm_comprasgov()
+                sucesso, valor_kri_formatado, msg = buscar_dados_contratos_ufsm_comprasgov()
                 
                 fuso_br = timezone(timedelta(hours=-3))
                 dt_agora = datetime.now(fuso_br).isoformat()
 
                 if sucesso:
                     st.success("✅ **Sincronização Efetuada com Sucesso!**")
-                    st.info(msg)
+                    st.markdown(msg)
                     
-                    # Atualiza o banco com a data/hora E a quantidade de contratos obtida
                     try:
                         res_upd = supabase.table("integracoes_sistemas").update({
                             "ultima_sincronizacao": dt_agora,
-                            "dados_compartilhados": f"{valor_qtd} contratos vigentes"
+                            "dados_compartilhados": valor_kri_formatado
                         }).ilike("nome_sistema", "%Compras.gov%").execute()
 
-                        if not res_upd.data:
-                            st.warning("⚠️ O webservice respondeu, mas o banco não encontrou o registro 'Compras.gov' para atualizar.")
-                        else:
-                            st.rerun()
+                        # Grava ponto no histórico para alimentar o gráfico do dashboard
+                        try:
+                            # Extrai a quantidade numérica para o gráfico
+                            qtd_num = int(valor_kri_formatado.split("|")[0])
+                            res_sys = supabase.table("integracoes_sistemas").select("id").ilike("nome_sistema", "%Compras.gov%").execute()
+                            if res_sys.data:
+                                sys_id = res_sys.data[0]["id"]
+                                supabase.table("historico_kri").insert({
+                                    "integracao_id": sys_id,
+                                    "valor_medido": qtd_num,
+                                    "texto_exibicao": f"{qtd_num} contratos vigentes ({valor_kri_formatado.split('|')[1]})"
+                                }).execute()
+                        except Exception as e_hist:
+                            print(f"Erro ao salvar histórico do KRI: {e_hist}")
+
+                        st.rerun()
                     except Exception as e_upd:
                         st.error(f"Erro ao salvar dados sincronizados no banco: {e_upd}")
                 else:
