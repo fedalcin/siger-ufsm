@@ -132,75 +132,78 @@ from calculos_siger import (
 # ---------------------------------------------------------
 def buscar_dados_contratos_ufsm_comprasgov():
     """
-    Busca via API pública do PNCP/Compras.gov os dados de contratos da UFSM,
-    filtrando manualmente em Python apenas os contratos EFETIVAMENTE VIGENTES na data atual.
+    Consulta o PNCP/Compras.gov e valida contrato por contrato em tempo real:
+    Um contrato é considerado VIGENTE se e somente se:
+    Data Inicial de Vigência <= Hoje <= Data Final de Vigência.
     """
     from datetime import datetime, timedelta, timezone
     
+    # 1. Pega a data atual no fuso de Brasília
     fuso_br = timezone(timedelta(hours=-3))
-    agora_dt = datetime.now(fuso_br)
-    hoje_date = agora_dt.date()
+    hoje = datetime.now(fuso_br).date()
     
-    dt_inicio_ano = f"{agora_dt.year}0101"
-    dt_hoje_str = agora_dt.strftime("%Y%m%d")
     cnpj_ufsm = "95591764000105"
-    
-    # URL oficial do PNCP com os parâmetros validados (HTTP 200)
-    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_ano}&dataFinal={dt_hoje_str}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=100"
-    
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "accept": "application/json"
     }
     
+    total_vigentes = 0
+    soma_valor_vigente = 0.0
+    
     try:
-        response = requests.get(url_api, headers=headers, timeout=12)
-        
-        if response.status_code == 200:
+        # Busca até 5 páginas (500 registros mais recentes da UFSM) para varredura
+        for pagina in range(1, 6):
+            url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?cnpjOrgao={cnpj_ufsm}&pagina={pagina}&tamanhoPagina=100"
+            
+            response = requests.get(url_api, headers=headers, timeout=10)
+            if response.status_code != 200:
+                break
+                
             dados = response.json()
             itens = dados.get("data", [])
-            
-            total_vigentes = 0
-            soma_valores_vigentes = 0.0
-            
-            for item in itens:
-                dt_fim_str = item.get("dataFinalVigencia")
-                eh_vigente = True
+            if not itens:
+                break
                 
-                if dt_fim_str:
+            for item in itens:
+                dt_ini_str = item.get("dataInicialVigencia")
+                dt_fim_str = item.get("dataFinalVigencia")
+                
+                if dt_ini_str and dt_fim_str:
                     try:
+                        dt_ini = datetime.strptime(dt_ini_str[:10], "%Y-%m-%d").date()
                         dt_fim = datetime.strptime(dt_fim_str[:10], "%Y-%m-%d").date()
-                        if dt_fim < hoje_date:
-                            eh_vigente = False
+                        
+                        # REGRA INTELIGENTE: Data Inicio <= Hoje <= Data Fim
+                        if dt_ini <= hoje <= dt_fim:
+                            total_vigentes += 1
+                            val = item.get("valorGlobal") or item.get("valorInicial") or 0.0
+                            soma_valor_vigente += float(val)
                     except Exception:
                         pass
-                
-                if eh_vigente:
-                    total_vigentes += 1
-                    val = item.get("valorGlobal") or item.get("valorInicial") or 0.0
-                    soma_valores_vigentes += float(val)
 
-            ticket_medio = (soma_valores_vigentes / total_vigentes) if total_vigentes > 0 else 0.0
-            
-            tot_val_fmt = f"R$ {soma_valores_vigentes:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            ticket_fmt = f"R$ {ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-            
-            # Grava no formato numérico limpo separado por pipes: "142|R$ 45.200.000,00|R$ 318.309,85"
-            texto_kri_banco = f"{total_vigentes}|{tot_val_fmt}|{ticket_fmt}"
-            
-            msg_sucesso = (
-                f"✅ **Sincronização Concluída com Sucesso!**\n"
-                f"* **Contratos Efetivamente Vigentes:** {total_vigentes}\n"
-                f"* **Valor Total em Execução:** {tot_val_fmt}\n"
-                f"* **Ticket Médio:** {ticket_fmt}"
-            )
-            
-            return True, texto_kri_banco, msg_sucesso
-        else:
-            return False, "128|R$ 15.400.000,00|R$ 120.312,50", f"API retornou status HTTP {response.status_code}."
+        # Cálculo dinâmico do Ticket Médio
+        ticket_medio = (soma_valor_vigente / total_vigentes) if total_vigentes > 0 else 0.0
+        
+        # Formatação Moeda BR
+        tot_val_fmt = f"R$ {soma_valor_vigente:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        ticket_fmt = f"R$ {ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        
+        # Formato gravado no banco: "QUANTIDADE|VALOR_TOTAL|TICKET_MEDIO"
+        texto_kri_banco = f"{total_vigentes}|{tot_val_fmt}|{ticket_fmt}"
+        
+        msg_sucesso = (
+            f"✅ **Sincronização Efetuada em Tempo Real!**\n"
+            f"* **Data de Validação:** {hoje.strftime('%d/%m/%Y')}\n"
+            f"* **Contratos Efetivamente Vigentes Hoje:** {total_vigentes}\n"
+            f"* **Valor Total Vigente:** {tot_val_fmt}\n"
+            f"* **Ticket Médio:** {ticket_fmt}"
+        )
+        
+        return True, texto_kri_banco, msg_sucesso
 
     except Exception as e:
-        return False, "128|R$ 15.400.000,00|R$ 120.312,50", f"Conexão temporariamente indisponível ({e}). Exibindo cache."
+        return False, "0|R$ 0,00|R$ 0,00", f"Erro na conexão com webservice PNCP: {e}"
 
 # ---------------------------------------------------------
 # CONEXÃO COM SUPABASE
