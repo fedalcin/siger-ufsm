@@ -135,14 +135,21 @@ def buscar_dados_contratos_ufsm_comprasgov():
     Busca em tempo real via API pública do PNCP/Compras.gov
     o número total de contratos vigentes da UFSM (CNPJ 95.591.764/0001-05 / UG 153164).
     """
-    from datetime import datetime
-    ano_atual = datetime.now().year
+    from datetime import datetime, timedelta, timezone
     
-    # URL atualizada com ano e tamanho da página
-    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?cnpjOrgao=95591764000105&ano={ano_atual}&pagina=1&tamanhoPagina=1"
+    # 1. Define o intervalo de datas obrigatório para a API do PNCP (do início do ano até hoje)
+    fuso_br = timezone(timedelta(hours=-3))
+    agora = datetime.now(fuso_br)
+    
+    dt_inicio_ano = f"{agora.year}0101"
+    dt_hoje = agora.strftime("%Y%m%d")
+    cnpj_ufsm = "95591764000105"
+    
+    # 2. Monta a URL completa atendendo aos requisitos estritos do webservice do PNCP
+    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_ano}&dataFinal={dt_hoje}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=1"
     
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "accept": "application/json"
     }
     
@@ -151,7 +158,7 @@ def buscar_dados_contratos_ufsm_comprasgov():
         if response.status_code == 200:
             dados = response.json()
             total_contratos = dados.get("totalRegistros", 0)
-            return True, str(total_contratos), f"API PNCP/Compras.gov consultada com sucesso ({total_contratos} contratos encontrados em {ano_atual})."
+            return True, str(total_contratos), f"API PNCP/Compras.gov consultada com sucesso ({total_contratos} registros encontrados na base oficial da UFSM no período de {agora.year})."
         else:
             return False, "128", f"API retornou status HTTP {response.status_code}. Exibindo valor armazenado em cache/demonstrativo."
     except Exception as e:
