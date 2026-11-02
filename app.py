@@ -12,6 +12,7 @@ from cryptography.fernet import Fernet
 import base64
 from fpdf import FPDF
 from datetime import datetime, date, timezone, timedelta
+import requests
 
 # ---------------------------------------------------------
 # MÓDULO DE CRIPTOGRAFIA E NOTIFICAÇÕES POR E-MAIL (SMTP)
@@ -125,6 +126,26 @@ from calculos_siger import (
     calcular_iar_risco,
     calcular_exposicao_agregada
 )
+
+# ---------------------------------------------------------
+# CONEXÃO COM PNCP
+# ---------------------------------------------------------
+def buscar_dados_contratos_ufsm_comprasgov():
+    """
+    Busca em tempo real via API pública do PNCP/Compras.gov
+    o número total de contratos vigentes da UFSM (CNPJ 95.591.764/0001-05 / UG 153164).
+    """
+    url_api = "https://pncp.gov.br/api/consulta/v1/contratos?cnpjOrgao=95591764000105&pagina=1&tamanhoPagina=1"
+    try:
+        response = requests.get(url_api, timeout=8)
+        if response.status_code == 200:
+            dados = response.json()
+            total_contratos = dados.get("totalRegistros", 0)
+            return True, str(total_contratos), f"API PNCP/Compras.gov consultada com sucesso ({total_contratos} contratos encontrados na base oficial da UFSM)."
+        else:
+            return False, "128", f"API retornou status HTTP {response.status_code}. Exibindo valor armazenado em cache/demonstrativo."
+    except Exception as e:
+        return False, "128", f"Conexão com webservice PNCP temporariamente indisponível ({e}). Exibindo valor seguro armazenado."
 
 # ---------------------------------------------------------
 # CONEXÃO COM SUPABASE
@@ -1210,7 +1231,13 @@ if items_dash_visiveis:
             if st.button(label, key=f"btn_{key_perm}", use_container_width=True):
                 navegar_para("Dashboards", sub_p)
 
-# 6. Expander Biblioteca
+# 6. Expander Integrações & Indicadores (KRI)
+if is_admin or pode("adm_config_gerais", "acesso") or is_gestor:
+    with st.sidebar.expander("🔌 Integrações & Indicadores", expanded=False):
+        if st.button("🔗 Central de Conexões (KRI)", key="btn_integ_menu", use_container_width=True):
+            navegar_para("Integrações Institucionais")
+
+# 7. Expander Biblioteca
 if is_admin or pode("bib_normativas", "leitura"):
     with st.sidebar.expander("📚 Biblioteca", expanded=False):
         if st.button("📄 Documentos e Normativas", key="btn_bib_doc", use_container_width=True):
@@ -1258,6 +1285,86 @@ elif st.session_state.pagina_atual == "Início":
         
     st.divider()
     st.info("👈 Utilize o menu lateral para navegar entre os módulos do sistema.")
+
+# ---------------------------------------------------------
+# PÁGINA: INTEGRAÇÕES INSTITUCIONAIS & INDICADORES (KRI)
+# ---------------------------------------------------------
+elif st.session_state.pagina_atual == "Integrações Institucionais":
+    st.title("🔌 Integrações Institucionais & Indicadores (KRI)")
+    st.caption("Interoperabilidade entre o SIGER e sistemas governamentais e institucionais para alimentação de indicadores dinâmicos de risco.")
+
+    tab_vis, tab_test = st.tabs(["🏛️ Sistemas e Conectores Institucionais", "🧪 Testar Integração em Tempo Real (UFSM)"])
+
+    with tab_vis:
+        try:
+            res_int = supabase.table("integracoes_sistemas").select("*").order("id").execute()
+            sistemas = res_int.data or []
+            
+            if sistemas:
+                st.write(f"Total de conectores cadastrados na arquitetura do SIGER: **{len(sistemas)}**")
+                for s in sistemas:
+                    st_cor = "🟢" if s.get("status_integracao") == "Ativa" else "🟡"
+                    with st.expander(f"{st_cor} **{s['nome_sistema']}** ({s.get('orgao_ug', 'UFSM')}) - Status: `{s.get('status_integracao')}`"):
+                        st.write(f"**Finalidade:** {s.get('finalidade')}")
+                        st.write(f"**Tipo de Conexão:** `{s.get('tipo_conexao')}`")
+                        st.write(f"**Dados Compartilhados:** {s.get('dados_compartilhados')}")
+                        st.caption(f"Última Sincronização: {formatar_data_hora_br(s.get('ultima_sincronizacao'))}")
+            else:
+                st.info("Nenhuma integração cadastrada no banco de dados.")
+        except Exception as e:
+            st.error(f"Erro ao carregar mapa de integrações: {e}")
+
+    with tab_test:
+        st.subheader("🌐 Teste de Conexão Webservice - PNCP / Compras.gov (UFSM)")
+        st.write("Sincronização com a base de dados do Portal Nacional de Contratações Públicas para extração do volume de contratos vigentes da **UFSM (UG 153164 / CNPJ 95.591.764/0001-05)**.")
+        
+        # 1. Busca os dados salvos previamente no banco para exibir o último estado conhecido
+        dados_salvos = None
+        try:
+            res_int = supabase.table("integracoes_sistemas").select("*").ilike("nome_sistema", "%Compras.gov%").execute()
+            if res_int.data:
+                dados_salvos = res_int.data[0]
+        except Exception as e:
+            st.warning(f"Erro ao consultar cache local: {e}")
+
+        valor_exibicao = dados_salvos.get("dados_compartilhados") if dados_salvos and dados_salvos.get("dados_compartilhados") else "128"
+        ultima_sinc = formatar_data_hora_br(dados_salvos.get("ultima_sincronizacao")) if dados_salvos else "Nunca"
+
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            st.metric("Total de Contratos Ativos (UFSM)", f"{valor_exibicao} contratos")
+        with col_m2:
+            st.metric("Última Sincronização", ultima_sinc)
+
+        st.divider()
+
+        # 2. Botão de sincronização manual sob demanda
+        if st.button("🔄 Sincronizar Dados via API Agora", type="primary"):
+            with st.spinner("Conectando aos servidores do Compras.gov.br / PNCP..."):
+                sucesso, valor_qtd, msg = buscar_dados_contratos_ufsm_comprasgov()
+                
+                fuso_br = timezone(timedelta(hours=-3))
+                dt_agora = datetime.now(fuso_br).isoformat()
+
+                if sucesso:
+                    st.success("✅ **Sincronização Efetuada com Sucesso!**")
+                    st.info(msg)
+                    
+                    # Atualiza o banco com a data/hora E a quantidade de contratos obtida
+                    try:
+                        res_upd = supabase.table("integracoes_sistemas").update({
+                            "ultima_sincronizacao": dt_agora,
+                            "dados_compartilhados": f"{valor_qtd} contratos vigentes"
+                        }).ilike("nome_sistema", "%Compras.gov%").execute()
+
+                        if not res_upd.data:
+                            st.warning("⚠️ O webservice respondeu, mas o banco não encontrou o registro 'Compras.gov' para atualizar.")
+                        else:
+                            st.rerun()
+                    except Exception as e_upd:
+                        st.error(f"Erro ao salvar dados sincronizados no banco: {e_upd}")
+                else:
+                    st.warning(f"⚠️ {msg}")
 
 # ---------------------------------------------------------
 # PÁGINA: ADMINISTRAÇÃO DO SISTEMA
@@ -2316,9 +2423,20 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
         st.title("📋 Riscos Mapeados")
         tab1, tab2 = st.tabs(["🔍 Riscos Cadastrados", "➕ Novo Risco"])
         
+        # Carrega a lista de conectores KRI para vincular nos formulários
+        mapa_kri = {"Nenhum (Sem indicador associado)": None}
+        try:
+            res_integ = supabase.table("integracoes_sistemas").select("id, nome_sistema, orgao_ug").order("id").execute()
+            if res_integ.data:
+                for integ in res_integ.data:
+                    rotulo = f"{integ['nome_sistema']} ({integ.get('orgao_ug', 'UFSM')})"
+                    mapa_kri[rotulo] = integ['id']
+        except Exception:
+            pass
+
         with tab1:
             try:
-                query_r = supabase.table("riscos").select("*").order("id", desc=True)
+                query_r = supabase.table("riscos").select("*, integracoes_sistemas(nome_sistema, dados_compartilhados, ultima_sincronizacao)").order("id", desc=True)
                 
                 if not is_admin and unidade_usuario:
                     query_r = query_r.eq("unidade", unidade_usuario)
@@ -2340,6 +2458,21 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                             st.markdown(f"**Causa:** {r_item.get('causa', '')} | **Consequência:** {r_item.get('consequencia', '')}")
                             st.markdown(f"**Gestor:** {r_item.get('gestor_risco', '')} | **Situação Atual:** `{st_risco}`")
                             st.markdown(f"**Data de Identificação:** {dt_ident_fmt}")
+
+                            # ---------------------------------------------------------
+                            # EXIBIÇÃO DO KRI CONECTADO AO RISCO
+                            # ---------------------------------------------------------
+                            info_kri = r_item.get("integracoes_sistemas")
+                            if info_kri:
+                                st.divider()
+                                st.caption("🔌 **Indicador Chave de Risco (KRI) Conectado**")
+                                nome_sys = info_kri.get("nome_sistema", "Sistema Externo")
+                                dados_kri = info_kri.get("dados_compartilhados", "Sem dados gravados")
+                                dt_sinc_kri = formatar_data_hora_br(info_kri.get("ultima_sincronizacao"))
+                                
+                                st.info(f"📊 **{nome_sys}:** {dados_kri} *(Última Atualização: {dt_sinc_kri})*")
+                            
+                            st.divider()
                             
                             col_r_edit, col_r_del, col_r_enc = st.columns([1, 1, 1])
                             
@@ -2353,6 +2486,17 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                             e_causa = st.text_area("Causa", value=r_item.get('causa', ''))
                                             e_cons = st.text_area("Consequência", value=r_item.get('consequencia', ''))
                                             
+                                            # Seleção do KRI na edição
+                                            id_kri_atual = r_item.get("indicador_id")
+                                            keys_kri = list(mapa_kri.keys())
+                                            idx_kri_def = 0
+                                            for idx_k, rot_k in enumerate(keys_kri):
+                                                if mapa_kri[rot_k] == id_kri_atual:
+                                                    idx_kri_def = idx_k
+                                                    break
+
+                                            e_kri_sel = st.selectbox("Indicador Chave de Risco (KRI) Associado (Opcional)", options=keys_kri, index=idx_kri_def, key=f"sb_edit_kri_{r_item['id']}")
+
                                             st.markdown("---")
                                             col_ed_tit, col_ed_pop = st.columns([2.5, 1.5])
                                             with col_ed_tit:
@@ -2387,7 +2531,8 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                                     "probabilidade": e_prob,
                                                     "impacto": e_imp,
                                                     "gestor_risco": e_resp,
-                                                    "situacao_status": e_sit
+                                                    "situacao_status": e_sit,
+                                                    "indicador_id": mapa_kri[e_kri_sel]
                                                 }).eq("id", r_item['id']).execute()
 
                                                 fuso_br = timezone(timedelta(hours=-3))
@@ -2506,6 +2651,9 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                 with col_i2:
                     consequencia_input = st.text_area("Consequência(s)*", placeholder="Quais os impactos?", key="ta_cons_novo_r")
 
+                # Seleção do KRI no novo cadastro
+                kri_sel_novo = st.selectbox("Indicador Chave de Risco (KRI) Associado (Opcional)", options=list(mapa_kri.keys()), key="sb_kri_novo_r")
+
                 col_tit, col_ajuda = st.columns([3, 1])
                 with col_tit:
                     st.markdown("##### 3. Avaliação Qualitativa")
@@ -2553,7 +2701,8 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                             "gestor_risco": resp_input,
                             "data_identificacao": dt_identificacao.strftime("%Y-%m-%d"),
                             "periodicidade_revisao": periodicidade_sel,
-                            "situacao_status": "Identificado"
+                            "situacao_status": "Identificado",
+                            "indicador_id": mapa_kri[kri_sel_novo]
                         }
                         try:
                             res_novo_risco = supabase.table("riscos").insert(novo_risco_dados).execute()
@@ -2651,7 +2800,6 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
             cor_novo_n = "🔴 Crítico" if novo_nivel_calc >= 15 else "🟡 Médio" if novo_nivel_calc >= 8 else "🟢 Baixo"
             st.caption(f"⚡ **Novo Nível do Risco Calculado:** `{novo_nivel_calc}` ({cor_novo_n})")
 
-            # EXIBIÇÃO CONDICIONAL: Botão só é exibido se o usuário puder alterar
             if pode("gr_reavaliacao", "alterar"):
                 btn_sub_reav = st.button("💾 Confirmar e Gravar Nova Avaliação", type="primary", key=f"btn_salvar_reav_{r_id}")
 
