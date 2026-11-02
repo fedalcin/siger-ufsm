@@ -132,8 +132,8 @@ from calculos_siger import (
 # ---------------------------------------------------------
 def buscar_dados_contratos_ufsm_comprasgov():
     """
-    Busca em tempo real via API pública do PNCP/Compras.gov
-    o número total de contratos vigentes da UFSM (CNPJ 95.591.764/0001-05 / UG 153164).
+    Busca via API pública do PNCP/Compras.gov os dados de contratos da UFSM,
+    calculando a quantidade de registros, o valor total acumulado e o valor médio contratual.
     """
     from datetime import datetime, timedelta, timezone
     
@@ -144,33 +144,50 @@ def buscar_dados_contratos_ufsm_comprasgov():
     dt_hoje = agora.strftime("%Y%m%d")
     cnpj_ufsm = "95591764000105"
     
-    # tamanhoPagina ajustado para 10 (mínimo aceito pelo servidor do PNCP)
-    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_ano}&dataFinal={dt_hoje}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=10"
+    # Busca um volume representativo de contratos (até 500 registros para amostragem/cálculo)
+    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_ano}&dataFinal={dt_hoje}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=500"
     
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "accept": "application/json"
     }
     
     try:
-        response = requests.get(url_api, headers=headers, timeout=10)
+        response = requests.get(url_api, headers=headers, timeout=12)
         
         if response.status_code == 200:
             dados = response.json()
-            total_contratos = dados.get("totalRegistros", 0)
-            return True, str(total_contratos), f"API PNCP/Compras.gov consultada com sucesso ({total_contratos} contratos encontrados na base oficial da UFSM no período de {agora.year})."
+            total_registros = dados.get("totalRegistros", 0)
+            itens = dados.get("data", [])
+            
+            # Soma dos valores acumulados nos contratos retornados
+            soma_valores = 0.0
+            qtd_com_valor = 0
+            
+            for item in itens:
+                val = item.get("valorGlobal") or item.get("valorInicial") or 0.0
+                if val > 0:
+                    soma_valores += float(val)
+                    qtd_com_valor += 1
+
+            valor_medio = (soma_valores / qtd_com_valor) if qtd_com_valor > 0 else 0.0
+            
+            # Formatação gerencial para o KRI (Ex: "3.408 registros | Vol: R$ 45.2M | Média: R$ 13.2K")
+            valor_medio_fmt = f"R$ {valor_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+            
+            texto_kri_resumo = f"{total_registros} contratos inseridos em {agora.year} (Média: {valor_medio_fmt})"
+            
+            msg_sucesso = (
+                f"API consultada com sucesso! Identificados **{total_registros} registros contratuais** no ano de {agora.year}.\n"
+                f"💰 **Valor Médio por Contrato:** {valor_medio_fmt}"
+            )
+            
+            return True, texto_kri_resumo, msg_sucesso
         else:
-            detalhe_erro = ""
-            try:
-                err_json = response.json()
-                detalhe_erro = err_json.get("message") or err_json.get("erros") or str(err_json)
-            except Exception:
-                detalhe_erro = response.text[:200]
-                
-            return False, "128", f"API retornou status HTTP {response.status_code}. Resposta da API: `{detalhe_erro}`"
+            return False, "128 contratos ativos", f"API retornou status HTTP {response.status_code}."
 
     except Exception as e:
-        return False, "128", f"Conexão com webservice PNCP temporariamente indisponível ({e}). Exibindo valor seguro armazenado."
+        return False, "128 contratos ativos", f"Conexão com webservice PNCP temporariamente indisponível ({e})."
 
 # ---------------------------------------------------------
 # CONEXÃO COM SUPABASE
@@ -1352,12 +1369,12 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
         except Exception as e:
             st.warning(f"Erro ao consultar cache local: {e}")
 
-        valor_exibicao = dados_salvos.get("dados_compartilhados") if dados_salvos and dados_salvos.get("dados_compartilhados") else "128"
+        valor_exibicao = dados_salvos.get("dados_compartilhados") if dados_salvos and dados_salvos.get("dados_compartilhados") else "128 contratos vigentes"
         ultima_sinc = formatar_data_hora_br(dados_salvos.get("ultima_sincronizacao")) if dados_salvos else "Nunca"
 
         col_m1, col_m2 = st.columns(2)
         with col_m1:
-            st.metric("Total de Contratos Ativos (UFSM)", f"{valor_exibicao} contratos")
+            st.metric("Indicador KRI - Contratações UFSM", f"{valor_exibicao}")
         with col_m2:
             st.metric("Última Sincronização", ultima_sinc)
 
