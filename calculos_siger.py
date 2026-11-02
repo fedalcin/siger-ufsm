@@ -318,7 +318,10 @@ def buscar_dados_contratos_ufsm_comprasgov():
                     )
 
                     if nome_tipo not in exemplos_tipos:
-                        exemplos_tipos[nome_tipo] = item
+                        exemplos_tipos[nome_tipo] = []
+
+                    if len(exemplos_tipos[nome_tipo]) < 100:
+                        exemplos_tipos[nome_tipo].append(item)
 
                     total_registros += 1
 
@@ -353,11 +356,72 @@ def buscar_dados_contratos_ufsm_comprasgov():
 
         st.divider()
 
-        st.subheader("Exemplos completos de cada tipo")
+        st.subheader("Contratos com vigência superior a cinco anos")
 
-        for nome_tipo, exemplo in sorted(exemplos_tipos.items()):
-            with st.expander(nome_tipo):
-                st.json(exemplo)
+        contratos_longo_prazo = []
+
+        for item in exemplos_tipos.get("Contrato (termo inicial)", []):
+
+            data_inicio = item.get("dataVigenciaInicio")
+            data_fim = item.get("dataVigenciaFim")
+
+            if not data_inicio or not data_fim:
+                continue
+
+            try:
+                inicio = datetime.strptime(data_inicio[:10], "%Y-%m-%d").date()
+                fim = datetime.strptime(data_fim[:10], "%Y-%m-%d").date()
+
+                prazo_dias = (fim - inicio).days
+
+                if prazo_dias > 1826:
+                    contratos_longo_prazo.append({
+                        "prazo_anos": round(prazo_dias / 365.25, 2),
+                        "numero": item.get("numeroContratoEmpenho"),
+                        "objeto": item.get("objetoContrato"),
+                        "processo": item.get("processo"),
+                        "inicio": data_inicio,
+                        "fim": data_fim,
+                        "valor_inicial": item.get("valorInicial"),
+                        "valor_global": item.get("valorGlobal"),
+                        "atualizacao": item.get("dataAtualizacaoGlobal"),
+                        "dados_completos": item
+                    })
+
+            except (ValueError, TypeError):
+                continue
+
+        contratos_longo_prazo.sort(
+            key=lambda x: x["prazo_anos"],
+            reverse=True
+        )
+
+        st.write(
+            f"**Contratos encontrados com vigência superior a cinco anos: "
+            f"{len(contratos_longo_prazo)}**"
+        )
+
+        if contratos_longo_prazo:
+
+            for contrato in contratos_longo_prazo:
+
+                with st.expander(
+                    f"Contrato {contrato['numero']} — "
+                    f"{contrato['prazo_anos']} anos"
+                ):
+                    st.write(f"**Objeto:** {contrato['objeto']}")
+                    st.write(f"**Processo:** {contrato['processo']}")
+                    st.write(f"**Início da vigência:** {contrato['inicio']}")
+                    st.write(f"**Fim da vigência:** {contrato['fim']}")
+                    st.write(f"**Valor inicial:** R$ {contrato['valor_inicial']:,.2f}")
+                    st.write(f"**Valor global:** R$ {contrato['valor_global']:,.2f}")
+                    st.write(f"**Última atualização:** {contrato['atualizacao']}")
+
+                    st.markdown("**Registro completo no PNCP:**")
+                    st.json(contrato["dados_completos"])
+
+        else:
+            st.info("Nenhum contrato com vigência superior a cinco anos foi encontrado.")
 
         mensagem = (
             f"Diagnóstico concluído! Foram consultados "
