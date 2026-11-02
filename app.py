@@ -125,7 +125,7 @@ from calculos_siger import (
     calcular_icp,
     calcular_itr,
     calcular_iar_risco,
-    calcular_exposicao_agregada
+    calcular_exposicao_agregada,
     buscar_dados_contratos_ufsm_comprasgov
 )
 
