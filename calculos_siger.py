@@ -238,6 +238,7 @@ def buscar_dados_contratos_ufsm_comprasgov():
     lista_contratos = []
     pagina = 1
     total_paginas = 1
+    contagem_tipos = {}
 
     try:
         while pagina <= total_paginas:
@@ -317,11 +318,17 @@ def buscar_dados_contratos_ufsm_comprasgov():
 
         lista_contratos = list(contratos_unicos.values())
 
-        mensagem = (
-            f"Consulta concluída! Foram percorridas {total_paginas} páginas. "
-            f"Contratos encontrados: {len(lista_contratos)}."
+        resumo_tipos = ", ".join(
+            f"{tipo}: {quantidade}"
+            for tipo, quantidade in sorted(contagem_tipos.items())
         )
 
+        mensagem = (
+            f"Consulta concluída! Foram percorridas {total_paginas} páginas. "
+            f"Contratos encontrados: {len(lista_contratos)}. "
+            f"Tipos de instrumentos encontrados: {resumo_tipos or 'Nenhum'}."
+        )
+       
         return True, "TESTE", mensagem, lista_contratos
 
     except requests.exceptions.Timeout:
