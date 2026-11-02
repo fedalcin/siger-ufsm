@@ -1467,7 +1467,11 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
                 if sucesso:
                     st.session_state["dados_conferencia_pncp"] = lista_contratos
                     st.session_state["msg_pncp"] = msg
-                    st.session_state["kri_pncp"] = valor_kri_formatado
+
+                    st.success(msg)
+
+                else:
+                    st.error(f"⚠️ {msg}")
                     
                     # Atualiza as configurações no Supabase
                     fuso_br = timezone(timedelta(hours=-3))
