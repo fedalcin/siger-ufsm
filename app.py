@@ -134,7 +134,6 @@ def buscar_dados_contratos_ufsm_comprasgov():
     """
     Busca em tempo real via API pública do PNCP/Compras.gov
     o número total de contratos vigentes da UFSM (CNPJ 95.591.764/0001-05 / UG 153164).
-    Exibe o detalhamento exato retornado pelo servidor em caso de erro HTTP 400.
     """
     from datetime import datetime, timedelta, timezone
     
@@ -145,8 +144,8 @@ def buscar_dados_contratos_ufsm_comprasgov():
     dt_hoje = agora.strftime("%Y%m%d")
     cnpj_ufsm = "95591764000105"
     
-    # URL de consulta do PNCP
-    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_ano}&dataFinal={dt_hoje}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=1"
+    # tamanhoPagina ajustado para 10 (mínimo aceito pelo servidor do PNCP)
+    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_ano}&dataFinal={dt_hoje}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=10"
     
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
@@ -159,9 +158,8 @@ def buscar_dados_contratos_ufsm_comprasgov():
         if response.status_code == 200:
             dados = response.json()
             total_contratos = dados.get("totalRegistros", 0)
-            return True, str(total_contratos), f"API PNCP/Compras.gov consultada com sucesso ({total_contratos} registros encontrados na base oficial da UFSM no período de {agora.year})."
+            return True, str(total_contratos), f"API PNCP/Compras.gov consultada com sucesso ({total_contratos} contratos encontrados na base oficial da UFSM no período de {agora.year})."
         else:
-            # Captura a resposta detalhada enviada no corpo do erro HTTP
             detalhe_erro = ""
             try:
                 err_json = response.json()
@@ -169,8 +167,7 @@ def buscar_dados_contratos_ufsm_comprasgov():
             except Exception:
                 detalhe_erro = response.text[:200]
                 
-            msg_erro = f"API retornou status HTTP {response.status_code}. **Resposta da API do Governo:** `{detalhe_erro}`"
-            return False, "128", msg_erro
+            return False, "128", f"API retornou status HTTP {response.status_code}. Resposta da API: `{detalhe_erro}`"
 
     except Exception as e:
         return False, "128", f"Conexão com webservice PNCP temporariamente indisponível ({e}). Exibindo valor seguro armazenado."
