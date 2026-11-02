@@ -1461,7 +1461,7 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
 
         # Botão de sincronização com visualizador de relatório e conferência
         if st.button("🔄 Sincronizar e Inspecionar Contratos da UFSM", type="primary"):
-            with st.spinner("Buscando todas as páginas de contratos no PNCP/Compras.gov..."):
+            with st.spinner("Consultando contratos da UFSM no PNCP..."):
                 sucesso, valor_kri_formatado, msg, lista_contratos = buscar_dados_contratos_ufsm_comprasgov()
 
                 if sucesso:
