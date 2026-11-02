@@ -1137,7 +1137,7 @@ st.sidebar.divider()
 items_adm = [
     ("👥 Usuários", "Usuários", "adm_usuarios"),
     ("🔐 Perfis e Permissões", "Perfis e Permissões", "adm_perfis"),
-    ("📜 Trilha de Auditoria", "Trilha de Auditoria", "adm_usuarios"),
+    ("📜 Trilha de Auditoria", "Trilha de Auditoria", "adm_auditoria"),
     ("🖼️ Identidade Visual", "Identidade Visual", "adm_id_visual"),
     ("✍ Texto da Tela Inicial", "Texto da Tela Inicial", "adm_texto_home"),
     ("🔧 Configurações Gerais", "Configurações Gerais", "adm_config_gerais")
@@ -1245,7 +1245,7 @@ elif st.session_state.pagina_atual == "Início":
 # ---------------------------------------------------------
 # PÁGINA: ADMINISTRAÇÃO DO SISTEMA
 # ---------------------------------------------------------
-elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin or any(pode(k, "acesso") for k in ["adm_usuarios", "adm_perfis", "adm_id_visual", "adm_texto_home", "adm_config_gerais"])):
+elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin or any(pode(k, "acesso") for k in ["adm_usuarios", "adm_perfis", "adm_auditoria", "adm_id_visual", "adm_texto_home", "adm_config_gerais"])):
     sub = st.session_state.sub_pagina_atual or "Usuários"
     
     # 1. SUBPÁGINA: USUÁRIOS
@@ -1774,7 +1774,7 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                 st.info("🔒 Seu perfil possui permissão apenas de leitura para visualizar as configurações do servidor SMTP.")
 
     # 6. SUBPÁGINA: TRILHA DE AUDITORIA E LOGS
-    elif sub == "Trilha de Auditoria" and (is_admin or pode("adm_usuarios", "acesso")):
+    elif sub == "Trilha de Auditoria" and (is_admin or pode("adm_auditoria", "acesso") or pode("adm_usuarios", "acesso")):
         st.title("📜 Trilha de Auditoria e Controle de Acessos")
         st.caption("Rastreamento de segurança: saiba quem acessou o SIGER, quando acessou, de qual IP e quais ações realizou.")
         
@@ -1823,7 +1823,7 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                 st.write("")
 
                 if not df_filtrado.empty:
-                    # Formata a tabela para exibição amigável ao auditor
+                    # Formata a tabela para exibição amigável
                     df_exibir = df_filtrado.copy()
                     df_exibir["Data e Hora"] = df_exibir["data_hora"].apply(formatar_data_hora_br)
                     df_exibir["Usuário"] = df_exibir["usuario_nome"] + " (" + df_exibir["usuario_email"] + ")"
@@ -1836,7 +1836,7 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                     
                     st.dataframe(df_exibir[cols_f], use_container_width=True, hide_index=True)
 
-                    # Exportação CSV para Auditores Externos / Órgãos de Controle
+                    # Exportação CSV para relatórios de auditoria
                     csv_bytes = df_exibir[cols_f].to_csv(index=False).encode('utf-8-sig')
                     st.download_button(
                         label="📥 Exportar Relatório de Auditoria (CSV)",
@@ -1850,7 +1850,7 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                 st.info("Nenhum log de auditoria registrado no banco de dados.")
 
         except Exception as e:
-            st.warning(f"⚠️ Nota de Configuração: Certifique-se de que a tabela `logs_auditoria` foi criada no banco Supabase. Erro: {e}")
+            st.warning(f"⚠️ Nota de Configuração: Erro ao carregar logs: {e}")
 
 # ---------------------------------------------------------
 # PÁGINA: CAIXA DE ENTRADA
