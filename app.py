@@ -2334,13 +2334,13 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
             else:
                 try:
                     res_unidades = supabase.table("unidades").select("sigla, nome_extenso").order("sigla").execute().data or []
-                    res_oe = supabase.table("objetivos_estrategicos").select("codigo, descricao").order("codigo").execute().data or []
+                    res_oe = supabase.table("objetivos_estrategicos").select("codigo, descricao, gestao").eq("ativo", True).order("codigo").execute().data or []
                     res_cat = supabase.table("categorias_riscos").select("id, tipo, sub_tipo, detalhamento").order("tipo").execute().data or []
                 except Exception:
                     res_unidades, res_oe, res_cat = [], [], []
 
                 mapa_unidades = {f"{u['sigla']} - {u['nome_extenso']}": u['sigla'] for u in res_unidades} if res_unidades else {"S/U": None}
-                mapa_oe = {f"{o['codigo']} - {o['descricao']}": o['codigo'] for o in res_oe} if res_oe else {"Nenhum": None}
+                mapa_oe = {f"{o['codigo']} - {o['descricao']}" + (f" ({o['gestao']})" if o.get('gestao') else ""): o['codigo'] for o in res_oe} if res_oe else {"Nenhum": None}
 
                 def formatar_nome_categoria(c):
                     tipo = c.get('tipo', '')
@@ -2913,12 +2913,18 @@ elif st.session_state.pagina_atual == "Cadastros":
                         desc_item = item.get('descricao', '')
                         desafio_item = item.get('desafio', '')
                         dimensao_item = item.get('dimensao', '')
+                        gestao_item = item.get('gestao', '') or "Gestão Atual / Padrão"
+                        is_ativo = item.get('ativo', True)
                         
-                        with st.expander(f"🎯 **{cod_item}** | {desc_item[:80]}..."):
+                        st_badge = "🟢 Ativo (Gestão Vigente)" if is_ativo else "🔴 Inativo (Gestão Anterior)"
+                        
+                        with st.expander(f"🎯 **{cod_item}** | {desc_item[:70]}... | {st_badge}"):
                             st.write(f"**Código:** {cod_item}")
                             st.write(f"**Descrição:** {desc_item}")
                             st.write(f"**Desafio:** {desafio_item}")
                             st.write(f"**Dimensão:** {dimensao_item}")
+                            st.write(f"**Gestão / PDI:** `{gestao_item}`")
+                            st.write(f"**Status de Vigência:** {st_badge}")
                             
                             col_info, col_acoes = st.columns([1, 1])
                             with col_info:
@@ -2930,13 +2936,17 @@ elif st.session_state.pagina_atual == "Cadastros":
                                             e_desc = st.text_area("Descrição", value=desc_item)
                                             e_desafio = st.text_area("Desafio", value=desafio_item)
                                             e_dimensao = st.text_input("Dimensão", value=dimensao_item)
+                                            e_gestao = st.text_input("Gestão / Ciclo PDI", value=gestao_item)
+                                            e_ativo = st.checkbox("Ativo (Vigente para novos riscos)", value=is_ativo)
                                             
                                             if st.form_submit_button("💾 Salvar Alterações"):
                                                 try:
                                                     supabase.table("objetivos_estrategicos").update({
                                                         "descricao": e_desc,
                                                         "desafio": e_desafio,
-                                                        "dimensao": e_dimensao
+                                                        "dimensao": e_dimensao,
+                                                        "gestao": e_gestao.strip() if e_gestao else None,
+                                                        "ativo": e_ativo
                                                     }).eq("codigo", cod_item).execute()
                                                     st.success("Objetivo Estratégico atualizado!")
                                                     st.rerun()
@@ -2945,10 +2955,29 @@ elif st.session_state.pagina_atual == "Cadastros":
 
                             with col_acoes:
                                 if pode("cad_objetivos", "excluir"):
-                                    pop_del = st.popover("🗑️ Excluir")
+                                    pop_del = st.popover("🗑️ Opções / Excluir")
                                     with pop_del:
-                                        st.warning(f"Deseja excluir o objetivo '{cod_item}'?")
-                                        if st.button("Confirmar Exclusão", key=f"btn_del_oe_{cod_item}"):
+                                        st.caption("ℹ️ Caso este objetivo já tenha riscos vinculados de gestões anteriores, altere o status para **Inativo** em vez de excluir.")
+                                        if is_ativo:
+                                            if st.button("🔴 Inativar Objetivo", key=f"btn_inativar_oe_{cod_item}"):
+                                                try:
+                                                    supabase.table("objetivos_estrategicos").update({"ativo": False}).eq("codigo", cod_item).execute()
+                                                    st.toast("Objetivo marcado como inativo!", icon="🔴")
+                                                    st.rerun()
+                                                except Exception as e:
+                                                    st.error(f"Erro ao inativar: {e}")
+                                        else:
+                                            if st.button("🟢 Reativar Objetivo", key=f"btn_ativar_oe_{cod_item}"):
+                                                try:
+                                                    supabase.table("objetivos_estrategicos").update({"ativo": True}).eq("codigo", cod_item).execute()
+                                                    st.toast("Objetivo reativado!", icon="🟢")
+                                                    st.rerun()
+                                                except Exception as e:
+                                                    st.error(f"Erro ao reativar: {e}")
+                                                    
+                                        st.divider()
+                                        st.warning(f"Deseja excluir permanentemente o objetivo '{cod_item}'?")
+                                        if st.button("Confirmar Exclusão Definitiva", key=f"btn_del_oe_{cod_item}"):
                                             try:
                                                 res_vinc = supabase.table("riscos").select("id").eq("objetivo_estrategico", cod_item).execute()
                                                 if res_vinc.data and len(res_vinc.data) > 0:
@@ -2973,23 +3002,27 @@ elif st.session_state.pagina_atual == "Cadastros":
                     with col_oe1:
                         new_codigo = st.text_input("Código*", placeholder="Ex: OE01, OE-02").upper().strip()
                         new_dimensao = st.text_input("Dimensão*", placeholder="Ex: Governança, Ensino, Infraestrutura")
+                        new_gestao = st.text_input("Gestão / Ciclo PDI", placeholder="Ex: Gestão 2021-2025, PDI 2026-2030")
                     with col_oe2:
                         new_descricao = st.text_area("Descrição*", placeholder="Descreva o Objetivo Estratégico...")
                     
                     new_desafio = st.text_area("Desafio*", placeholder="Descreva o Desafio associado...")
+                    new_ativo = st.checkbox("Ativo (Disponível para novos riscos da gestão atual)", value=True)
                     
                     submitted_oe = st.form_submit_button("💾 Salvar Objetivo Estratégico")
                     
                     if submitted_oe:
                         if not new_codigo or not new_descricao or not new_desafio or not new_dimensao:
-                            st.warning("Por favor, preencha todos os campos do formulário.")
+                            st.warning("Por favor, preencha todos os campos obrigatórios do formulário.")
                         else:
                             try:
                                 supabase.table("objetivos_estrategicos").insert({
                                     "codigo": new_codigo,
                                     "descricao": new_descricao,
                                     "desafio": new_desafio,
-                                    "dimensao": new_dimensao
+                                    "dimensao": new_dimensao,
+                                    "gestao": new_gestao.strip() if new_gestao else None,
+                                    "ativo": new_ativo
                                 }).execute()
                                 st.success(f"✅ Objetivo Estratégico '{new_codigo}' cadastrado com sucesso!")
                                 st.rerun()
