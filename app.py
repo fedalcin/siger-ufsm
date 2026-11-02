@@ -408,7 +408,28 @@ def realizar_login(email, senha):
                     "perfil": dados_perf.get("nome", "Leitor"),
                     "permissoes": dados_perf.get("permissoes_json") or {}
                 }
+                
+                # Registra o acesso na Trilha de Auditoria
+                try:
+                    ip_origem = "127.0.0.1"
+                    if hasattr(st, "context") and hasattr(st.context, "headers"):
+                        ip_origem = st.context.headers.get("X-Forwarded-For", st.context.headers.get("Host", "127.0.0.1")).split(",")[0]
+                    
+                    supabase.table("logs_auditoria").insert({
+                        "usuario_id": usr["id"],
+                        "usuario_nome": usr["nome"],
+                        "usuario_email": usr["email"],
+                        "unidade_sigla": usr.get("unidade_sigla"),
+                        "acao": "LOGIN",
+                        "detalhes": f"Login realizado com sucesso no SIGER pelo IP {ip_origem}.",
+                        "ip_origem": ip_origem,
+                        "data_hora": datetime.now().isoformat()
+                    }).execute()
+                except Exception as e_log:
+                    print(f"Aviso log auditoria: {e_log}")
+
                 return True, "Login realizado com sucesso!"
+
             else:
                 return False, "Senha incorreta."
         return False, "Usuário não encontrado ou inativo."
@@ -1116,10 +1137,12 @@ st.sidebar.divider()
 items_adm = [
     ("👥 Usuários", "Usuários", "adm_usuarios"),
     ("🔐 Perfis e Permissões", "Perfis e Permissões", "adm_perfis"),
+    ("📜 Trilha de Auditoria", "Trilha de Auditoria", "adm_usuarios"),
     ("🖼️ Identidade Visual", "Identidade Visual", "adm_id_visual"),
     ("✍ Texto da Tela Inicial", "Texto da Tela Inicial", "adm_texto_home"),
     ("🔧 Configurações Gerais", "Configurações Gerais", "adm_config_gerais")
 ]
+
 items_adm_visiveis = [item for item in items_adm if pode(item[2], "acesso")]
 
 if items_adm_visiveis:
@@ -1749,6 +1772,85 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
             else:
                 st.write("")
                 st.info("🔒 Seu perfil possui permissão apenas de leitura para visualizar as configurações do servidor SMTP.")
+
+    # 6. SUBPÁGINA: TRILHA DE AUDITORIA E LOGS
+    elif sub == "Trilha de Auditoria" and (is_admin or pode("adm_usuarios", "acesso")):
+        st.title("📜 Trilha de Auditoria e Controle de Acessos")
+        st.caption("Rastreamento de segurança: saiba quem acessou o SIGER, quando acessou, de qual IP e quais ações realizou.")
+        
+        col_f1, col_f2, col_f3 = st.columns([1.5, 1.5, 2])
+        with col_f1:
+            dt_inicio_aud = st.date_input("Data Inicial", value=date.today().replace(day=1), format="DD/MM/YYYY", key="dt_ini_aud")
+        with col_f2:
+            dt_fim_aud = st.date_input("Data Final", value=date.today(), format="DD/MM/YYYY", key="dt_fim_aud")
+        with col_f3:
+            busca_aud = st.text_input("🔍 Buscar por Usuário, E-mail ou Ação", placeholder="Digite o nome ou e-mail...").strip().lower()
+
+        st.divider()
+
+        try:
+            # Consulta base de logs na tabela de auditoria
+            query_log = supabase.table("logs_auditoria").select("*").order("data_hora", desc=True)
+            res_logs = query_log.execute()
+            df_logs = pd.DataFrame(res_logs.data or [])
+
+            if not df_logs.empty:
+                # Tratamento e filtragem das datas
+                df_logs["dt_conv"] = pd.to_datetime(df_logs["data_hora"], errors="coerce").dt.date
+                df_filtrado = df_logs[
+                    (df_logs["dt_conv"] >= dt_inicio_aud) & 
+                    (df_logs["dt_conv"] <= dt_fim_aud)
+                ].copy()
+
+                if busca_aud:
+                    df_filtrado = df_filtrado[
+                        df_filtrado["usuario_nome"].str.lower().str.contains(busca_aud, na=False) |
+                        df_filtrado["usuario_email"].str.lower().str.contains(busca_aud, na=False) |
+                        df_filtrado["acao"].str.lower().str.contains(busca_aud, na=False) |
+                        df_filtrado["detalhes"].str.lower().str.contains(busca_aud, na=False)
+                    ]
+
+                # Métricas Rápidas
+                total_acessos = len(df_filtrado)
+                usuarios_unicos = df_filtrado["usuario_email"].nunique() if not df_filtrado.empty else 0
+                ult_acesso = formatar_data_hora_br(df_filtrado.iloc[0]["data_hora"]) if not df_filtrado.empty else "-"
+
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Total de Registros no Período", total_acessos)
+                m2.metric("Usuários Distintos Ativos", usuarios_unicos)
+                m3.metric("Último Acesso Detectado", ult_acesso)
+
+                st.write("")
+
+                if not df_filtrado.empty:
+                    # Formata a tabela para exibição amigável ao auditor
+                    df_exibir = df_filtrado.copy()
+                    df_exibir["Data e Hora"] = df_exibir["data_hora"].apply(formatar_data_hora_br)
+                    df_exibir["Usuário"] = df_exibir["usuario_nome"] + " (" + df_exibir["usuario_email"] + ")"
+                    df_exibir["Unidade"] = df_exibir["unidade_sigla"].fillna("Administração Central / Todas")
+                    df_exibir["Ação / Operação"] = df_exibir["acao"]
+                    df_exibir["Descrição / Detalhes"] = df_exibir["detalhes"]
+                    df_exibir["IP Origem"] = df_exibir["ip_origem"].fillna("127.0.0.1")
+
+                    cols_f = ["Data e Hora", "Usuário", "Unidade", "Ação / Operação", "Descrição / Detalhes", "IP Origem"]
+                    
+                    st.dataframe(df_exibir[cols_f], use_container_width=True, hide_index=True)
+
+                    # Exportação CSV para Auditores Externos / Órgãos de Controle
+                    csv_bytes = df_exibir[cols_f].to_csv(index=False).encode('utf-8-sig')
+                    st.download_button(
+                        label="📥 Exportar Relatório de Auditoria (CSV)",
+                        data=csv_bytes,
+                        file_name=f"relatorio_auditoria_siger_{dt_inicio_aud}_a_{dt_fim_aud}.csv",
+                        mime="text/csv"
+                    )
+                else:
+                    st.info("Nenhum registro de acesso encontrado com os filtros aplicados.")
+            else:
+                st.info("Nenhum log de auditoria registrado no banco de dados.")
+
+        except Exception as e:
+            st.warning(f"⚠️ Nota de Configuração: Certifique-se de que a tabela `logs_auditoria` foi criada no banco Supabase. Erro: {e}")
 
 # ---------------------------------------------------------
 # PÁGINA: CAIXA DE ENTRADA
