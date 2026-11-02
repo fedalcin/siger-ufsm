@@ -3640,7 +3640,13 @@ elif st.session_state.pagina_atual == "Dashboards":
             st.caption("Painel gerencial do risco selecionado com métricas, matriz 5x5, evolução histórica e ações de mitigação.")
             
             try:
-                res_riscos = supabase.table("riscos").select("*").order("id", desc=True).execute()
+                # 1. ALTERAÇÃO AQUI: Traz os dados do KRI conectado via Join com a tabela integracoes_sistemas
+                query_r = supabase.table("riscos").select("*, integracoes_sistemas(nome_sistema, dados_compartilhados, ultima_sincronizacao)").order("id", desc=True)
+                
+                if not is_admin and unidade_usuario:
+                    query_r = query_r.eq("unidade", unidade_usuario)
+                    
+                res_riscos = query_r.execute()
                 lista_riscos = res_riscos.data or []
             except Exception as e:
                 st.error(f"Erro ao carregar lista de riscos: {e}")
@@ -3651,7 +3657,6 @@ elif st.session_state.pagina_atual == "Dashboards":
             else:
                 mapa_riscos_mon = {f"Risco #{r['id']} | {r['unidade']} - {r['evento'][:55]}...": r for r in lista_riscos}
                 
-                # Reorganização do cabeçalho com caixa de seleção e botões de exportação
                 col_sel_r, col_exp_excel, col_exp_pdf = st.columns([3, 1, 1])
                 
                 with col_sel_r:
@@ -3672,12 +3677,6 @@ elif st.session_state.pagina_atual == "Dashboards":
                 except Exception:
                     df_hist_eval = pd.DataFrame()
 
-
-
-                # ---------------------------------------------------------
-                # GERAÇÃO DOS ARQUIVOS DE EXPORTAÇÃO (EXCEL E PDF)
-                # ---------------------------------------------------------
-                # Garante que df_hist_eval seja um DataFrame válido antes da chamada
                 if df_hist_eval is None:
                     df_hist_eval = pd.DataFrame()
 
@@ -3751,6 +3750,15 @@ elif st.session_state.pagina_atual == "Dashboards":
                     📆 **Próxima Revisão:** {formatar_data_br(data_prox_rev)} (`{sit_revisao}`)
                     """)
 
+                # 2. ALTERAÇÃO AQUI: EXIBIÇÃO DO KRI CONECTADO AO RISCO NO PAINEL
+                info_kri = risco_obj.get("integracoes_sistemas")
+                if info_kri:
+                    st.divider()
+                    nome_sys = info_kri.get("nome_sistema", "Sistema Externo")
+                    dados_kri = info_kri.get("dados_compartilhados", "Sem dados gravados")
+                    dt_sinc_kri = formatar_data_hora_br(info_kri.get("ultima_sincronizacao"))
+                    st.info(f"🔌 **Indicador Chave de Risco (KRI) Conectado — {nome_sys}:** {dados_kri} *(Última Sincronização: {dt_sinc_kri})*")
+
                 st.markdown("#### 📊 Grid de Indicadores Gerenciais")
                 
                 nivel_val = risco_obj.get('nivel_risco', 1)
@@ -3761,21 +3769,9 @@ elif st.session_state.pagina_atual == "Dashboards":
                 kpi_c2.metric("Total Ações", tot_acoes_r)
                 kpi_c3.metric("Concluídas", acoes_concluidas_r)
                 kpi_c4.metric("Atrasadas", acoes_atrasadas_r)
-                kpi_c5.metric(
-                    "Execução do Tratamento", 
-                    f"{iet_r}%", 
-                    help="Índice de Execução do Tratamento: Mede o percentual médio de execução das ações de mitigação cadastradas.\n\nFórmula: (Soma do % de Conclusão das Ações / Total de Ações)"
-                )
-                kpi_c6.metric(
-                    "Cumprimento de Prazos", 
-                    f"{icp_r}%", 
-                    help="Índice de Cumprimento de Prazos: Avalia a proporção de ações que estão dentro do prazo previsto.\n\nFórmula: ((Ações no Prazo / Total de Ações) * 100)"
-                )
-                kpi_c7.metric(
-                    "Tratamento do Risco", 
-                    f"{itr_r}%", 
-                    help="Índice de Tratamento do Risco: Métrica consolidada que combina a taxa de execução, conclusão total e aderência aos prazos.\n\nFórmula: Ponderação entre Execução, Conclusão Total e Cumprimento de Prazos"
-                )
+                kpi_c5.metric("Execução do Tratamento", f"{iet_r}%")
+                kpi_c6.metric("Cumprimento de Prazos", f"{icp_r}%")
+                kpi_c7.metric("Tratamento do Risco", f"{itr_r}%")
 
                 st.divider()
 
@@ -3792,17 +3788,23 @@ elif st.session_state.pagina_atual == "Dashboards":
                 with col_sec2:
                     st.markdown("### 📈 Evolução Histórica das Avaliações")
                     
+                    # 3. ALTERAÇÃO AQUI: TRATAMENTO E ORDENAÇÃO DO GRÁFICO DE EVOLUÇÃO HISTÓRICA
                     if not df_hist_eval.empty:
                         df_chart = df_hist_eval.copy()
                         col_dt = 'created_at' if 'created_at' in df_chart.columns else 'data_avaliacao'
-                        df_chart['Data'] = pd.to_datetime(df_chart[col_dt]).dt.strftime('%d/%m %H:%M')
-                        df_chart_display = df_chart[['Data', 'nivel_risco', 'probabilidade', 'impacto']].rename(
+                        
+                        # Converte a data para datetime e ordena cronologicamente
+                        df_chart['datetime_parsed'] = pd.to_datetime(df_chart[col_dt], errors='coerce')
+                        df_chart = df_chart.sort_values(by='datetime_parsed', ascending=True)
+                        
+                        df_chart['Data'] = df_chart['datetime_parsed'].dt.strftime('%d/%m/%Y %H:%M')
+                        df_chart_display = df_chart[['Data', 'nivel_risco']].rename(
                             columns={'nivel_risco': 'Nível de Risco'}
                         ).set_index('Data')
                         
                         st.line_chart(df_chart_display['Nível de Risco'])
                     else:
-                        st.caption("Nenhum histórico de reavaliações gravado na tabela `avaliacoes_risco`. Exibindo ponto atual:")
+                        st.caption("Nenhum histórico de reavaliações gravado na tabela `avaliacoes_risco`. Exibindo ponto inicial de identificação:")
                         data_ident_str = formatar_data_br(risco_obj.get('data_identificacao'))
                         df_ponto_unico = pd.DataFrame({
                             "Data": [data_ident_str],
@@ -3827,43 +3829,6 @@ elif st.session_state.pagina_atual == "Dashboards":
                             st.warning(alt)
                     else:
                         st.success("✅ **Nenhum ponto de atenção crítico detectado.** O acompanhamento do risco está em conformidade com as metas.")
-
-                st.divider()
-
-                st.markdown("### 🛡️ Planos de Ação e Progresso das Mitigações")
-                
-                if not df_ac_mon.empty:
-                    df_tabela_exib = []
-                    for _, ac in df_ac_mon.iterrows():
-                        seq = ac.get("numero_sequencial")
-                        nome_ac = ac.get("acao")
-                        carater_ac = ac.get("carater_acao", "Preventivo")
-                        resp_ac = ac.get("nome_responsavel_implementacao", "-")
-                        st_ac = ac.get("status_acao", "Pendente")
-                        pct_exec = ac.get("percentual_execucao") or ac.get("percentual_conclusao") or 0
-                        dt_fim = formatar_data_br(ac.get("previsao_data_conclusao"))
-                        
-                        txt_badge, _ = obter_badge_prazo(ac.get("previsao_data_conclusao"), st_ac)
-                        barra_ascii = gerar_barra_progresso_ascii(pct_exec)
-
-                        df_tabela_exib.append({
-                            "Ação nº": seq,
-                            "Descrição da Ação": nome_ac,
-                            "Caráter": carater_ac,
-                            "Responsável": resp_ac,
-                            "Status": st_ac,
-                            "Previsão Conclusão": dt_fim,
-                            "Situação Prazo": txt_badge,
-                            "Barra de Progresso": barra_ascii
-                        })
-
-                    df_exib_final = pd.DataFrame(df_tabela_exib)
-                    st.dataframe(df_exib_final, use_container_width=True)
-
-                    with st.expander("🕒 Linha do Tempo Visual e Tramitações Históricas"):
-                        renderizar_timeline_risco(r_id)
-                else:
-                    st.info("Nenhuma ação de mitigação cadastrada para este risco até o momento.")
 
     # 2. TELA: PAINEL GERAL
     elif sub_dash == "Painel Geral":
