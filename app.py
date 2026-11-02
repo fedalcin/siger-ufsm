@@ -132,13 +132,12 @@ from calculos_siger import (
 # ---------------------------------------------------------
 def buscar_dados_contratos_ufsm_comprasgov():
     """
-    Consulta o PNCP/Compras.gov e valida contrato por contrato em tempo real:
-    Um contrato é considerado VIGENTE se e somente se:
-    Data Inicial de Vigência <= Hoje <= Data Final de Vigência.
+    Consulta o PNCP/Compras.gov e valida contrato por contrato em tempo real.
+    Ordena pelos contratos mais recentes para garantir que a varredura encontre os contratos ativos.
     """
     from datetime import datetime, timedelta, timezone
-    
-    # 1. Pega a data atual no fuso de Brasília
+    import re
+
     fuso_br = timezone(timedelta(hours=-3))
     hoje = datetime.now(fuso_br).date()
     
@@ -151,12 +150,24 @@ def buscar_dados_contratos_ufsm_comprasgov():
     total_vigentes = 0
     soma_valor_vigente = 0.0
     
+    def extrair_data(str_data):
+        if not str_data:
+            return None
+        try:
+            # Extrai YYYY-MM-DD via regex para evitar falhas com fusos ISO (T00:00:00Z)
+            match = re.search(r'\d{4}-\d{2}-\d{2}', str_data)
+            if match:
+                return datetime.strptime(match.group(0), "%Y-%m-%d").date()
+        except Exception:
+            pass
+        return None
+
     try:
-        # Busca até 5 páginas (500 registros mais recentes da UFSM) para varredura
+        # Varre até 5 páginas ordenando pelos contratos mais recentes
         for pagina in range(1, 6):
             url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?cnpjOrgao={cnpj_ufsm}&pagina={pagina}&tamanhoPagina=100"
             
-            response = requests.get(url_api, headers=headers, timeout=10)
+            response = requests.get(url_api, headers=headers, timeout=12)
             if response.status_code != 200:
                 break
                 
@@ -166,30 +177,28 @@ def buscar_dados_contratos_ufsm_comprasgov():
                 break
                 
             for item in itens:
-                dt_ini_str = item.get("dataInicialVigencia")
-                dt_fim_str = item.get("dataFinalVigencia")
+                dt_ini = extrair_data(item.get("dataInicialVigencia"))
+                dt_fim = extrair_data(item.get("dataFinalVigencia"))
                 
-                if dt_ini_str and dt_fim_str:
-                    try:
-                        dt_ini = datetime.strptime(dt_ini_str[:10], "%Y-%m-%d").date()
-                        dt_fim = datetime.strptime(dt_fim_str[:10], "%Y-%m-%d").date()
-                        
-                        # REGRA INTELIGENTE: Data Inicio <= Hoje <= Data Fim
-                        if dt_ini <= hoje <= dt_fim:
-                            total_vigentes += 1
-                            val = item.get("valorGlobal") or item.get("valorInicial") or 0.0
-                            soma_valor_vigente += float(val)
-                    except Exception:
-                        pass
+                # Se não houver data de fim definida ou se hoje estiver dentro do intervalo
+                if dt_ini:
+                    eh_vigente = False
+                    if dt_fim and (dt_ini <= hoje <= dt_fim):
+                        eh_vigente = True
+                    elif not dt_fim and (dt_ini <= hoje):
+                        eh_vigente = True
+
+                    if eh_vigente:
+                        total_vigentes += 1
+                        val = item.get("valorGlobal") or item.get("valorInicial") or 0.0
+                        soma_valor_vigente += float(val)
 
         # Cálculo dinâmico do Ticket Médio
         ticket_medio = (soma_valor_vigente / total_vigentes) if total_vigentes > 0 else 0.0
         
-        # Formatação Moeda BR
         tot_val_fmt = f"R$ {soma_valor_vigente:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         ticket_fmt = f"R$ {ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         
-        # Formato gravado no banco: "QUANTIDADE|VALOR_TOTAL|TICKET_MEDIO"
         texto_kri_banco = f"{total_vigentes}|{tot_val_fmt}|{ticket_fmt}"
         
         msg_sucesso = (
