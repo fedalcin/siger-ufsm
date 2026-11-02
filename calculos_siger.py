@@ -215,7 +215,8 @@ def calcular_exposicao_agregada(
 def buscar_dados_contratos_ufsm_comprasgov():
     """
     Consulta os registros da UFSM no PNCP desde 01/01/2020.
-    Objetivo: identificar os tipos de instrumentos e suas quantidades.
+    Divide a consulta em períodos de até 365 dias.
+    Identifica todos os tipos de instrumentos.
     Não grava dados no Supabase.
     """
     from datetime import datetime, timedelta, timezone
@@ -225,10 +226,6 @@ def buscar_dados_contratos_ufsm_comprasgov():
     fuso_br = timezone(timedelta(hours=-3))
     hoje = datetime.now(fuso_br).date()
 
-    # Período da consulta: desde 01/01/2020
-    data_inicial = "20200101"
-    data_final = hoje.strftime("%Y%m%d")
-
     cnpj_ufsm = "95591764000105"
     url = "https://pncp.gov.br/api/consulta/v1/contratos"
 
@@ -237,83 +234,111 @@ def buscar_dados_contratos_ufsm_comprasgov():
         "User-Agent": "SIGER-UFSM/1.0"
     }
 
-    pagina = 1
-    total_paginas = 1
-
     # Armazena a quantidade e um exemplo de cada tipo
     contagem_tipos = {}
     exemplos_tipos = {}
-
     total_registros = 0
+    total_paginas_consultadas = 0
+
+    # Divide o período em intervalos de até 365 dias
+    data_inicio = datetime(2020, 1, 1).date()
 
     try:
-        while pagina <= total_paginas:
+        while data_inicio <= hoje:
 
-            parametros = {
-                "dataInicial": data_inicial,
-                "dataFinal": data_final,
-                "cnpjOrgao": cnpj_ufsm,
-                "pagina": pagina,
-                "tamanhoPagina": 500
-            }
-
-            response = requests.get(
-                url,
-                params=parametros,
-                headers=headers,
-                timeout=60
+            data_fim = min(
+                data_inicio + timedelta(days=364),
+                hoje
             )
 
-            if response.status_code != 200:
-                return (
-                    False,
-                    "",
-                    f"Erro HTTP {response.status_code} na página "
-                    f"{pagina}: {response.text[:1000]}",
-                    []
+            data_inicial = data_inicio.strftime("%Y%m%d")
+            data_final = data_fim.strftime("%Y%m%d")
+
+            pagina = 1
+            total_paginas = 1
+
+            st.write(
+                f"Consultando período: "
+                f"{data_inicio.strftime('%d/%m/%Y')} a "
+                f"{data_fim.strftime('%d/%m/%Y')}"
+            )
+
+            while pagina <= total_paginas:
+
+                parametros = {
+                    "dataInicial": data_inicial,
+                    "dataFinal": data_final,
+                    "cnpjOrgao": cnpj_ufsm,
+                    "pagina": pagina,
+                    "tamanhoPagina": 500
+                }
+
+                response = requests.get(
+                    url,
+                    params=parametros,
+                    headers=headers,
+                    timeout=60
                 )
 
-            dados = response.json()
-            itens = dados.get("data", [])
+                if response.status_code != 200:
+                    return (
+                        False,
+                        "",
+                        f"Erro HTTP {response.status_code} no período "
+                        f"{data_inicial} a {data_final}, página {pagina}: "
+                        f"{response.text[:1000]}",
+                        []
+                    )
 
-            if not isinstance(itens, list):
-                return False, "", "Formato inesperado de resposta do PNCP.", []
+                dados = response.json()
+                itens = dados.get("data", [])
 
-            total_paginas = int(dados.get("totalPaginas", 1) or 1)
+                if not isinstance(itens, list):
+                    return False, "", "Formato inesperado de resposta do PNCP.", []
 
-            for item in itens:
-                tipo = item.get("tipoContrato") or {}
+                total_paginas = int(dados.get("totalPaginas", 1) or 1)
+                total_paginas_consultadas += 1
 
-                if isinstance(tipo, dict):
-                    nome_tipo = tipo.get("nome", "Não informado")
-                else:
-                    nome_tipo = str(tipo)
+                for item in itens:
+                    tipo = item.get("tipoContrato") or {}
 
-                nome_tipo = nome_tipo.strip() or "Não informado"
+                    if isinstance(tipo, dict):
+                        nome_tipo = tipo.get("nome", "Não informado")
+                    else:
+                        nome_tipo = str(tipo)
 
-                # Conta todos os tipos de instrumentos
-                contagem_tipos[nome_tipo] = (
-                    contagem_tipos.get(nome_tipo, 0) + 1
-                )
+                    nome_tipo = nome_tipo.strip() or "Não informado"
 
-                # Guarda um exemplo completo de cada tipo
-                if nome_tipo not in exemplos_tipos:
-                    exemplos_tipos[nome_tipo] = item
+                    contagem_tipos[nome_tipo] = (
+                        contagem_tipos.get(nome_tipo, 0) + 1
+                    )
 
-                total_registros += 1
+                    if nome_tipo not in exemplos_tipos:
+                        exemplos_tipos[nome_tipo] = item
 
-            pagina += 1
+                    total_registros += 1
 
-        # Monta o relatório do diagnóstico
+                pagina += 1
+
+            # Avança para o próximo período
+            data_inicio = data_fim + timedelta(days=1)
+
+        # Apresenta o diagnóstico
         st.subheader("Diagnóstico dos registros do PNCP - UFSM")
 
-        st.write(f"**Período consultado:** 01/01/2020 a {hoje.strftime('%d/%m/%Y')}")
+        st.write(
+            f"**Período consultado:** 01/01/2020 a "
+            f"{hoje.strftime('%d/%m/%Y')}"
+        )
         st.write(f"**Total de registros consultados:** {total_registros}")
-        st.write(f"**Total de páginas percorridas:** {total_paginas}")
+        st.write(
+            f"**Total de páginas percorridas:** "
+            f"{total_paginas_consultadas}"
+        )
 
         st.divider()
 
-        st.subheader("Quantidade de registros por tipo de instrumento")
+        st.subheader("Quantidade por tipo de instrumento")
 
         for nome_tipo, quantidade in sorted(
             contagem_tipos.items(),
@@ -327,12 +352,13 @@ def buscar_dados_contratos_ufsm_comprasgov():
         st.subheader("Exemplos completos de cada tipo")
 
         for nome_tipo, exemplo in sorted(exemplos_tipos.items()):
-            with st.expander(f"{nome_tipo}"):
+            with st.expander(nome_tipo):
                 st.json(exemplo)
 
         mensagem = (
-            f"Diagnóstico concluído! Foram consultados {total_registros} "
-            f"registros em {total_paginas} páginas, desde 01/01/2020."
+            f"Diagnóstico concluído! Foram consultados "
+            f"{total_registros} registros em "
+            f"{total_paginas_consultadas} páginas."
         )
 
         return True, "TESTE", mensagem, []
@@ -345,3 +371,4 @@ def buscar_dados_contratos_ufsm_comprasgov():
 
     except Exception as e:
         return False, "", f"Erro inesperado: {str(e)}", []
+
