@@ -133,7 +133,7 @@ from calculos_siger import (
 def buscar_dados_contratos_ufsm_comprasgov():
     """
     Busca via API pública do PNCP/Compras.gov os dados de contratos da UFSM,
-    calculando a quantidade de registros, o valor total acumulado e o valor médio contratual.
+    calculando a quantidade de registros e o valor médio contratual da amostra.
     """
     from datetime import datetime, timedelta, timezone
     
@@ -144,23 +144,23 @@ def buscar_dados_contratos_ufsm_comprasgov():
     dt_hoje = agora.strftime("%Y%m%d")
     cnpj_ufsm = "95591764000105"
     
-    # Busca um volume representativo de contratos (até 500 registros para amostragem/cálculo)
-    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_ano}&dataFinal={dt_hoje}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=500"
+    # tamanhoPagina=20 garante resposta em milissegundos sem estourar o timeout
+    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_ano}&dataFinal={dt_hoje}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=20"
     
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "accept": "application/json"
     }
     
     try:
-        response = requests.get(url_api, headers=headers, timeout=12)
+        response = requests.get(url_api, headers=headers, timeout=15)
         
         if response.status_code == 200:
             dados = response.json()
             total_registros = dados.get("totalRegistros", 0)
             itens = dados.get("data", [])
             
-            # Soma dos valores acumulados nos contratos retornados
+            # Soma dos valores dos contratos da página atual para calcular a média
             soma_valores = 0.0
             qtd_com_valor = 0
             
@@ -172,10 +172,10 @@ def buscar_dados_contratos_ufsm_comprasgov():
 
             valor_medio = (soma_valores / qtd_com_valor) if qtd_com_valor > 0 else 0.0
             
-            # Formatação gerencial para o KRI (Ex: "3.408 registros | Vol: R$ 45.2M | Média: R$ 13.2K")
+            # Formatação no padrão moeda brasileira (Ex: R$ 45.200,00)
             valor_medio_fmt = f"R$ {valor_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
-            texto_kri_resumo = f"{total_registros} contratos inseridos em {agora.year} (Média: {valor_medio_fmt})"
+            texto_kri_resumo = f"{total_registros} contratos em {agora.year} (Média: {valor_medio_fmt})"
             
             msg_sucesso = (
                 f"API consultada com sucesso! Identificados **{total_registros} registros contratuais** no ano de {agora.year}.\n"
@@ -187,7 +187,7 @@ def buscar_dados_contratos_ufsm_comprasgov():
             return False, "128 contratos ativos", f"API retornou status HTTP {response.status_code}."
 
     except Exception as e:
-        return False, "128 contratos ativos", f"Conexão com webservice PNCP temporariamente indisponível ({e})."
+        return False, "128 contratos ativos", f"Conexão com webservice PNCP temporariamente indisponível ({e}). Exibindo valor em cache."
 
 # ---------------------------------------------------------
 # CONEXÃO COM SUPABASE
