@@ -132,8 +132,8 @@ from calculos_siger import (
 # ---------------------------------------------------------
 def buscar_dados_contratos_ufsm_comprasgov():
     """
-    Função de diagnóstico para identificar exatamente o formato dos dados devolvidos pelo PNCP
-    e o motivo de a contagem de vigência estar zerando.
+    Busca contratos da UFSM via API do PNCP validando a vigência em tempo real.
+    Passa os parâmetros obrigatórios dataInicial e dataFinal exigidos pelo portal do governo.
     """
     from datetime import datetime, timedelta, timezone
     import re
@@ -141,18 +141,19 @@ def buscar_dados_contratos_ufsm_comprasgov():
     fuso_br = timezone(timedelta(hours=-3))
     hoje = datetime.now(fuso_br).date()
     
+    # Parâmetros obrigatórios de intervalo de data (YYYYMMDD) exigidos pelo PNCP
+    dt_inicio_pncp = "20230101"
+    dt_hoje_pncp = hoje.strftime("%Y%m%d")
     cnpj_ufsm = "95591764000105"
+    
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
         "accept": "application/json"
     }
     
-    total_recebidos = 0
     total_vigentes = 0
     soma_valor_vigente = 0.0
     
-    amostras_log = []
-
     def extrair_data(str_data):
         if not str_data:
             return None
@@ -165,65 +166,59 @@ def buscar_dados_contratos_ufsm_comprasgov():
         return None
 
     try:
-        url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=50"
+        # Consulta com parâmetros obrigatórios dataInicial e dataFinal inclusos
+        url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_pncp}&dataFinal={dt_hoje_pncp}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=100"
+        
         response = requests.get(url_api, headers=headers, timeout=12)
         
         if response.status_code == 200:
             dados = response.json()
             itens = dados.get("data", [])
-            total_recebidos = len(itens)
             
-            for idx, item in enumerate(itens):
-                raw_ini = item.get("dataInicialVigencia")
-                raw_fim = item.get("dataFinalVigencia")
+            for item in itens:
+                dt_ini = extrair_data(item.get("dataInicialVigencia"))
+                dt_fim = extrair_data(item.get("dataFinalVigencia"))
                 
-                dt_ini = extrair_data(raw_ini)
-                dt_fim = extrair_data(raw_fim)
-                
-                eh_vigente = False
-                motivo = ""
+                # Validação em tempo real: dt_ini <= hoje <= dt_fim
+                if dt_ini:
+                    eh_vigente = False
+                    if dt_fim and (dt_ini <= hoje <= dt_fim):
+                        eh_vigente = True
+                    elif not dt_fim and (dt_ini <= hoje):
+                        eh_vigente = True
 
-                if not dt_ini:
-                    motivo = "Data inicio ausente/invalida"
-                elif dt_fim and not (dt_ini <= hoje <= dt_fim):
-                    motivo = f"Fora do prazo ({dt_ini} a {dt_fim})"
-                elif not dt_fim and not (dt_ini <= hoje):
-                    motivo = f"Inicio futuro ({dt_ini})"
-                else:
-                    eh_vigente = True
-                    motivo = "VIGENTE OK"
-
-                if eh_vigente:
-                    total_vigentes += 1
-                    val = item.get("valorGlobal") or item.get("valorInicial") or 0.0
-                    soma_valor_vigente += float(val)
-
-                # Guarda amostra dos 5 primeiros itens para debug
-                if idx < 5:
-                    amostras_log.append(f"• Item {idx+1}: Ini=`{raw_ini}`, Fim=`{raw_fim}` ➔ **{motivo}**")
+                    if eh_vigente:
+                        total_vigentes += 1
+                        val = item.get("valorGlobal") or item.get("valorInicial") or 0.0
+                        soma_valor_vigente += float(val)
 
             ticket_medio = (soma_valor_vigente / total_vigentes) if total_vigentes > 0 else 0.0
+            
             tot_val_fmt = f"R$ {soma_valor_vigente:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             ticket_fmt = f"R$ {ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
             texto_kri_banco = f"{total_vigentes}|{tot_val_fmt}|{ticket_fmt}"
             
-            # Monta relatório visual de diagnóstico
-            amostras_txt = "\n".join(amostras_log)
-            msg_diagnostico = (
-                f"🔎 **Relatório de Diagnóstico do PNCP:**\n\n"
-                f"* **Data de Hoje (Sistema):** `{hoje.strftime('%d/%m/%Y')}`\n"
-                f"* **Contratos Recebidos da API:** {total_recebidos}\n"
-                f"* **Contratos Validados como Vigentes:** {total_vigentes}\n\n"
-                f"**Amostra dos 5 primeiros registros recebidos:**\n{amostras_txt}"
+            msg_sucesso = (
+                f"✅ **Sincronização Efetuada em Tempo Real!**\n"
+                f"* **Data de Validação:** {hoje.strftime('%d/%m/%Y')}\n"
+                f"* **Contratos Efetivamente Vigentes Hoje:** {total_vigentes}\n"
+                f"* **Valor Total Vigente:** {tot_val_fmt}\n"
+                f"* **Ticket Médio:** {ticket_fmt}"
             )
             
-            return True, texto_kri_banco, msg_diagnostico
+            return True, texto_kri_banco, msg_sucesso
         else:
-            return False, "0|R$ 0,00|R$ 0,00", f"API retornou status HTTP {response.status_code}."
+            detalhe_erro = ""
+            try:
+                detalhe_erro = response.json().get("message", response.text[:150])
+            except Exception:
+                detalhe_erro = response.text[:150]
+                
+            return False, "0|R$ 0,00|R$ 0,00", f"API retornou status HTTP {response.status_code}: `{detalhe_erro}`"
 
     except Exception as e:
-        return False, "0|R$ 0,00|R$ 0,00", f"Erro ao executar diagnóstico: {e}"
+        return False, "0|R$ 0,00|R$ 0,00", f"Erro na conexão com webservice PNCP: {e}"
 
 # ---------------------------------------------------------
 # CONEXÃO COM SUPABASE
