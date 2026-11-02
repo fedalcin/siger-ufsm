@@ -132,11 +132,9 @@ from calculos_siger import (
 # ---------------------------------------------------------
 def buscar_dados_contratos_ufsm_comprasgov():
     """
-    Busca contratos da UFSM no PNCP com requisições leves (tamanhoPagina=20)
-    e aplica o filtro estrito em Python usando a estrutura exata do JSON retornado:
-    - codigoUnidade == '153164'
-    - categoriaProcesso.nome in ['Serviços', 'Compras']
-    - dataVigenciaInicio <= hoje <= dataVigenciaFim
+    Realiza a varredura COMPLETA de todas as páginas da API do PNCP para a UFSM (UG 153164),
+    calculando em tempo real a vigência (dataVigenciaInicio <= hoje <= dataVigenciaFim),
+    o valor global e o ticket médio de toda a base.
     """
     from datetime import datetime, timedelta, timezone
     import requests
@@ -144,8 +142,7 @@ def buscar_dados_contratos_ufsm_comprasgov():
     fuso_br = timezone(timedelta(hours=-3))
     hoje_dt = datetime.now(fuso_br).date()
     
-    # Período de 365 dias (limite do webservice do PNCP)
-    dt_inicio_pncp = (hoje_dt - timedelta(days=365)).strftime("%Y%m%d")
+    dt_inicio_pncp = f"{hoje_dt.year}0101"
     dt_hoje_pncp = hoje_dt.strftime("%Y%m%d")
     cnpj_ufsm = "95591764000105"
     
@@ -156,70 +153,80 @@ def buscar_dados_contratos_ufsm_comprasgov():
     
     total_vigentes = 0
     soma_valor_vigente = 0.0
+    total_contratos_analisados = 0
+    
+    pagina_atual = 1
+    total_paginas = 1
+    tamanho_pagina = 50  # 50 por página reduz o número de chamadas de rede
 
     try:
-        # Percorre até 5 páginas curtas de 20 itens cada (respostas ultrarrápidas sem timeout)
-        for num_pagina in range(1, 6):
-            url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_pncp}&dataFinal={dt_hoje_pncp}&cnpjOrgao={cnpj_ufsm}&pagina={num_pagina}&tamanhoPagina=20"
+        while pagina_atual <= total_paginas:
+            url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_pncp}&dataFinal={dt_hoje_pncp}&cnpjOrgao={cnpj_ufsm}&pagina={pagina_atual}&tamanhoPagina={tamanho_pagina}"
             
-            try:
-                response = requests.get(url_api, headers=headers, timeout=8)
-                if response.status_code != 200:
-                    break
-                
-                dados = response.json()
-                itens = dados.get("data", [])
-                if not itens:
-                    break
-                
-                for item in itens:
-                    # 1. Unidade Gestora
-                    unidade = item.get("unidadeOrgao") or {}
-                    cod_unidade = str(unidade.get("codigoUnidade", "")).strip()
-                    if cod_unidade != "153164":
-                        continue
-                    
-                    # 2. Categoria (Serviços / Compras)
-                    categoria = item.get("categoriaProcesso") or {}
-                    nome_categoria = str(categoria.get("nome", "")).strip()
-                    if nome_categoria not in ["Serviços", "Compras"]:
-                        continue
-                    
-                    # 3. Vigência (dataVigenciaInicio <= hoje <= dataVigenciaFim)
-                    str_ini = item.get("dataVigenciaInicio")
-                    str_fim = item.get("dataVigenciaFim")
-                    
-                    dt_ini = None
-                    dt_fim = None
-                    
-                    if str_ini:
-                        try:
-                            dt_ini = datetime.strptime(str_ini[:10], "%Y-%m-%d").date()
-                        except Exception:
-                            pass
-
-                    if str_fim:
-                        try:
-                            dt_fim = datetime.strptime(str_fim[:10], "%Y-%m-%d").date()
-                        except Exception:
-                            pass
-
-                    eh_vigente = False
-                    if dt_ini and dt_fim:
-                        if dt_ini <= hoje_dt <= dt_fim:
-                            eh_vigente = True
-                    elif dt_ini and not dt_fim:
-                        if dt_ini <= hoje_dt:
-                            eh_vigente = True
-
-                    if eh_vigente:
-                        total_vigentes += 1
-                        val = item.get("valorGlobal") or item.get("valorInicial") or 0.0
-                        soma_valor_vigente += float(val)
-
-            except Exception:
-                # Se uma página individual falhar na rede, encerra a paginação sem derrubar o sistema
+            response = requests.get(url_api, headers=headers, timeout=12)
+            if response.status_code != 200:
                 break
+            
+            dados = response.json()
+            
+            # Na primeira página, captura quantas páginas e registros existem no total
+            if pagina_atual == 1:
+                total_paginas = dados.get("totalPaginas", 1)
+                
+            itens = dados.get("data", [])
+            if not itens:
+                break
+            
+            for item in itens:
+                total_contratos_analisados += 1
+                
+                # 1. Filtro Unidade Gestora (UG 153164)
+                unidade = item.get("unidadeOrgao") or {}
+                cod_unidade = str(unidade.get("codigoUnidade", "")).strip()
+                if cod_unidade and cod_unidade != "153164":
+                    continue
+                
+                # 2. Filtro Categoria (Serviços ou Compras)
+                categoria = item.get("categoriaProcesso") or {}
+                nome_categoria = str(categoria.get("nome", "")).strip()
+                if nome_categoria and nome_categoria not in ["Serviços", "Compras"]:
+                    continue
+                
+                # 3. Validação de Vigência em Tempo Real
+                str_ini = item.get("dataVigenciaInicio")
+                str_fim = item.get("dataVigenciaFim")
+                
+                dt_ini = None
+                dt_fim = None
+                
+                if str_ini:
+                    try:
+                        dt_ini = datetime.strptime(str_ini[:10], "%Y-%m-%d").date()
+                    except Exception:
+                        pass
+
+                if str_fim:
+                    try:
+                        dt_fim = datetime.strptime(str_fim[:10], "%Y-%m-%d").date()
+                    except Exception:
+                        pass
+
+                eh_vigente = False
+                if dt_ini and dt_fim:
+                    if dt_ini <= hoje_dt <= dt_fim:
+                        eh_vigente = True
+                elif dt_ini and not dt_fim:
+                    if dt_ini <= hoje_dt:
+                        eh_vigente = True
+                elif not dt_ini and not dt_fim:
+                    eh_vigente = True
+
+                if eh_vigente:
+                    total_vigentes += 1
+                    val = item.get("valorGlobal") or item.get("valorInicial") or 0.0
+                    soma_valor_vigente += float(val)
+
+            pagina_atual += 1
 
         ticket_medio = (soma_valor_vigente / total_vigentes) if total_vigentes > 0 else 0.0
         
@@ -229,10 +236,9 @@ def buscar_dados_contratos_ufsm_comprasgov():
         texto_kri_banco = f"{total_vigentes}|{tot_val_fmt}|{ticket_fmt}"
         
         msg_sucesso = (
-            f"✅ **Sincronização com Filtro Específico Concluída!**\n"
-            f"* **Data de Validação:** {hoje_dt.strftime('%d/%m/%Y')}\n"
+            f"✅ **Varredura Completa do PNCP Concluída!**\n"
+            f"* **Contratos Totais Analisados na Base:** {total_contratos_analisados} (em {total_paginas} páginas)\n"
             f"* **Unidade Gestora:** 153164 (UFSM)\n"
-            f"* **Categorias Consideradas:** Serviços e Compras\n"
             f"* **Contratos Efetivamente Vigentes Hoje:** {total_vigentes}\n"
             f"* **Valor Total em Execução:** {tot_val_fmt}\n"
             f"* **Ticket Médio:** {ticket_fmt}"
@@ -241,7 +247,7 @@ def buscar_dados_contratos_ufsm_comprasgov():
         return True, texto_kri_banco, msg_sucesso
 
     except Exception as e:
-        return False, "0|R$ 0,00|R$ 0,00", f"Falha ao conectar com o PNCP: {e}"
+        return False, "0|R$ 0,00|R$ 0,00", f"Falha na varredura de páginas do PNCP: {e}"
 
 # ---------------------------------------------------------
 # CONEXÃO COM SUPABASE
