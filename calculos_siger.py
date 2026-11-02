@@ -207,27 +207,27 @@ def calcular_exposicao_agregada(
 
     return df_agrupado
 
+
 # =============================================================================
 # 4. INTEGRAÇÕES EXTERNAS E BUSCA DE DADOS (KRI)
 # =============================================================================
 
 def buscar_dados_contratos_ufsm_comprasgov():
     """
-    Consulta contratos da UFSM no PNCP.
-    Retorna:
-    (sucesso, valor_kri_formatado, mensagem, lista_contratos)
+    Consulta os registros da UFSM no PNCP desde 01/01/2020.
+    Objetivo: identificar os tipos de instrumentos e suas quantidades.
+    Não grava dados no Supabase.
     """
     from datetime import datetime, timedelta, timezone
     import requests
+    import streamlit as st
 
     fuso_br = timezone(timedelta(hours=-3))
     hoje = datetime.now(fuso_br).date()
 
-    # Período inicial: últimos 365 dias
-    #data_inicial = (hoje - timedelta(days=365)).strftime("%Y%m%d")
-    #data_final = hoje.strftime("%Y%m%d")
+    # Período da consulta: desde 01/01/2020
     data_inicial = "20200101"
-    data_final = datetime.now().strftime("%Y%m%d")
+    data_final = hoje.strftime("%Y%m%d")
 
     cnpj_ufsm = "95591764000105"
     url = "https://pncp.gov.br/api/consulta/v1/contratos"
@@ -237,13 +237,18 @@ def buscar_dados_contratos_ufsm_comprasgov():
         "User-Agent": "SIGER-UFSM/1.0"
     }
 
-    lista_contratos = []
     pagina = 1
     total_paginas = 1
+
+    # Armazena a quantidade e um exemplo de cada tipo
     contagem_tipos = {}
+    exemplos_tipos = {}
+
+    total_registros = 0
 
     try:
         while pagina <= total_paginas:
+
             parametros = {
                 "dataInicial": data_inicial,
                 "dataFinal": data_final,
@@ -261,9 +266,10 @@ def buscar_dados_contratos_ufsm_comprasgov():
 
             if response.status_code != 200:
                 return (
-                    False, "", 
-                    f"Erro HTTP {response.status_code} na página {pagina}: "
-                    f"{response.text[:1000]}",
+                    False,
+                    "",
+                    f"Erro HTTP {response.status_code} na página "
+                    f"{pagina}: {response.text[:1000]}",
                     []
                 )
 
@@ -283,56 +289,53 @@ def buscar_dados_contratos_ufsm_comprasgov():
                 else:
                     nome_tipo = str(tipo)
 
-                nome_tipo = nome_tipo.strip()
+                nome_tipo = nome_tipo.strip() or "Não informado"
 
-                # Contabiliza os tipos encontrados para diagnóstico
-                contagem_tipos[nome_tipo] = contagem_tipos.get(nome_tipo, 0) + 1
+                # Conta todos os tipos de instrumentos
+                contagem_tipos[nome_tipo] = (
+                    contagem_tipos.get(nome_tipo, 0) + 1
+                )
 
-                # Considera contratos e seus termos iniciais.
-                # Exclui empenhos e concessões.
-                if not nome_tipo.lower().startswith("contrato"):
-                    continue
-                
-                valor = item.get("valorGlobal") or item.get("valorInicial") or 0
+                # Guarda um exemplo completo de cada tipo
+                if nome_tipo not in exemplos_tipos:
+                    exemplos_tipos[nome_tipo] = item
 
-                lista_contratos.append({
-                    "Número Contrato / Empenho": item.get(
-                        "numeroContratoEmpenho", "Não informado"
-                    ),
-                    "Objeto / Categoria": item.get("objetoContrato", ""),
-                    "Valor Global": float(valor or 0),
-                    "Data Inicial": item.get("dataVigenciaInicio"),
-                    "Data Final": item.get("dataVigenciaFim"),
-                    "Número Controle PNCP": item.get("numeroControlePNCP"),
-                    "Tipo de Instrumento": tipo.get("nome", ""),
-                    "Fornecedor": item.get("nomeRazaoSocialFornecedor", ""),
-                    "Processo": item.get("processo", ""),
-                    "Dados Originais": str(item)
-                })
+                total_registros += 1
 
             pagina += 1
 
-        # Remove duplicidades pelo número de controle PNCP
-        contratos_unicos = {}
-        for contrato in lista_contratos:
-            chave = contrato.get("Número Controle PNCP")
-            if chave:
-                contratos_unicos[chave] = contrato
+        # Monta o relatório do diagnóstico
+        st.subheader("Diagnóstico dos registros do PNCP - UFSM")
 
-        lista_contratos = list(contratos_unicos.values())
+        st.write(f"**Período consultado:** 01/01/2020 a {hoje.strftime('%d/%m/%Y')}")
+        st.write(f"**Total de registros consultados:** {total_registros}")
+        st.write(f"**Total de páginas percorridas:** {total_paginas}")
 
-        resumo_tipos = ", ".join(
-            f"{tipo}: {quantidade}"
-            for tipo, quantidade in sorted(contagem_tipos.items())
-        )
+        st.divider()
+
+        st.subheader("Quantidade de registros por tipo de instrumento")
+
+        for nome_tipo, quantidade in sorted(
+            contagem_tipos.items(),
+            key=lambda x: x[1],
+            reverse=True
+        ):
+            st.write(f"**{nome_tipo}:** {quantidade} registros")
+
+        st.divider()
+
+        st.subheader("Exemplos completos de cada tipo")
+
+        for nome_tipo, exemplo in sorted(exemplos_tipos.items()):
+            with st.expander(f"{nome_tipo}"):
+                st.json(exemplo)
 
         mensagem = (
-            f"Consulta concluída! Foram percorridas {total_paginas} páginas. "
-            f"Contratos encontrados: {len(lista_contratos)}. "
-            f"Tipos de instrumentos encontrados: {resumo_tipos or 'Nenhum'}."
+            f"Diagnóstico concluído! Foram consultados {total_registros} "
+            f"registros em {total_paginas} páginas, desde 01/01/2020."
         )
-       
-        return True, "TESTE", mensagem, lista_contratos
+
+        return True, "TESTE", mensagem, []
 
     except requests.exceptions.Timeout:
         return False, "", "Tempo limite excedido na conexão com o PNCP.", []
