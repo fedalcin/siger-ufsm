@@ -278,12 +278,45 @@ def buscar_dados_contratos_ufsm_comprasgov():
                     "tamanhoPagina": 500
                 }
 
-                response = requests.get(
-                    url,
-                    params=parametros,
-                    headers=headers,
-                    timeout=60
-                )
+                # Faz a requisição com tratamento de limite de acesso do PNCP
+                response = None
+
+                for tentativa in range(5):
+
+                    response = requests.get(
+                        url,
+                        params=parametros,
+                        headers=headers,
+                        timeout=60
+                    )
+
+                    if response.status_code != 429:
+                        break
+
+                    tempo_espera = 15 * (tentativa + 1)
+
+                    st.warning(
+                        f"Limite de requisições do PNCP atingido. "
+                        f"Aguardando {tempo_espera} segundos "
+                        f"(tentativa {tentativa + 1} de 5)."
+                    )
+
+                    import time
+                    time.sleep(tempo_espera)
+
+                if response is not None and response.status_code == 429:
+                    return (
+                        False,
+                        "",
+                        f"O PNCP manteve o bloqueio após cinco tentativas. "
+                        f"Período: {data_inicial} a {data_final}, "
+                        f"página {pagina}. Tente novamente mais tarde.",
+                        []
+                    )
+
+                # Pequeno intervalo entre consultas para reduzir novas ocorrências
+                import time
+                time.sleep(2)
 
                 # Se não houver registros no período, segue adiante
                 if response.status_code == 204:
