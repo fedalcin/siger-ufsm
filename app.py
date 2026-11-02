@@ -132,21 +132,24 @@ from calculos_siger import (
 # ---------------------------------------------------------
 def buscar_dados_contratos_ufsm_comprasgov():
     """
-    Busca via API pública do PNCP/Compras.gov apenas contratos EFETIVAMENTE VIGENTES da UFSM,
-    calculando a quantidade ativa, o valor total acumulado e o ticket médio.
+    Busca via API pública do PNCP/Compras.gov os dados de contratos da UFSM,
+    filtrando manualmente em Python apenas os contratos EFETIVAMENTE VIGENTES na data atual.
     """
     from datetime import datetime, timedelta, timezone
     
     fuso_br = timezone(timedelta(hours=-3))
-    hoje_dt = datetime.now(fuso_br)
-    hoje_str = hoje_dt.strftime("%Y%m%d")
+    agora_dt = datetime.now(fuso_br)
+    hoje_date = agora_dt.date()
+    
+    dt_inicio_ano = f"{agora_dt.year}0101"
+    dt_hoje_str = agora_dt.strftime("%Y%m%d")
     cnpj_ufsm = "95591764000105"
     
-    # Consulta na API do PNCP ordenando/filtrando por vigência ativa
-    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?cnpjOrgao={cnpj_ufsm}&statusData=VIGENTE&pagina=1&tamanhoPagina=100"
+    # URL oficial do PNCP com os parâmetros validados (HTTP 200)
+    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_ano}&dataFinal={dt_hoje_str}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=100"
     
     headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
         "accept": "application/json"
     }
     
@@ -162,12 +165,12 @@ def buscar_dados_contratos_ufsm_comprasgov():
             
             for item in itens:
                 dt_fim_str = item.get("dataFinalVigencia")
-                # Validação de vigência: verifica se a data final é maior ou igual a hoje
                 eh_vigente = True
+                
                 if dt_fim_str:
                     try:
                         dt_fim = datetime.strptime(dt_fim_str[:10], "%Y-%m-%d").date()
-                        if dt_fim < hoje_dt.date():
+                        if dt_fim < hoje_date:
                             eh_vigente = False
                     except Exception:
                         pass
@@ -177,19 +180,17 @@ def buscar_dados_contratos_ufsm_comprasgov():
                     val = item.get("valorGlobal") or item.get("valorInicial") or 0.0
                     soma_valores_vigentes += float(val)
 
-            # Cálculo do Ticket Médio
             ticket_medio = (soma_valores_vigentes / total_vigentes) if total_vigentes > 0 else 0.0
             
-            # Formatação Moeda BR
             tot_val_fmt = f"R$ {soma_valores_vigentes:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             ticket_fmt = f"R$ {ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
             
-            # String gravada no banco dividida por pipe (|) para fácil separação no layout
+            # Grava no formato numérico limpo separado por pipes: "142|R$ 45.200.000,00|R$ 318.309,85"
             texto_kri_banco = f"{total_vigentes}|{tot_val_fmt}|{ticket_fmt}"
             
             msg_sucesso = (
-                f"✅ **Sincronização Concluída!**\n"
-                f"* **Contratos Vigentes:** {total_vigentes}\n"
+                f"✅ **Sincronização Concluída com Sucesso!**\n"
+                f"* **Contratos Efetivamente Vigentes:** {total_vigentes}\n"
                 f"* **Valor Total em Execução:** {tot_val_fmt}\n"
                 f"* **Ticket Médio:** {ticket_fmt}"
             )
@@ -1372,7 +1373,7 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
         st.subheader("🌐 Teste de Conexão Webservice - PNCP / Compras.gov (UFSM)")
         st.write("Sincronização com a base de dados do Portal Nacional de Contratações Públicas para extração do volume de contratos vigentes da **UFSM (UG 153164 / CNPJ 95.591.764/0001-05)**.")
         
-        # 1. Consulta dados salvos
+        # 1. Consulta dados salvos previamente no banco
         dados_salvos = None
         try:
             res_int = supabase.table("integracoes_sistemas").select("*").ilike("nome_sistema", "%Compras.gov%").execute()
@@ -1384,16 +1385,24 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
         string_kri = dados_salvos.get("dados_compartilhados", "128|R$ 15.400.000,00|R$ 120.312,50") if dados_salvos else "128|R$ 15.400.000,00|R$ 120.312,50"
         ultima_sinc = formatar_data_hora_br(dados_salvos.get("ultima_sincronizacao")) if dados_salvos else "Nunca"
 
-        # Trata o formato salvo no banco
-        partes = string_kri.split("|")
-        qtd_vigentes = partes[0] if len(partes) > 0 else "128"
-        val_total = partes[1] if len(partes) > 1 else "R$ 15.400.000,00"
-        ticket_medio = partes[2] if len(partes) > 2 else "R$ 120.312,50"
+        # Trata a string gravada, sanitizando caso haja resquícios do formato antigo
+        if "|" in string_kri:
+            partes = string_kri.split("|")
+            qtd_vigentes = partes[0].strip()
+            val_total = partes[1].strip()
+            ticket_medio = partes[2].strip()
+        else:
+            # Fallback para extrair apenas os números se houver formato legado
+            import re
+            nums = re.findall(r'\d+', string_kri)
+            qtd_vigentes = nums[0] if nums else "128"
+            val_total = "R$ 15.400.000,00"
+            ticket_medio = "R$ 120.312,50"
 
-        # Exibição em 4 colunas limpas para não cortar em nenhuma resolução
+        # Exibição em 4 colunas com números limpos
         col_m1, col_m2, col_m3, col_m4 = st.columns(4)
         with col_m1:
-            st.metric("Contratos Vigentes", f"{qtd_vigentes} contratos")
+            st.metric("Contratos Vigentes", f"{qtd_vigentes}")
         with col_m2:
             st.metric("Valor Total Vigente", f"{val_total}")
         with col_m3:
@@ -1421,9 +1430,8 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
                             "dados_compartilhados": valor_kri_formatado
                         }).ilike("nome_sistema", "%Compras.gov%").execute()
 
-                        # Grava ponto no histórico para alimentar o gráfico do dashboard
+                        # Grava ponto no histórico para o gráfico do dashboard
                         try:
-                            # Extrai a quantidade numérica para o gráfico
                             qtd_num = int(valor_kri_formatado.split("|")[0])
                             res_sys = supabase.table("integracoes_sistemas").select("id").ilike("nome_sistema", "%Compras.gov%").execute()
                             if res_sys.data:
@@ -1434,7 +1442,7 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
                                     "texto_exibicao": f"{qtd_num} contratos vigentes ({valor_kri_formatado.split('|')[1]})"
                                 }).execute()
                         except Exception as e_hist:
-                            print(f"Erro ao salvar histórico do KRI: {e_hist}")
+                            print(f"Aviso histórico KRI: {e_hist}")
 
                         st.rerun()
                     except Exception as e_upd:
