@@ -224,8 +224,10 @@ def buscar_dados_contratos_ufsm_comprasgov():
     hoje = datetime.now(fuso_br).date()
 
     # Período inicial: últimos 365 dias
-    data_inicial = (hoje - timedelta(days=365)).strftime("%Y%m%d")
-    data_final = hoje.strftime("%Y%m%d")
+    #data_inicial = (hoje - timedelta(days=365)).strftime("%Y%m%d")
+    #data_final = hoje.strftime("%Y%m%d")
+    data_inicial = "20200101"
+    data_final = datetime.now().strftime("%Y%m%d")
 
     cnpj_ufsm = "95591764000105"
     url = "https://pncp.gov.br/api/consulta/v1/contratos"
@@ -340,4 +342,3 @@ def buscar_dados_contratos_ufsm_comprasgov():
 
     except Exception as e:
         return False, "", f"Erro inesperado: {str(e)}", []
-
