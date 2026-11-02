@@ -11,6 +11,7 @@ from email.mime.multipart import MIMEMultipart
 from cryptography.fernet import Fernet
 import base64
 from fpdf import FPDF
+from datetime import datetime, date, timezone, timedelta
 
 # ---------------------------------------------------------
 # MÓDULO DE CRIPTOGRAFIA E NOTIFICAÇÕES POR E-MAIL (SMTP)
@@ -414,7 +415,11 @@ def realizar_login(email, senha):
                     ip_origem = "127.0.0.1"
                     if hasattr(st, "context") and hasattr(st.context, "headers"):
                         ip_origem = st.context.headers.get("X-Forwarded-For", st.context.headers.get("Host", "127.0.0.1")).split(",")[0]
-                    
+
+                    # Força a hora no fuso de Brasília (UTC-3)
+                    fuso_br = timezone(timedelta(hours=-3))
+                    data_hora_br = datetime.now(fuso_br).isoformat()
+
                     supabase.table("logs_auditoria").insert({
                         "usuario_id": usr["id"],
                         "usuario_nome": usr["nome"],
@@ -423,8 +428,9 @@ def realizar_login(email, senha):
                         "acao": "LOGIN",
                         "detalhes": f"Login realizado com sucesso no SIGER pelo IP {ip_origem}.",
                         "ip_origem": ip_origem,
-                        "data_hora": datetime.now().isoformat()
+                        "data_hora": data_hora_br
                     }).execute()
+
                 except Exception as e_log:
                     print(f"Aviso log auditoria: {e_log}")
 
@@ -761,7 +767,7 @@ def gerar_relatorio_pdf_risco(risco_obj, df_hist_eval, df_ac_mon=None):
             acao = str(row.get("acao", "")).encode('latin-1', 'replace').decode('latin-1')[:50]
             resp = str(row.get("nome_responsavel_implementacao", "")).encode('latin-1', 'replace').decode('latin-1')[:22]
             st_ac = str(row.get("status_acao", ""))
-            dt_conc = str(row.get("previsao_data_conclusao", ""))[:10]
+            dt_conc = formatar_data_br(row.get("previsao_data_conclusao"))
 
             pdf.cell(10, 6, seq, border=1)
             pdf.cell(85, 6, acao, border=1)
@@ -791,10 +797,21 @@ def formatar_data_hora_br(data_hora_str):
     if not data_hora_str:
         return "-"
     try:
-        dt = datetime.strptime(data_hora_str[:16].replace("T", " "), "%Y-%m-%d %H:%M")
-        return dt.strftime("%d/%m/%Y %H:%M")
+        # Se contiver fuso horário ISO (ex: com Z ou +00:00 do Supabase)
+        dt = datetime.fromisoformat(data_hora_str.replace("Z", "+00:00"))
+        
+        # Converte para Fuso Horário de Brasília (UTC-3)
+        fuso_br = timezone(timedelta(hours=-3))
+        dt_br = dt.astimezone(fuso_br)
+        
+        return dt_br.strftime("%d/%m/%Y %H:%M")
     except Exception:
-        return data_hora_str
+        try:
+            # Fallback para caso o formato seja simples sem fuso
+            dt = datetime.strptime(data_hora_str[:16].replace("T", " "), "%Y-%m-%d %H:%M")
+            return dt.strftime("%d/%m/%Y %H:%M")
+        except Exception:
+            return data_hora_str
 
 def obter_badge_prazo(data_conclusao_str, status_acao):
     if status_acao == "Concluída":
@@ -1266,7 +1283,7 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                         st_ativo = "🟢 Ativo" if u_item.get("ativo") else "🔴 Inativo"
                         with st.expander(f"👤 {u_item['nome']} ({u_item['email']}) - Perfil: {u_item.get('perfil_nome')} | {st_ativo}"):
                             st.write(f"**Unidade:** {u_item.get('unidade_sigla') or 'Todas'}")
-                            st.write(f"**Data de Criação:** {formatar_data_hora_br(u_item.get('criado_em'))}")
+                            st.write(f"**Data de Criação:** {formatar_data_hora_br(u_item.get('created_at') or u_item.get('criado_em'))}")
                             
                             if pode("adm_usuarios", "alterar"):
                                 pop_edit_u = st.popover("✏️ Editar Usuário")
@@ -2197,7 +2214,8 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                         st.warning("Preencha a justificativa para encerrar.")
                                     else:
                                         try:
-                                            dt_agora_iso = datetime.now().isoformat()
+                                            fuso_br = timezone(timedelta(hours=-3))
+                                            dt_agora_iso = datetime.now(fuso_br).isoformat()
                                             resp_enc_efetivo = usr_atual["nome"]
 
                                             supabase.table("riscos").update({
@@ -2364,15 +2382,17 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                                     "situacao_status": e_sit
                                                 }).eq("id", r_item['id']).execute()
 
+                                                fuso_br = timezone(timedelta(hours=-3))
                                                 dados_avaliac = {
                                                     "risco_id": r_item['id'],
                                                     "probabilidade": e_prob,
                                                     "impacto": e_imp,
-                                                    "data_avaliacao": datetime.now().isoformat(),
+                                                    "data_avaliacao": datetime.now(fuso_br).isoformat(),
                                                     "usuario_avaliador": usr_atual["nome"],
                                                     "tipo_avaliacao": "Reavaliação Periódica",
                                                     "justificativa": "Reavaliação de probabilidade e impacto gravada via painel de edição."
                                                 }
+
                                                 supabase.table("avaliacoes_risco").insert(dados_avaliac).execute()
 
                                                 st.success("✅ Risco reavaliado e alteração salva!")
@@ -2404,7 +2424,8 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                                     st.warning("Preencha todos os campos obrigatórios.")
                                                 else:
                                                     try:
-                                                        dt_agora_iso = datetime.now().isoformat()
+                                                        fuso_br = timezone(timedelta(hours=-3))
+                                                        dt_agora_iso = datetime.now(fuso_br).isoformat()
                                                         supabase.table("riscos").update({
                                                             "situacao_status": "Encerrado",
                                                             "data_encerramento": dt_agora_iso,
@@ -2636,11 +2657,12 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                 "impacto": i_novo
                             }).eq("id", r_id).execute()
 
+                            fuso_br = timezone(timedelta(hours=-3))
                             supabase.table("avaliacoes_risco").insert({
                                 "risco_id": r_id,
                                 "probabilidade": p_nova,
                                 "impacto": i_novo,
-                                "data_avaliacao": datetime.now().isoformat(),
+                                "data_avaliacao": datetime.now(fuso_br).isoformat(),
                                 "usuario_avaliador": usr_atual["nome"],
                                 "tipo_avaliacao": "Reavaliação Periódica",
                                 "justificativa": just_reav.strip()
@@ -3156,7 +3178,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                             st.write(f"**1º Nível (Tipo):** {ctipo}")
                             st.write(f"**2º Nível (Subtipo):** {csub}")
                             st.write(f"**3º Nível (Detalhamento):** {cdet or '-'}")
-                            st.caption(f"Criado em: {formatar_data_hora_br(c_item.get('criado_em'))}")
+                            st.caption(f"Criado em: {formatar_data_hora_br(c_item.get('created_at') or c_item.get('criado_em'))}")
                             
                             col_c_edit, col_c_del = st.columns([1, 1])
                             with col_c_edit:
@@ -3251,7 +3273,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                         with st.expander(f"📄 **{d_titulo}**"):
                             st.write(f"**Descrição:** {d_desc or 'Sem descrição'}")
                             st.write(f"**Nome do Arquivo:** {d_arq}")
-                            st.caption(f"Data do Upload: {formatar_data_hora_br(d.get('data_upload'))}")
+                            st.caption(f"Data do Upload: {formatar_data_hora_br(doc.get('data_upload'))}")
                             
                             col_b_act1, col_b_act2 = st.columns([1, 1])
                             with col_b_act1:
