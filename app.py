@@ -132,8 +132,8 @@ from calculos_siger import (
 # ---------------------------------------------------------
 def buscar_dados_contratos_ufsm_comprasgov():
     """
-    Realiza uma consulta direta e única de 5 contratos da UFSM no PNCP
-    e retorna o payload bruto completo para inspeção de campos e estrutura.
+    Realiza uma consulta direta de 10 contratos da UFSM no PNCP
+    e retorna a lista de objetos Python brutos para inspeção detalhada na tela.
     """
     from datetime import datetime, timedelta, timezone
     
@@ -144,8 +144,8 @@ def buscar_dados_contratos_ufsm_comprasgov():
     dt_hoje = agora.strftime("%Y%m%d")
     cnpj_ufsm = "95591764000105"
     
-    # Consulta simples de 1 página com 5 registros
-    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_ano}&dataFinal={dt_hoje}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=5"
+    # tamanhoPagina=10 atende ao limite mínimo exigido pela API pública do PNCP
+    url_api = f"https://pncp.gov.br/api/consulta/v1/contratos?dataInicial={dt_inicio_ano}&dataFinal={dt_hoje}&cnpjOrgao={cnpj_ufsm}&pagina=1&tamanhoPagina=10"
     
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -160,24 +160,12 @@ def buscar_dados_contratos_ufsm_comprasgov():
             total_registros = dados.get("totalRegistros", 0)
             itens = dados.get("data", [])
             
-            # Formata os 5 contratos recebidos em texto/json legível para a tela
-            import json
-            payload_inspecao = json.dumps(itens[:5], indent=2, ensure_ascii=False)
-            
-            msg_diagnostico = (
-                f"📊 **Consulta Realizada com Sucesso!**\n"
-                f"* **Total de Registros Encontrados na Base:** `{total_registros}`\n"
-                f"* **Registros Retornados para Inspeção:** `{len(itens)}`\n\n"
-                f"```json\n{payload_inspecao}\n```"
-            )
-            
-            # Retorna o texto formatado no lugar da métrica para visualização imediata
-            return True, f"{total_registros} registros", msg_diagnostico
+            return True, itens[:5], f"Consulta OK! `{total_registros}` contratos encontrados na base oficial da UFSM."
         else:
-            return False, "Erro", f"API retornou status HTTP {response.status_code}: `{response.text[:200]}`"
+            return False, [], f"API retornou status HTTP {response.status_code}: `{response.text}`"
 
     except Exception as e:
-        return False, "Erro", f"Falha de conexão: {e}"
+        return False, [], f"Falha de conexão: {e}"
 
 # ---------------------------------------------------------
 # CONEXÃO COM SUPABASE
@@ -1389,43 +1377,61 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
 
         st.divider()
 
-        # 2. Botão de sincronização manual sob demanda
-        if st.button("🔄 Sincronizar Dados via API Agora", type="primary"):
-            with st.spinner("Conectando aos servidores do Compras.gov.br / PNCP..."):
-                sucesso, valor_kri_formatado, msg = buscar_dados_contratos_ufsm_comprasgov()
+        # Botão para disparar a consulta de inspeção
+            if st.button("🔍 Inspecionar 5 Contratos Reais da UFSM (PNCP)", type="primary"):
+                with st.spinner("Buscando amostra bruta da API do Compras.gov / PNCP..."):
+                    sucesso, itens_brutos, mensagem = buscar_dados_contratos_ufsm_comprasgov()
+            
+                    if sucesso:
+                        st.success(mensagem)
+                        st.subheader("📋 Payload Bruto Retornado (Primeiros 5 Contratos)")
                 
-                fuso_br = timezone(timedelta(hours=-3))
-                dt_agora = datetime.now(fuso_br).isoformat()
+                        # Exibe o visualizador interativo JSON do Streamlit
+                        for idx, contrato in enumerate(itens_brutos, 1):
+                            with st.expander(f"📄 Contrato {idx} - N° {contrato.get('numeroContratoEmpenho', 'S/N')} / {contrato.get('anoContrato', '')}"):
+                                st.json(contrato)
+                    else:
+                        st.error(f"⚠️ {mensagem}")
 
-                if sucesso:
-                    st.success("✅ **Sincronização Efetuada com Sucesso!**")
-                    st.markdown(msg)
-                    
-                    try:
-                        res_upd = supabase.table("integracoes_sistemas").update({
-                            "ultima_sincronizacao": dt_agora,
-                            "dados_compartilhados": valor_kri_formatado
-                        }).ilike("nome_sistema", "%Compras.gov%").execute()
 
-                        # Grava ponto no histórico para o gráfico do dashboard
-                        try:
-                            qtd_num = int(valor_kri_formatado.split("|")[0])
-                            res_sys = supabase.table("integracoes_sistemas").select("id").ilike("nome_sistema", "%Compras.gov%").execute()
-                            if res_sys.data:
-                                sys_id = res_sys.data[0]["id"]
-                                supabase.table("historico_kri").insert({
-                                    "integracao_id": sys_id,
-                                    "valor_medido": qtd_num,
-                                    "texto_exibicao": f"{qtd_num} contratos vigentes ({valor_kri_formatado.split('|')[1]})"
-                                }).execute()
-                        except Exception as e_hist:
-                            print(f"Aviso histórico KRI: {e_hist}")
 
-                        st.rerun()
-                    except Exception as e_upd:
-                        st.error(f"Erro ao salvar dados sincronizados no banco: {e_upd}")
-                else:
-                    st.warning(f"⚠️ {msg}")
+        # 2. Botão de sincronização manual sob demanda
+#        if st.button("🔄 Sincronizar Dados via API Agora", type="primary"):
+#            with st.spinner("Conectando aos servidores do Compras.gov.br / PNCP..."):
+#                sucesso, valor_kri_formatado, msg = buscar_dados_contratos_ufsm_comprasgov()
+#                
+#                fuso_br = timezone(timedelta(hours=-3))
+#                dt_agora = datetime.now(fuso_br).isoformat()
+#
+#                if sucesso:
+#                    st.success("✅ **Sincronização Efetuada com Sucesso!**")
+#                    st.markdown(msg)
+#                    
+#                    try:
+#                        res_upd = supabase.table("integracoes_sistemas").update({
+#                            "ultima_sincronizacao": dt_agora,
+#                            "dados_compartilhados": valor_kri_formatado
+#                        }).ilike("nome_sistema", "%Compras.gov%").execute()
+#
+#                        # Grava ponto no histórico para o gráfico do dashboard
+#                        try:
+#                            qtd_num = int(valor_kri_formatado.split("|")[0])
+#                            res_sys = supabase.table("integracoes_sistemas").select("id").ilike("nome_sistema", "%Compras.gov%").execute()
+#                            if res_sys.data:
+#                                sys_id = res_sys.data[0]["id"]
+#                                supabase.table("historico_kri").insert({
+#                                    "integracao_id": sys_id,
+#                                    "valor_medido": qtd_num,
+#                                    "texto_exibicao": f"{qtd_num} contratos vigentes ({valor_kri_formatado.split('|')[1]})"
+#                                }).execute()
+#                        except Exception as e_hist:
+#                            print(f"Aviso histórico KRI: {e_hist}")
+#
+#                        st.rerun()
+#                    except Exception as e_upd:
+#                        st.error(f"Erro ao salvar dados sincronizados no banco: {e_upd}")
+#                else:
+#                    st.warning(f"⚠️ {msg}")
 
 # ---------------------------------------------------------
 # PÁGINA: ADMINISTRAÇÃO DO SISTEMA
