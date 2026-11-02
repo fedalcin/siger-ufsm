@@ -2,6 +2,7 @@ from datetime import date, datetime, timedelta
 import pandas as pd
 import numpy as np
 import requests
+import time
 from datetime import datetime, timezone, timedelta
 
 # =============================================================================
@@ -212,14 +213,14 @@ def calcular_exposicao_agregada(
 def buscar_dados_contratos_ufsm_comprasgov():
     """
     Busca automatizada na API do PNCP para a Unidade Gestora da UFSM (UG 153164).
-    Retorna a totalidade dos contratos sem depender de intervalos de datas extensos.
+    Utiliza tamanho de página otimizado (50 itens) para evitar timeouts da API pública.
     """
     fuso_br = timezone(timedelta(hours=-3))
     agora = datetime.now(fuso_br)
     hoje_dt = agora.date()
     
     cnpj_ufsm = "95591764000105"
-    ug_ufsm = "153164"  # Unidade Gestora Principal da UFSM
+    ug_ufsm = "153164"
     
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
@@ -230,30 +231,41 @@ def buscar_dados_contratos_ufsm_comprasgov():
     valor_total_vigente = 0.0
     pagina_atual = 1
     total_paginas = 1
+    timeout_segundos = 60  # Aumentado para dar margem à API pública
 
     try:
         while pagina_atual <= total_paginas:
-            # Endpoint direto do PNCP focado na busca por Unidade Orçamentária/Gestora
+            # Requisita páginas menores (50 itens) para que o PNCP responda instantaneamente
             url_api = (
                 f"https://pncp.gov.br/api/consulta/v1/contratos"
                 f"?cnpjOrgao={cnpj_ufsm}&codigoUnidade={ug_ufsm}"
-                f"&pagina={pagina_atual}&tamanhoPagina=500"
+                f"&pagina={pagina_atual}&tamanhoPagina=50"
             )
             
-            response = requests.get(url_api, headers=headers, timeout=25)
-            
-            if response.status_code != 200:
-                # Tenta fallback pelo endpoint alternativo de atos do órgão
-                url_api_alt = f"https://pncp.gov.br/api/pncp/v1/orgaos/{cnpj_ufsm}/contratos?pagina={pagina_atual}&tamanhoPagina=500"
-                response = requests.get(url_api_alt, headers=headers, timeout=25)
-                if response.status_code != 200:
-                    break
+            # Tolerância a falhas: até 3 tentativas por página em caso de oscilação do governo
+            resposta_sucesso = False
+            for tentativa in range(1, 4):
+                try:
+                    response = requests.get(url_api, headers=headers, timeout=timeout_segundos)
+                    if response.status_code == 200:
+                        resposta_sucesso = True
+                        break
+                    time.sleep(1)
+                except requests.exceptions.RequestException:
+                    time.sleep(2)
 
+            if not resposta_sucesso:
+                # Se após 3 tentativas a página não responder, interrompe a busca mantendo os dados já coletados
+                break
+                
             dados = response.json()
             itens = dados.get("data", []) or dados.get("resultado", [])
             
             if pagina_atual == 1:
                 total_paginas = dados.get("totalPaginas", 1)
+
+            if not itens:
+                break
 
             for item in itens:
                 dt_ini_raw = str(item.get("dataVigenciaInicio") or "")[:10]
@@ -265,7 +277,6 @@ def buscar_dados_contratos_ufsm_comprasgov():
                 except ValueError:
                     continue
 
-                # Considera vigentes os contratos cuja data final é maior ou igual a hoje (ou sem data final definida)
                 if dt_ini and dt_ini <= hoje_dt and (not dt_fim or dt_fim >= hoje_dt):
                     v_item = float(item.get("valorGlobal") or item.get("valorInicial") or 0.0)
                     valor_total_vigente += v_item
@@ -284,7 +295,7 @@ def buscar_dados_contratos_ufsm_comprasgov():
 
         qtd_vigentes = len(contratos_vigentes)
         if qtd_vigentes == 0:
-            return False, "", "A API respondeu, mas nenhum contrato ativo foi identificado na vigência atual.", []
+            return False, "", "A API respondeu, mas nenhum contrato ativo foi identificado na receita/vigência atual.", []
 
         ticket_medio = valor_total_vigente / qtd_vigentes
         
@@ -292,7 +303,7 @@ def buscar_dados_contratos_ufsm_comprasgov():
         ticket_fmt = f"R$ {ticket_medio:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         
         string_kri_formatada = f"{qtd_vigentes}|{val_total_fmt}|{ticket_fmt}"
-        msg_sucesso = f"Sincronização concluída com sucesso: {qtd_vigentes} contratos vigentes mapeados via API."
+        msg_sucesso = f"Sincronização concluída: {qtd_vigentes} contratos vigentes mapeados com sucesso."
         
         return True, string_kri_formatada, msg_sucesso, contratos_vigentes
 
