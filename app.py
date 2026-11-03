@@ -1459,11 +1459,10 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
 
         st.divider()
 
-
         # Botão de sincronização dos contratos vigentes da UFSM
         if st.button("🔄 Sincronizar Contratos Vigentes da UFSM", type="primary"):
 
-            with st.spinner("Consultando contratos vigentes da UFSM no PNCP..."):
+            with st.spinner("Consultando contratos vigentes do PNCP..."):
 
                 (
                     sucesso,
@@ -1474,11 +1473,97 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
 
                 if sucesso:
 
+                    # Confere se a integração está cadastrada
+                    if not dados_salvos or not dados_salvos.get("id"):
+                        st.error(
+                            "A integração Compras.gov.br / PNCP "
+                            "não foi localizada na tabela integracoes_sistemas."
+                        )
+                        st.stop()
+
+                    integracao_id = dados_salvos["id"]
+
+                    # Formatação dos valores para apresentação
+                    valor_global_formatado = (
+                        f"R$ {valor_global_total:,.2f}"
+                        .replace(",", "X")
+                        .replace(".", ",")
+                        .replace("X", ".")
+                    )
+
+                    ticket_medio = (
+                        valor_global_total / quantidade_contratos
+                        if quantidade_contratos > 0
+                        else 0
+                    )
+
+                    ticket_medio_formatado = (
+                        f"R$ {ticket_medio:,.2f}"
+                        .replace(",", "X")
+                        .replace(".", ",")
+                        .replace("X", ".")
+                    )
+
+                    # -------------------------------------------------
+                    # 1. Grava a medição na tabela historico_kri
+                    # -------------------------------------------------
+
+                    try:
+
+                        from datetime import datetime, timezone
+
+                        data_medicao = datetime.now(
+                            timezone.utc
+                        ).isoformat()
+
+                        supabase.table("historico_kri").insert({
+                            "integracao_id": integracao_id,
+                            "valor_principal": quantidade_contratos,
+                            "valor_secundario": valor_global_total,
+                            "data_medicao": data_medicao
+                        }).execute()
+
+                        st.success(
+                            "Medição registrada com sucesso na tabela historico_kri."
+                        )
+
+                    except Exception as e:
+
+                        st.error(
+                            f"Erro ao gravar a medição no histórico: {e}"
+                        )
+                        st.stop()
+
+                    # -------------------------------------------------
+                    # 2. Atualiza os dados da integração
+                    # -------------------------------------------------
+
+                    try:
+
+                        dados_compartilhados = (
+                            f"{quantidade_contratos}|"
+                            f"{valor_global_formatado}|"
+                            f"{ticket_medio_formatado}"
+                        )
+
+                        supabase.table("integracoes_sistemas").update({
+                            "dados_compartilhados": dados_compartilhados,
+                            "ultima_sincronizacao": data_medicao
+                        }).eq("id", integracao_id).execute()
+
+                    except Exception as e:
+
+                        st.warning(
+                            "A medição foi gravada no histórico, mas não "
+                            f"foi possível atualizar os dados da integração: {e}"
+                        )
+
+                    # Guarda os resultados para apresentação
                     st.session_state["quantidade_contratos_pncp"] = quantidade_contratos
                     st.session_state["valor_global_contratos_pncp"] = valor_global_total
                     st.session_state["msg_pncp"] = msg
 
-                    st.success(msg)
+                    st.rerun()
 
                 else:
                     st.error(f"⚠️ {msg}")
