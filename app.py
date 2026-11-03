@@ -3849,8 +3849,10 @@ elif st.session_state.pagina_atual == "Dashboards":
 
                 st.divider()
 
-                # Cabeçalho unificado com o KRI no card lateral
-                col_hdr1, col_hdr2 = st.columns([2.3, 1.7])
+                # ---------------------------------------------------------
+                # CABEÇALHO DO RISCO COM 2 QUADROS SEPARADOS À DIREITA
+                # ---------------------------------------------------------
+                col_hdr1, col_hdr2 = st.columns([2.2, 1.8])
                 
                 with col_hdr1:
                     st.markdown(f"### 🛡️ Risco #{r_id}: {risco_obj.get('evento')}")
@@ -3859,55 +3861,41 @@ elif st.session_state.pagina_atual == "Dashboards":
                     st.markdown(f"**Consequência:** {risco_obj.get('consequencia', '-')}")
 
                 with col_hdr2:
-                    info_kri = risco_obj.get("integracoes_sistemas")
-                    txt_kri = ""
-    
-                    if info_kri:
-                        nome_sys = info_kri.get("nome_sistema", "Sistema Conectado")
-                        dados_kri = info_kri.get("dados_compartilhados", "")
-                        dt_sinc_kri = formatar_data_hora_br(info_kri.get("ultima_sincronizacao"))
-        
-                        # Pega o rótulo do KRI cadastrado no banco (ex: "Ticket Médio", "Taxa de Evasão", "Índice de Retenção")
-                        # Se não houver rótulo cadastrado, usa "Indicador KRI" como fallback
-                        label_kri = info_kri.get("label_kri") or "Indicador KRI"
-        
-                        if "|" in str(dados_kri):
-                            p = dados_kri.split("|")
-                            # O 3º valor é o indicador calculado (razão)
-                            val_kri_exibir = p[2].strip() if len(p) > 2 else p[0].strip()
-                            txt_kri = f"\n🔌 **KRI ({nome_sys}):** {label_kri}: **{val_kri_exibir}** *(Sinc: {dt_sinc_kri})*"
-                        else:
-                            txt_kri = f"\n🔌 **KRI ({nome_sys}):** {dados_kri} *(Sinc: {dt_sinc_kri})*"
-
+                    # 1. QUADRO DE DATAS E REVISÃO
                     st.info(f"""
                     📅 **Data de Identificação:** {formatar_data_br(risco_obj.get('data_identificacao'))}  
                     🔄 **Periodicidade:** {risco_obj.get('periodicidade_revisao', 'Não informada')}  
-                    📆 **Próxima Revisão:** {formatar_data_br(data_prox_rev)} (`{sit_revisao}`){txt_kri}
+                    📆 **Próxima Revisão:** {formatar_data_br(data_prox_rev)} (`{sit_revisao}`)
                     """)
 
-                # 2. EXIBIÇÃO FORMATADA E ELEGANTE DO KRI CONECTADO AO RISCO NO PAINEL
-                info_kri = risco_obj.get("integracoes_sistemas")
-                if info_kri:
-                    st.divider()
-                    nome_sys = info_kri.get("nome_sistema", "Sistema Externo")
-                    dados_kri = info_kri.get("dados_compartilhados", "")
-                    dt_sinc_kri = formatar_data_hora_br(info_kri.get("ultima_sincronizacao"))
-                    
-                    st.markdown(f"##### 🔌 Indicador Chave de Risco (KRI) Conectado — {nome_sys}")
-                    st.caption(f"🕒 *Última Sincronização: {dt_sinc_kri}*")
-                    
-                    if "|" in str(dados_kri):
-                        partes = dados_kri.split("|")
-                        qtd_kri = partes[0].strip() if len(partes) > 0 else "-"
-                        val_kri = partes[1].strip() if len(partes) > 1 else "-"
-                        tkt_kri = partes[2].strip() if len(partes) > 2 else "-"
+                    # 2. QUADRO SEPARADO EXCLUSIVO PARA O KRI
+                    info_kri = risco_obj.get("integracoes_sistemas")
+                    if info_kri:
+                        nome_sys = info_kri.get("nome_sistema", "Sistema Externo")
+                        dados_kri = str(info_kri.get("dados_compartilhados", ""))
+                        dt_sinc_kri = formatar_data_hora_br(info_kri.get("ultima_sincronizacao"))
                         
-                        col_k1, col_k2, col_k3 = st.columns(3)
-                        col_k1.metric("Contratos Vigentes", qtd_kri)
-                        col_k2.metric("Valor Total Vigente", val_kri)
-                        col_k3.metric("Ticket Médio", tkt_kri)
-                    else:
-                        st.info(f"📊 **{nome_sys}:** {dados_kri}")
+                        # Sanitização estrita da string (remove **, arruma 'R ' para 'R$')
+                        dados_kri_clean = (
+                            dados_kri.replace("**", "")
+                            .replace("R ", "R$ ")
+                            .replace("R$R$", "R$")
+                        )
+
+                        label_kri = info_kri.get("label_kri") or "Indicador KRI"
+
+                        if "|" in dados_kri_clean:
+                            p = dados_kri_clean.split("|")
+                            val_kri_exibir = p[2].strip() if len(p) > 2 else p[1].strip()
+                            txt_resumo_kri = f"{label_kri}: **{val_kri_exibir}**"
+                        else:
+                            txt_resumo_kri = dados_kri_clean
+
+                        st.info(f"""
+                        🔌 **KRI Conectado ({nome_sys})**  
+                        📊 {txt_resumo_kri}  
+                        🕒 *Sincronizado em: {dt_sinc_kri}*
+                        """)
 
                 st.markdown("#### 📊 Grid de Indicadores Gerenciais")
                 
