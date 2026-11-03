@@ -1459,65 +1459,58 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
 
         st.divider()
 
-        # Botão de sincronização com análise de continuidade
-        if st.button("🔄 Sincronizar e Inspecionar Contratos da UFSM", type="primary"):
 
-            with st.spinner("Consultando contratos da UFSM no PNCP..."):
+        # Botão de sincronização dos contratos vigentes da UFSM
+        if st.button("🔄 Sincronizar Contratos Vigentes da UFSM", type="primary"):
 
-                sucesso, valor_kri_formatado, msg, lista_continuidade = (
-                    buscar_dados_contratos_ufsm_comprasgov()
-                )
+            with st.spinner("Consultando contratos vigentes da UFSM no PNCP..."):
+
+                (
+                    sucesso,
+                    quantidade_contratos,
+                    valor_global_total,
+                    msg
+                ) = buscar_dados_contratos_ufsm_comprasgov()
 
                 if sucesso:
-                    st.session_state["dados_continuidade_pncp"] = lista_continuidade
+
+                    st.session_state["quantidade_contratos_pncp"] = quantidade_contratos
+                    st.session_state["valor_global_contratos_pncp"] = valor_global_total
                     st.session_state["msg_pncp"] = msg
+
                     st.success(msg)
 
                 else:
                     st.error(f"⚠️ {msg}")
 
 
-        # Exibição da análise de continuidade
-        if "dados_continuidade_pncp" in st.session_state:
-
-            df_continuidade = pd.DataFrame(
-                st.session_state["dados_continuidade_pncp"]
-            )
+        # Exibição dos resultados da consulta
+        if "quantidade_contratos_pncp" in st.session_state:
 
             st.divider()
-            st.subheader("🔎 Análise de continuidade contratual por fornecedor")
+            st.subheader("📊 Contratos vigentes da UFSM - PNCP")
 
-            if df_continuidade.empty:
+            col1, col2 = st.columns(2)
 
-                st.info(
-                    "Nenhum par de contratos do mesmo fornecedor foi encontrado "
-                    "com intervalo entre 0 e 5 dias entre as vigências."
+            with col1:
+                st.metric(
+                    label="Quantidade de contratos vigentes",
+                    value=f"{st.session_state['quantidade_contratos_pncp']:,}".replace(",", ".")
                 )
 
-            else:
-
-                st.write(
-                    f"**Total de pares identificados:** {len(df_continuidade)}"
+            with col2:
+                st.metric(
+                    label="Valor global dos contratos vigentes",
+                    value=(
+                        "R$ "
+                        + f"{st.session_state['valor_global_contratos_pncp']:,.2f}"
+                        .replace(",", "X")
+                        .replace(".", ",")
+                        .replace("X", ".")
+                    )
                 )
 
-                st.dataframe(
-                    df_continuidade,
-                    use_container_width=True,
-                    hide_index=True
-                )
-
-                csv_continuidade = df_continuidade.to_csv(
-                    index=False,
-                    sep=";",
-                    encoding="utf-8-sig"
-                )
-
-                st.download_button(
-                    label="📥 Baixar análise de continuidade em CSV",
-                    data=csv_continuidade,
-                    file_name="analise_continuidade_pncp_ufsm.csv",
-                    mime="text/csv"
-                )
+            st.caption(st.session_state.get("msg_pncp", ""))
 
 # ---------------------------------------------------------
 # PÁGINA: ADMINISTRAÇÃO DO SISTEMA
