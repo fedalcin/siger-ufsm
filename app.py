@@ -2691,22 +2691,34 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                             st.markdown(f"**Data de Identificação:** {dt_ident_fmt}")
 
                             # ---------------------------------------------------------
-                            # EXIBIÇÃO DO KRI CONECTADO AO RISCO
+                            # EXIBIÇÃO FORMATADA E RESUMIDA DO KRI CONECTADO AO RISCO
                             # ---------------------------------------------------------
                             info_kri = r_item.get("integracoes_sistemas")
                             if info_kri:
                                 st.divider()
                                 nome_sys = info_kri.get("nome_sistema", "Sistema Externo")
-                                dados_kri = info_kri.get("dados_compartilhados", "")
+                                dados_kri = str(info_kri.get("dados_compartilhados", ""))
                                 dt_sinc_kri = formatar_data_hora_br(info_kri.get("ultima_sincronizacao"))
                                 
-                                if "|" in str(dados_kri):
-                                    p = dados_kri.split("|")
-                                    txt_kri_clean = f"Contratos: **{p[0]}** | Total: **{p[1]}** | Ticket Médio: **{p[2]}**"
+                                # Sanitização de formatação (corrige 'R ' para 'R$', limpa asteriscos soltos)
+                                dados_kri_clean = (
+                                    dados_kri.replace("**", "")
+                                    .replace("R ", "R$ ")
+                                    .replace("R$R$", "R$")
+                                )
+                                
+                                label_kri = info_kri.get("label_kri") or "Ticket Médio"
+
+                                if "|" in dados_kri_clean:
+                                    partes = dados_kri_clean.split("|")
+                                    # Pega o indicador KRI principal (3ª posição se houver, senão 2ª)
+                                    val_kri_exibir = partes[2].strip() if len(partes) > 2 else partes[1].strip()
+                                    resumo_kri_str = f"{label_kri}: **{val_kri_exibir}**"
                                 else:
-                                    txt_kri_clean = str(dados_kri)
-                                    
-                                st.info(f"🔌 **KRI Conectado — {nome_sys}:** {txt_kri_clean} *(Atualizado: {dt_sinc_kri})*")
+                                    resumo_kri_str = dados_kri_clean
+
+                                # Caixa resumida alinhada ao estilo compacto do Dashboard
+                                st.info(f"🔌 **Indicador Chave de Risco (KRI) Conectado — {nome_sys}:** {resumo_kri_str} *(Atualizado em: {dt_sinc_kri})*")
                             
                             st.divider()
                             
@@ -3837,18 +3849,40 @@ elif st.session_state.pagina_atual == "Dashboards":
 
                 st.divider()
 
-                col_hdr1, col_hdr2 = st.columns([2.5, 1.5])
+                # Cabeçalho unificado com o KRI no card lateral
+                col_hdr1, col_hdr2 = st.columns([2.3, 1.7])
+                
                 with col_hdr1:
                     st.markdown(f"### 🛡️ Risco #{r_id}: {risco_obj.get('evento')}")
                     st.markdown(f"**Unidade Responsável:** `{risco_obj.get('unidade')}` | **Gestor:** `{risco_obj.get('gestor_risco', '-')}`")
                     st.markdown(f"**Causa:** {risco_obj.get('causa', '-')}")
                     st.markdown(f"**Consequência:** {risco_obj.get('consequencia', '-')}")
-                    
+
                 with col_hdr2:
+                    info_kri = risco_obj.get("integracoes_sistemas")
+                    txt_kri = ""
+    
+                    if info_kri:
+                        nome_sys = info_kri.get("nome_sistema", "Sistema Conectado")
+                        dados_kri = info_kri.get("dados_compartilhados", "")
+                        dt_sinc_kri = formatar_data_hora_br(info_kri.get("ultima_sincronizacao"))
+        
+                        # Pega o rótulo do KRI cadastrado no banco (ex: "Ticket Médio", "Taxa de Evasão", "Índice de Retenção")
+                        # Se não houver rótulo cadastrado, usa "Indicador KRI" como fallback
+                        label_kri = info_kri.get("label_kri") or "Indicador KRI"
+        
+                        if "|" in str(dados_kri):
+                            p = dados_kri.split("|")
+                            # O 3º valor é o indicador calculado (razão)
+                            val_kri_exibir = p[2].strip() if len(p) > 2 else p[0].strip()
+                            txt_kri = f"\n🔌 **KRI ({nome_sys}):** {label_kri}: **{val_kri_exibir}** *(Sinc: {dt_sinc_kri})*"
+                        else:
+                            txt_kri = f"\n🔌 **KRI ({nome_sys}):** {dados_kri} *(Sinc: {dt_sinc_kri})*"
+
                     st.info(f"""
                     📅 **Data de Identificação:** {formatar_data_br(risco_obj.get('data_identificacao'))}  
                     🔄 **Periodicidade:** {risco_obj.get('periodicidade_revisao', 'Não informada')}  
-                    📆 **Próxima Revisão:** {formatar_data_br(data_prox_rev)} (`{sit_revisao}`)
+                    📆 **Próxima Revisão:** {formatar_data_br(data_prox_rev)} (`{sit_revisao}`){txt_kri}
                     """)
 
                 # 2. EXIBIÇÃO FORMATADA E ELEGANTE DO KRI CONECTADO AO RISCO NO PAINEL
@@ -3929,12 +3963,15 @@ elif st.session_state.pagina_atual == "Dashboards":
                         st.line_chart(df_ponto_unico)
 
                     # ---------------------------------------------------------
-                    # GRÁFICO DA EVOLUÇÃO HISTÓRICA DO KRI CONECTADO
+                    # GRÁFICO DE EVOLUÇÃO HISTÓRICA DO KRI (GENÉRICO)
                     # ---------------------------------------------------------
                     id_kri_conectado = risco_obj.get("indicador_id")
                     if id_kri_conectado:
-                        st.markdown("### 📈 Evolução Histórica do KRI (Medições)")
                         try:
+                            # Busca o nome do sistema para usar no título do gráfico
+                            nome_kri_conectado = info_kri.get("nome_sistema", "KRI") if info_kri else "KRI"
+                            st.markdown(f"### 📈 Evolução Histórica do Indicador ({nome_kri_conectado})")
+                            
                             res_hist_kri = supabase.table("historico_kri")\
                                 .select("data_medicao, valor_principal, valor_secundario")\
                                 .eq("integracao_id", id_kri_conectado)\
@@ -3947,8 +3984,16 @@ elif st.session_state.pagina_atual == "Dashboards":
                                 df_hk = df_hk.sort_values(by='dt_parsed', ascending=True)
                                 df_hk['Data'] = df_hk['dt_parsed'].dt.strftime('%d/%m/%Y %H:%M')
                                 
-                                df_chart_kri = df_hk[['Data', 'valor_secundario']].rename(
-                                    columns={'valor_secundario': 'Valor Total Vigente (R$)'}
+                                # Razão genérica: Métrica Secundária / Métrica Principal
+                                # Ex 1 (PNCP): Valor Total / Qtd Contratos
+                                # Ex 2 (Alunos): Alunos Evadidos / Total de Matrículas
+                                df_hk['indicador_calculado'] = df_hk.apply(
+                                    lambda r: (r['valor_secundario'] / r['valor_principal']) if (r['valor_principal'] and r['valor_principal'] > 0) else r['valor_secundario'],
+                                    axis=1
+                                )
+                                
+                                df_chart_kri = df_hk[['Data', 'indicador_calculado']].rename(
+                                    columns={'indicador_calculado': f'Índice KRI ({nome_kri_conectado})'}
                                 ).set_index('Data')
                                 
                                 st.line_chart(df_chart_kri)
