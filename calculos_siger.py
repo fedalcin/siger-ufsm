@@ -208,595 +208,602 @@ def calcular_exposicao_agregada(
     return df_agrupado
 
 
-
-# =============================================================================
-# 4. INTEGRAÇÕES EXTERNAS E BUSCA DE DADOS (KRI)
-# =============================================================================
+# ============================================================
+# 4. DIAGNÓSTICO DE CONTRATOS DO PNCP - UFSM
+#    Análise de continuidade contratual por fornecedor
+# ============================================================
 
 def buscar_dados_contratos_ufsm_comprasgov():
-    """
-    Consulta os registros da UFSM no PNCP desde 01/01/2020.
-    Divide a consulta em períodos de até 365 dias.
-    Identifica todos os tipos de instrumentos.
-    Identifica contratos com vigência superior a cinco anos.
-    Analisa a continuidade contratual por CNPJ do fornecedor.
-    Não grava dados no Supabase.
-    """
-    from datetime import datetime, timedelta, timezone
+
     import requests
     import streamlit as st
     import time
+    import re
+    from datetime import datetime, timedelta
 
-    fuso_br = timezone(timedelta(hours=-3))
-    hoje = datetime.now(fuso_br).date()
+    URL = "https://pncp.gov.br/api/consulta/v1/contratos"
+    CNPJ_UFSM = "95591764000105"
 
-    cnpj_ufsm = "95591764000105"
-    url = "https://pncp.gov.br/api/consulta/v1/contratos"
+    DATA_INICIAL = datetime(2020, 1, 1).date()
+    DATA_FINAL = datetime.now().date()
 
-    headers = {
-        "accept": "application/json",
-        "User-Agent": "SIGER-UFSM/1.0"
-    }
+    TAMANHO_PAGINA = 500
 
-    # Armazena a quantidade de registros por tipo
-    contagem_tipos = {}
-
-    # Armazena contratos com vigência superior a cinco anos
-    contratos_longo_prazo = []
-
-    # Armazena todos os contratos para análise de continuidade
+    todos_registros = []
     todos_contratos = []
 
-    total_registros = 0
     total_paginas_consultadas = 0
 
-    # Divide o período em intervalos de até 365 dias
-    data_inicio = datetime(2020, 1, 1).date()
+    # --------------------------------------------------------
+    # Funções auxiliares
+    # --------------------------------------------------------
 
-    try:
-        while data_inicio <= hoje:
+    def normalizar_cnpj(valor):
+        if valor is None:
+            return ""
+        return re.sub(r"\D", "", str(valor))
 
-            data_fim = min(
-                data_inicio + timedelta(days=364),
-                hoje
-            )
+    def converter_data(valor):
+        if not valor:
+            return None
 
-            data_inicial = data_inicio.strftime("%Y%m%d")
-            data_final = data_fim.strftime("%Y%m%d")
+        try:
+            return datetime.strptime(str(valor)[:10], "%Y-%m-%d").date()
+        except (ValueError, TypeError):
+            return None
 
-            pagina = 1
-            total_paginas = 1
+    def formatar_data(valor):
+        if not valor:
+            return "Não informado"
 
-            st.write(
-                f"Consultando período: "
-                f"{data_inicio.strftime('%d/%m/%Y')} a "
-                f"{data_fim.strftime('%d/%m/%Y')}"
-            )
+        data = converter_data(valor)
 
-            while pagina <= total_paginas:
+        if data:
+            return data.strftime("%d/%m/%Y")
 
-                parametros = {
-                    "dataInicial": data_inicial,
-                    "dataFinal": data_final,
-                    "cnpjOrgao": cnpj_ufsm,
-                    "pagina": pagina,
-                    "tamanhoPagina": 500
-                }
+        return str(valor)
 
-                # Faz a requisição com tratamento de limite de acesso do PNCP
-                response = None
+    def formatar_valor(valor):
+        try:
+            valor = float(valor or 0)
+            return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        except (ValueError, TypeError):
+            return "Não informado"
 
-                for tentativa in range(5):
+    def consultar_pagina(parametros, periodo, pagina):
 
-                    response = requests.get(
-                        url,
-                        params=parametros,
-                        headers=headers,
-                        timeout=60
-                    )
+        max_tentativas = 5
 
-                    if response.status_code != 429:
-                        break
-
-                    tempo_espera = 15 * (tentativa + 1)
-
-                    st.warning(
-                        f"Limite de requisições do PNCP atingido. "
-                        f"Aguardando {tempo_espera} segundos "
-                        f"(tentativa {tentativa + 1} de 5)."
-                    )
-
-                    time.sleep(tempo_espera)
-
-                if response is not None and response.status_code == 429:
-                    return (
-                        False,
-                        "",
-                        f"O PNCP manteve o bloqueio após cinco tentativas. "
-                        f"Período: {data_inicial} a {data_final}, "
-                        f"página {pagina}. Tente novamente mais tarde.",
-                        []
-                    )
-
-                # Pequeno intervalo entre consultas
-                time.sleep(2)
-
-                # Se não houver registros no período, segue adiante
-                if response.status_code == 204:
-                    break
-
-                if response.status_code != 200:
-                    return (
-                        False,
-                        "",
-                        f"Erro HTTP {response.status_code} no período "
-                        f"{data_inicial} a {data_final}, página {pagina}: "
-                        f"{response.text[:1000]}",
-                        []
-                    )
-
-                dados = response.json()
-                itens = dados.get("data", [])
-
-                if not isinstance(itens, list):
-                    return (
-                        False,
-                        "",
-                        "Formato inesperado de resposta do PNCP.",
-                        []
-                    )
-
-                total_paginas = int(dados.get("totalPaginas", 1) or 1)
-                total_paginas_consultadas += 1
-
-                # Examina todos os registros da página
-                for item in itens:
-
-                    tipo = item.get("tipoContrato") or {}
-
-                    if isinstance(tipo, dict):
-                        nome_tipo = tipo.get("nome", "Não informado")
-                    else:
-                        nome_tipo = str(tipo)
-
-                    nome_tipo = nome_tipo.strip() or "Não informado"
-
-                    contagem_tipos[nome_tipo] = (
-                        contagem_tipos.get(nome_tipo, 0) + 1
-                    )
-
-                    total_registros += 1
-
-                    # Considera registros classificados como contrato
-                    if nome_tipo.lower().startswith("contrato"):
-
-                        # Armazena todos os contratos para análise posterior
-                        todos_contratos.append(item)
-
-                        data_inicio_contrato = item.get(
-                            "dataVigenciaInicio"
-                        )
-                        data_fim_contrato = item.get(
-                            "dataVigenciaFim"
-                        )
-
-                        # Identifica contratos com vigência superior a cinco anos
-                        if data_inicio_contrato and data_fim_contrato:
-
-                            try:
-                                inicio = datetime.strptime(
-                                    data_inicio_contrato[:10],
-                                    "%Y-%m-%d"
-                                ).date()
-
-                                fim = datetime.strptime(
-                                    data_fim_contrato[:10],
-                                    "%Y-%m-%d"
-                                ).date()
-
-                                prazo_dias = (fim - inicio).days
-
-                                if prazo_dias > 1826:
-
-                                    contratos_longo_prazo.append({
-                                        "prazo_anos": round(
-                                            prazo_dias / 365.25, 2
-                                        ),
-                                        "dados_completos": item
-                                    })
-
-                            except (ValueError, TypeError):
-                                pass
-
-                pagina += 1
-
-            # Avança para o próximo período
-            data_inicio = data_fim + timedelta(days=1)
-
-        # =============================================================
-        # DIAGNÓSTICO GERAL
-        # =============================================================
-
-        st.subheader("Diagnóstico dos registros do PNCP - UFSM")
-
-        st.write(
-            f"**Período consultado:** 01/01/2020 a "
-            f"{hoje.strftime('%d/%m/%Y')}"
-        )
-
-        st.write(
-            f"**Total de registros consultados:** {total_registros}"
-        )
-
-        st.write(
-            f"**Total de páginas percorridas:** "
-            f"{total_paginas_consultadas}"
-        )
-
-        st.divider()
-
-        st.subheader("Quantidade por tipo de instrumento")
-
-        for nome_tipo, quantidade in sorted(
-            contagem_tipos.items(),
-            key=lambda x: x[1],
-            reverse=True
-        ):
-            st.write(f"**{nome_tipo}:** {quantidade} registros")
-
-        # =============================================================
-        # CONTRATOS COM MAIS DE CINCO ANOS
-        # =============================================================
-
-        st.divider()
-
-        st.subheader("Contratos com vigência superior a cinco anos")
-
-        contratos_longo_prazo.sort(
-            key=lambda x: x["prazo_anos"],
-            reverse=True
-        )
-
-        st.write(
-            f"**Contratos encontrados com vigência superior a cinco anos: "
-            f"{len(contratos_longo_prazo)}**"
-        )
-
-        if contratos_longo_prazo:
-
-            for contrato in contratos_longo_prazo:
-
-                item = contrato["dados_completos"]
-
-                valor_inicial = item.get("valorInicial")
-                valor_global = item.get("valorGlobal")
-
-                with st.expander(
-                    f"Contrato "
-                    f"{item.get('numeroContratoEmpenho', 'Não informado')} "
-                    f"— {contrato['prazo_anos']} anos"
-                ):
-
-                    st.write(
-                        f"**Fornecedor:** "
-                        f"{item.get('nomeRazaoSocialFornecedor')}"
-                    )
-
-                    st.write(
-                        f"**CNPJ:** {item.get('niFornecedor')}"
-                    )
-
-                    st.write(
-                        f"**Objeto:** {item.get('objetoContrato')}"
-                    )
-
-                    st.write(
-                        f"**Processo:** {item.get('processo')}"
-                    )
-
-                    st.write(
-                        f"**Início da vigência:** "
-                        f"{item.get('dataVigenciaInicio')}"
-                    )
-
-                    st.write(
-                        f"**Fim da vigência:** "
-                        f"{item.get('dataVigenciaFim')}"
-                    )
-
-                    if valor_inicial is not None:
-                        st.write(
-                            f"**Valor inicial:** R$ {valor_inicial:,.2f}"
-                        )
-                    else:
-                        st.write("**Valor inicial:** Não informado")
-
-                    if valor_global is not None:
-                        st.write(
-                            f"**Valor global:** R$ {valor_global:,.2f}"
-                        )
-                    else:
-                        st.write("**Valor global:** Não informado")
-
-                    st.write(
-                        f"**Última atualização:** "
-                        f"{item.get('dataAtualizacaoGlobal')}"
-                    )
-
-                    st.markdown("**Registro completo no PNCP:**")
-                    st.json(item)
-
-        else:
-            st.info(
-                "Nenhum contrato com vigência superior a cinco anos "
-                "foi encontrado."
-            )
-
-        # =============================================================
-        # ANÁLISE DE CONTINUIDADE CONTRATUAL POR FORNECEDOR
-        # =============================================================
-
-        st.divider()
-
-        st.subheader(
-            "Análise de continuidade contratual por fornecedor"
-        )
-
-        # Organiza os contratos por CNPJ do fornecedor
-        contratos_por_fornecedor = {}
-
-        for item in todos_contratos:
-
-            cnpj = item.get("niFornecedor")
-
-            data_inicio_contrato = item.get("dataVigenciaInicio")
-            data_fim_contrato = item.get("dataVigenciaFim")
-
-            if not cnpj or not data_inicio_contrato or not data_fim_contrato:
-                continue
-
-            # Padroniza o CNPJ para evitar diferenças de formatação
-            cnpj = "".join(
-                caractere for caractere in str(cnpj)
-                if caractere.isdigit()
-            )
+        for tentativa in range(1, max_tentativas + 1):
 
             try:
-                inicio = datetime.strptime(
-                    data_inicio_contrato[:10],
-                    "%Y-%m-%d"
-                ).date()
-
-                fim = datetime.strptime(
-                    data_fim_contrato[:10],
-                    "%Y-%m-%d"
-                ).date()
-
-                if cnpj not in contratos_por_fornecedor:
-                    contratos_por_fornecedor[cnpj] = []
-
-                contratos_por_fornecedor[cnpj].append({
-                    "inicio": inicio,
-                    "fim": fim,
-                    "dados": item
-                })
-
-            except (ValueError, TypeError):
-                continue
-
-        # Compara contratos do mesmo fornecedor
-        continuidades = []
-
-        for cnpj, contratos in contratos_por_fornecedor.items():
-
-            contratos.sort(key=lambda x: x["inicio"])
-
-            for i in range(len(contratos)):
-
-                anterior = contratos[i]
-
-                for j in range(i + 1, len(contratos)):
-
-                    posterior = contratos[j]
-
-                    intervalo = (
-                        posterior["inicio"] - anterior["fim"]
-                    ).days
-
-                    # Considera contratos com intervalo de zero a cinco dias
-                    if 0 <= intervalo <= 5:
-
-                        continuidades.append({
-                            "cnpj": cnpj,
-                            "intervalo": intervalo,
-                            "contrato_anterior": anterior["dados"],
-                            "contrato_posterior": posterior["dados"]
-                        })
-
-                    elif intervalo > 5:
-                        break
-
-        # Ordena pelos casos de maior proximidade entre contratos
-        continuidades.sort(
-            key=lambda x: x["intervalo"]
-        )
-
-        total_continuidades_exatas = sum(
-            1 for caso in continuidades
-            if caso["intervalo"] == 1
-        )
-
-        total_mesma_data = sum(
-            1 for caso in continuidades
-            if caso["intervalo"] == 0
-        )
-
-        st.write(
-            f"**Fornecedores com contratos analisados:** "
-            f"{len(contratos_por_fornecedor)}"
-        )
-
-        st.write(
-            f"**Pares de contratos com intervalo de até cinco dias:** "
-            f"{len(continuidades)}"
-        )
-
-        st.write(
-            f"**Pares em que o novo contrato começa um dia após "
-            f"o término do anterior:** {total_continuidades_exatas}"
-        )
-
-        st.write(
-            f"**Pares em que o novo contrato começa na mesma data "
-            f"do término do anterior:** {total_mesma_data}"
-        )
-
-        if continuidades:
-
-            for caso in continuidades:
-
-                anterior = caso["contrato_anterior"]
-                posterior = caso["contrato_posterior"]
-
-                if caso["intervalo"] == 1:
-                    classificacao = "Continuidade exata: 1 dia"
-                elif caso["intervalo"] == 0:
-                    classificacao = "Mesma data de término e início"
-                else:
-                    classificacao = (
-                        f"Intervalo de {caso['intervalo']} dias"
-                    )
-
-                numero_anterior = anterior.get(
-                    "numeroContratoEmpenho",
-                    "Não informado"
+                resposta = requests.get(
+                    URL,
+                    params=parametros,
+                    timeout=120
                 )
 
-                numero_posterior = posterior.get(
-                    "numeroContratoEmpenho",
-                    "Não informado"
+                # Sem registros para o período
+                if resposta.status_code == 204:
+                    return None
+
+                # Sucesso
+                if resposta.status_code == 200:
+                    time.sleep(2)
+                    return resposta.json()
+
+                # Erros temporários: limite de requisições ou falha interna
+                if resposta.status_code in [429, 500, 502, 503, 504]:
+
+                    espera = tentativa * 10
+
+                    st.warning(
+                        f"Instabilidade no PNCP: HTTP {resposta.status_code}. "
+                        f"Período {periodo}, página {pagina}. "
+                        f"Tentativa {tentativa}/{max_tentativas}. "
+                        f"Nova tentativa em {espera} segundos."
+                    )
+
+                    if tentativa < max_tentativas:
+                        time.sleep(espera)
+                        continue
+
+                resposta.raise_for_status()
+
+            except requests.exceptions.RequestException as erro:
+
+                if tentativa < max_tentativas:
+                    time.sleep(tentativa * 10)
+                    continue
+
+                raise Exception(
+                    f"Falha na consulta do período {periodo}, "
+                    f"página {pagina}: {erro}"
                 )
 
-                with st.expander(
-                    f"{classificacao} | "
-                    f"CNPJ {caso['cnpj']} | "
-                    f"Contratos {numero_anterior} → {numero_posterior}"
-                ):
+        raise Exception(
+            f"Não foi possível consultar o período {periodo}, "
+            f"página {pagina}, após {max_tentativas} tentativas."
+        )
 
-                    st.markdown("**CONTRATO ANTERIOR**")
+    # --------------------------------------------------------
+    # 1. Consulta ao PNCP em períodos de até 365 dias
+    # --------------------------------------------------------
 
-                    st.write(
-                        f"**Fornecedor:** "
-                        f"{anterior.get('nomeRazaoSocialFornecedor')}"
-                    )
+    data_inicio = DATA_INICIAL
 
-                    st.write(
-                        f"**CNPJ:** {anterior.get('niFornecedor')}"
-                    )
+    while data_inicio <= DATA_FINAL:
 
-                    st.write(
-                        f"**Objeto:** {anterior.get('objetoContrato')}"
-                    )
+        data_fim = min(
+            data_inicio + timedelta(days=364),
+            DATA_FINAL
+        )
 
-                    st.write(
-                        f"**Processo:** {anterior.get('processo')}"
-                    )
+        periodo = (
+            f"{data_inicio.strftime('%d/%m/%Y')} a "
+            f"{data_fim.strftime('%d/%m/%Y')}"
+        )
 
-                    st.write(
-                        f"**Vigência:** "
-                        f"{anterior.get('dataVigenciaInicio')} "
-                        f"a {anterior.get('dataVigenciaFim')}"
-                    )
+        st.write(f"Consultando período: {periodo}")
 
-                    st.write(
-                        f"**Valor inicial:** "
-                        f"{anterior.get('valorInicial')}"
-                    )
+        pagina = 1
 
-                    st.write(
-                        f"**Valor global:** "
-                        f"{anterior.get('valorGlobal')}"
-                    )
+        while True:
 
-                    st.markdown("**CONTRATO POSTERIOR**")
+            parametros = {
+                "dataInicial": data_inicio.strftime("%Y%m%d"),
+                "dataFinal": data_fim.strftime("%Y%m%d"),
+                "cnpjOrgao": CNPJ_UFSM,
+                "pagina": pagina,
+                "tamanhoPagina": TAMANHO_PAGINA
+            }
 
-                    st.write(
-                        f"**Fornecedor:** "
-                        f"{posterior.get('nomeRazaoSocialFornecedor')}"
-                    )
-
-                    st.write(
-                        f"**CNPJ:** {posterior.get('niFornecedor')}"
-                    )
-
-                    st.write(
-                        f"**Objeto:** {posterior.get('objetoContrato')}"
-                    )
-
-                    st.write(
-                        f"**Processo:** {posterior.get('processo')}"
-                    )
-
-                    st.write(
-                        f"**Vigência:** "
-                        f"{posterior.get('dataVigenciaInicio')} "
-                        f"a {posterior.get('dataVigenciaFim')}"
-                    )
-
-                    st.write(
-                        f"**Valor inicial:** "
-                        f"{posterior.get('valorInicial')}"
-                    )
-
-                    st.write(
-                        f"**Valor global:** "
-                        f"{posterior.get('valorGlobal')}"
-                    )
-
-                    st.markdown("**Registro completo do contrato anterior:**")
-                    st.json(anterior)
-
-                    st.markdown("**Registro completo do contrato posterior:**")
-                    st.json(posterior)
-
-        else:
-            st.info(
-                "Não foram encontrados contratos do mesmo fornecedor "
-                "com continuidade de até cinco dias."
+            resultado = consultar_pagina(
+                parametros,
+                periodo,
+                pagina
             )
 
-        # =============================================================
-        # FINALIZAÇÃO
-        # =============================================================
+            if resultado is None:
+                break
 
-        mensagem = (
-            f"Diagnóstico concluído! Foram consultados "
-            f"{total_registros} registros em "
-            f"{total_paginas_consultadas} páginas. "
-            f"Foram encontrados {len(contratos_longo_prazo)} "
-            f"contratos com vigência superior a cinco anos e "
-            f"{len(continuidades)} pares de contratos com "
-            f"continuidade de até cinco dias."
+            registros = resultado.get("data", [])
+
+            if not registros:
+                break
+
+            todos_registros.extend(registros)
+            total_paginas_consultadas += 1
+
+            # Guarda somente os registros classificados como contrato
+            for registro in registros:
+
+                tipo_contrato = (
+                    registro.get("tipoContrato", {}).get("nome", "")
+                )
+
+                if "contrato" in tipo_contrato.lower():
+
+                    todos_contratos.append(registro)
+
+            total_paginas = resultado.get("totalPaginas", 1)
+
+            if pagina >= total_paginas:
+                break
+
+            pagina += 1
+
+        data_inicio = data_fim + timedelta(days=1)
+
+    # --------------------------------------------------------
+    # 2. Diagnóstico geral dos registros
+    # --------------------------------------------------------
+
+    st.divider()
+
+    st.subheader("Diagnóstico dos registros do PNCP - UFSM")
+
+    st.write(
+        f"**Período consultado:** "
+        f"{DATA_INICIAL.strftime('%d/%m/%Y')} a "
+        f"{DATA_FINAL.strftime('%d/%m/%Y')}"
+    )
+
+    st.write(
+        f"**Total de registros consultados:** "
+        f"{len(todos_registros)}"
+    )
+
+    st.write(
+        f"**Total de páginas percorridas:** "
+        f"{total_paginas_consultadas}"
+    )
+
+    # Quantidade por tipo de instrumento
+    contagem_tipos = {}
+
+    for registro in todos_registros:
+
+        tipo = (
+            registro.get("tipoContrato", {}).get("nome")
+            or "Não informado"
         )
 
-        return True, "TESTE", mensagem, []
+        contagem_tipos[tipo] = contagem_tipos.get(tipo, 0) + 1
 
-    except requests.exceptions.Timeout:
-        return (
-            False,
-            "",
-            "Tempo limite excedido na conexão com o PNCP.",
-            []
+    st.markdown("### Quantidade por tipo de instrumento")
+
+    for tipo, quantidade in sorted(contagem_tipos.items()):
+
+        st.write(f"**{tipo}:** {quantidade} registros")
+
+    st.write(
+        f"**Total de registros classificados como contrato:** "
+        f"{len(todos_contratos)}"
+    )
+
+    # --------------------------------------------------------
+    # 3. Preparação dos contratos para análise
+    # --------------------------------------------------------
+
+    contratos_por_fornecedor = {}
+
+    for contrato in todos_contratos:
+
+        cnpj = normalizar_cnpj(
+            contrato.get("niFornecedor")
         )
 
-    except requests.exceptions.ConnectionError as e:
-        return (
-            False,
-            "",
-            f"Erro de conexão com o PNCP: {str(e)}",
-            []
+        if not cnpj:
+            continue
+
+        inicio = converter_data(
+            contrato.get("dataVigenciaInicio")
         )
 
-    except Exception as e:
-        return False, "", f"Erro inesperado: {str(e)}", []
+        fim = converter_data(
+            contrato.get("dataVigenciaFim")
+        )
 
+        if not inicio or not fim:
+            continue
+
+        contrato_tratado = {
+            "cnpj": cnpj,
+            "fornecedor": contrato.get(
+                "nomeRazaoSocialFornecedor",
+                "Não informado"
+            ),
+            "numero_contrato": contrato.get(
+                "numeroContratoEmpenho",
+                "Não informado"
+            ),
+            "numero_controle_pncp": contrato.get(
+                "numeroControlePNCP",
+                "Não informado"
+            ),
+            "numero_controle_compra": contrato.get(
+                "numeroControlePncpCompra",
+                "Não informado"
+            ),
+            "processo": contrato.get(
+                "processo",
+                "Não informado"
+            ),
+            "objeto": contrato.get(
+                "objetoContrato",
+                "Não informado"
+            ),
+            "inicio": inicio,
+            "fim": fim,
+            "valor_inicial": contrato.get("valorInicial"),
+            "valor_global": contrato.get("valorGlobal"),
+            "tipo": contrato.get(
+                "tipoContrato", {}
+            ).get("nome", "Não informado"),
+            "registro_original": contrato
+        }
+
+        contratos_por_fornecedor.setdefault(
+            cnpj, []
+        ).append(contrato_tratado)
+
+    # --------------------------------------------------------
+    # 4. Análise de continuidade entre contratos
+    # --------------------------------------------------------
+
+    pares_continuidade = []
+
+    for cnpj, contratos in contratos_por_fornecedor.items():
+
+        # Ordena os contratos pela data de início da vigência
+        contratos.sort(key=lambda x: x["inicio"])
+
+        # Compara cada contrato com os posteriores do mesmo fornecedor
+        for i, contrato_anterior in enumerate(contratos):
+
+            for contrato_posterior in contratos[i + 1:]:
+
+                intervalo = (
+                    contrato_posterior["inicio"]
+                    - contrato_anterior["fim"]
+                ).days
+
+                # Como os contratos estão ordenados por início,
+                # se o intervalo superar 5 dias, os seguintes
+                # também não serão considerados.
+                if intervalo > 5:
+                    break
+
+                # Considera continuidade de 0 a 5 dias
+                if 0 <= intervalo <= 5:
+
+                    pares_continuidade.append({
+                        "intervalo": intervalo,
+                        "cnpj": cnpj,
+                        "fornecedor": contrato_anterior["fornecedor"],
+
+                        "anterior_numero": contrato_anterior["numero_contrato"],
+                        "anterior_processo": contrato_anterior["processo"],
+                        "anterior_objeto": contrato_anterior["objeto"],
+                        "anterior_inicio": contrato_anterior["inicio"],
+                        "anterior_fim": contrato_anterior["fim"],
+                        "anterior_valor_global": contrato_anterior["valor_global"],
+                        "anterior_controle_pncp": contrato_anterior["numero_controle_pncp"],
+
+                        "posterior_numero": contrato_posterior["numero_contrato"],
+                        "posterior_processo": contrato_posterior["processo"],
+                        "posterior_objeto": contrato_posterior["objeto"],
+                        "posterior_inicio": contrato_posterior["inicio"],
+                        "posterior_fim": contrato_posterior["fim"],
+                        "posterior_valor_global": contrato_posterior["valor_global"],
+                        "posterior_controle_pncp": contrato_posterior["numero_controle_pncp"],
+
+                        "contrato_anterior": contrato_anterior,
+                        "contrato_posterior": contrato_posterior
+                    })
+
+    # Ordena os pares pelo intervalo de continuidade
+    pares_continuidade.sort(
+        key=lambda x: (
+            x["intervalo"],
+            x["cnpj"],
+            x["anterior_inicio"]
+        )
+    )
+
+    # --------------------------------------------------------
+    # 5. Apresentação dos resultados da continuidade
+    # --------------------------------------------------------
+
+    st.divider()
+
+    st.subheader(
+        "Investigação de continuidade contratual por fornecedor"
+    )
+
+    st.write(
+        "Foram comparados os contratos de um mesmo fornecedor, "
+        "considerando a diferença entre a data final da vigência "
+        "de um contrato e a data inicial da vigência do contrato seguinte."
+    )
+
+    st.write(
+        "**Critério utilizado:** mesmo CNPJ de fornecedor e intervalo "
+        "entre 0 e 5 dias entre o encerramento e o início das vigências."
+    )
+
+    st.markdown("### Resumo dos intervalos encontrados")
+
+    contagem_intervalos = {
+        intervalo: 0 for intervalo in range(6)
+    }
+
+    for par in pares_continuidade:
+        contagem_intervalos[par["intervalo"]] += 1
+
+    colunas = st.columns(6)
+
+    for i, intervalo in enumerate(range(6)):
+
+        with colunas[i]:
+            st.metric(
+                label=f"{intervalo} dia(s)",
+                value=contagem_intervalos[intervalo]
+            )
+
+    st.metric(
+        "Total de pares com continuidade identificada",
+        len(pares_continuidade)
+    )
+
+    # --------------------------------------------------------
+    # 6. Exibição detalhada dos pares encontrados
+    # --------------------------------------------------------
+
+    st.markdown("### Detalhamento dos contratos identificados")
+
+    if not pares_continuidade:
+
+        st.info(
+            "Nenhum par de contratos do mesmo fornecedor foi encontrado "
+            "com intervalo entre 0 e 5 dias entre as vigências."
+        )
+
+    else:
+
+        for numero, par in enumerate(pares_continuidade, start=1):
+
+            st.markdown(
+                f"#### Ocorrência {numero} — "
+                f"Intervalo de {par['intervalo']} dia(s)"
+            )
+
+            st.write(
+                f"**Fornecedor:** {par['fornecedor']}"
+            )
+
+            st.write(
+                f"**CNPJ:** {par['cnpj']}"
+            )
+
+            col_anterior, col_posterior = st.columns(2)
+
+            with col_anterior:
+
+                st.markdown("**CONTRATO ANTERIOR**")
+
+                st.write(
+                    f"**Número:** {par['anterior_numero']}"
+                )
+
+                st.write(
+                    f"**Processo:** {par['anterior_processo']}"
+                )
+
+                st.write(
+                    f"**Início:** {formatar_data(par['anterior_inicio'])}"
+                )
+
+                st.write(
+                    f"**Fim:** {formatar_data(par['anterior_fim'])}"
+                )
+
+                st.write(
+                    f"**Valor global:** "
+                    f"{formatar_valor(par['anterior_valor_global'])}"
+                )
+
+                st.write(
+                    f"**Objeto:** {par['anterior_objeto']}"
+                )
+
+                st.caption(
+                    f"Controle PNCP: {par['anterior_controle_pncp']}"
+                )
+
+            with col_posterior:
+
+                st.markdown("**CONTRATO SEGUINTE**")
+
+                st.write(
+                    f"**Número:** {par['posterior_numero']}"
+                )
+
+                st.write(
+                    f"**Processo:** {par['posterior_processo']}"
+                )
+
+                st.write(
+                    f"**Início:** {formatar_data(par['posterior_inicio'])}"
+                )
+
+                st.write(
+                    f"**Fim:** {formatar_data(par['posterior_fim'])}"
+                )
+
+                st.write(
+                    f"**Valor global:** "
+                    f"{formatar_valor(par['posterior_valor_global'])}"
+                )
+
+                st.write(
+                    f"**Objeto:** {par['posterior_objeto']}"
+                )
+
+                st.caption(
+                    f"Controle PNCP: {par['posterior_controle_pncp']}"
+                )
+
+            # Exibe os registros originais para permitir conferência
+            with st.expander(
+                f"Consultar dados originais do PNCP — Ocorrência {numero}"
+            ):
+
+                st.markdown("**Registro original do contrato anterior**")
+
+                st.json(
+                    par["contrato_anterior"]["registro_original"]
+                )
+
+                st.markdown("**Registro original do contrato seguinte**")
+
+                st.json(
+                    par["contrato_posterior"]["registro_original"]
+                )
+
+            st.divider()
+
+    # --------------------------------------------------------
+    # 7. Tabela consolidada para facilitar a análise
+    # --------------------------------------------------------
+
+    if pares_continuidade:
+
+        st.markdown("### Tabela consolidada dos pares encontrados")
+
+        import pandas as pd
+
+        dados_tabela = []
+
+        for par in pares_continuidade:
+
+            dados_tabela.append({
+                "Intervalo (dias)": par["intervalo"],
+                "CNPJ": par["cnpj"],
+                "Fornecedor": par["fornecedor"],
+                "Contrato anterior": par["anterior_numero"],
+                "Processo anterior": par["anterior_processo"],
+                "Início anterior": formatar_data(par["anterior_inicio"]),
+                "Fim anterior": formatar_data(par["anterior_fim"]),
+                "Contrato seguinte": par["posterior_numero"],
+                "Processo seguinte": par["posterior_processo"],
+                "Início seguinte": formatar_data(par["posterior_inicio"]),
+                "Fim seguinte": formatar_data(par["posterior_fim"]),
+                "Objeto anterior": par["anterior_objeto"],
+                "Objeto seguinte": par["posterior_objeto"],
+                "Valor global anterior": formatar_valor(
+                    par["anterior_valor_global"]
+                ),
+                "Valor global seguinte": formatar_valor(
+                    par["posterior_valor_global"]
+                )
+            })
+
+        df_continuidade = pd.DataFrame(dados_tabela)
+
+        st.dataframe(
+            df_continuidade,
+            use_container_width=True,
+            hide_index=True
+        )
+
+        # Permite baixar os resultados para análise posterior
+        csv = df_continuidade.to_csv(
+            index=False,
+            sep=";",
+            encoding="utf-8-sig"
+        )
+
+        st.download_button(
+            label="Baixar análise de continuidade em CSV",
+            data=csv,
+            file_name="analise_continuidade_contratos_pncp_ufsm.csv",
+            mime="text/csv"
+        )
+
+    # --------------------------------------------------------
+    # 8. Conclusão do diagnóstico
+    # --------------------------------------------------------
+
+    mensagem = (
+        f"Diagnóstico concluído. Foram consultados "
+        f"{len(todos_registros)} registros do PNCP, dos quais "
+        f"{len(todos_contratos)} foram classificados como contratos. "
+        f"Foram identificados {len(pares_continuidade)} pares de contratos "
+        f"do mesmo fornecedor com intervalo de 0 a 5 dias entre as vigências."
+    )
+
+    st.success(mensagem)
+
+    return True, "TESTE", mensagem, []
