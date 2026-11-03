@@ -1495,7 +1495,7 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
             with col1:
                 st.metric(
                     label="Quantidade de contratos vigentes",
-                    value=f"{st.session_state['quantidade_contratos_pncp']:,}".replace(",", ".")
+                    value=f"{int(st.session_state['quantidade_contratos_pncp']):,}".replace(",", ".")
                 )
 
             with col2:
