@@ -1409,7 +1409,30 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
                     with st.expander(f"{st_cor} **{s['nome_sistema']}** ({s.get('orgao_ug', 'UFSM')}) - Status: `{s.get('status_integracao')}`"):
                         st.write(f"**Finalidade:** {s.get('finalidade')}")
                         st.write(f"**Tipo de Conexão:** `{s.get('tipo_conexao')}`")
-                        st.write(f"**Dados Compartilhados:** {s.get('dados_compartilhados')}")
+                        
+                        # Tratamento e sanitização visual dos Dados Compartilhados
+                        dados_brutos = str(s.get("dados_compartilhados", "") or "")
+                        dados_clean = (
+                            dados_brutos.replace("**", "")
+                            .replace("R ", "R$ ")
+                            .replace("R$R$", "R$")
+                        )
+
+                        if "|" in dados_clean:
+                            partes = dados_clean.split("|")
+                            l_princ = s.get("label_principal") or "Contratos / Registros"
+                            l_sec = s.get("label_secundario") or "Valor Total"
+                            l_kri = s.get("label_kri") or "Indicador / Ticket Médio"
+
+                            val_p = partes[0].strip() if len(partes) > 0 else "-"
+                            val_s = partes[1].strip() if len(partes) > 1 else "-"
+                            val_k = partes[2].strip() if len(partes) > 2 else "-"
+
+                            fmt_dados = f"{l_princ}: **{val_p}** &nbsp;|&nbsp; {l_sec}: **{val_s}** &nbsp;|&nbsp; {l_kri}: **{val_k}**"
+                        else:
+                            fmt_dados = dados_clean if dados_clean else "Nenhum dado sincronizado."
+
+                        st.markdown(f"**Dados Compartilhados:** {fmt_dados}")
                         st.caption(f"Última Sincronização: {formatar_data_hora_br(s.get('ultima_sincronizacao'))}")
             else:
                 st.info("Nenhuma integração cadastrada no banco de dados.")
