@@ -2696,12 +2696,17 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                             info_kri = r_item.get("integracoes_sistemas")
                             if info_kri:
                                 st.divider()
-                                st.caption("🔌 **Indicador Chave de Risco (KRI) Conectado**")
                                 nome_sys = info_kri.get("nome_sistema", "Sistema Externo")
-                                dados_kri = info_kri.get("dados_compartilhados", "Sem dados gravados")
+                                dados_kri = info_kri.get("dados_compartilhados", "")
                                 dt_sinc_kri = formatar_data_hora_br(info_kri.get("ultima_sincronizacao"))
                                 
-                                st.info(f"📊 **{nome_sys}:** {dados_kri} *(Última Atualização: {dt_sinc_kri})*")
+                                if "|" in str(dados_kri):
+                                    p = dados_kri.split("|")
+                                    txt_kri_clean = f"Contratos: **{p[0]}** | Total: **{p[1]}** | Ticket Médio: **{p[2]}**"
+                                else:
+                                    txt_kri_clean = str(dados_kri)
+                                    
+                                st.info(f"🔌 **KRI Conectado — {nome_sys}:** {txt_kri_clean} *(Atualizado: {dt_sinc_kri})*")
                             
                             st.divider()
                             
@@ -3846,14 +3851,29 @@ elif st.session_state.pagina_atual == "Dashboards":
                     📆 **Próxima Revisão:** {formatar_data_br(data_prox_rev)} (`{sit_revisao}`)
                     """)
 
-                # 2. ALTERAÇÃO AQUI: EXIBIÇÃO DO KRI CONECTADO AO RISCO NO PAINEL
+                # 2. EXIBIÇÃO FORMATADA E ELEGANTE DO KRI CONECTADO AO RISCO NO PAINEL
                 info_kri = risco_obj.get("integracoes_sistemas")
                 if info_kri:
                     st.divider()
                     nome_sys = info_kri.get("nome_sistema", "Sistema Externo")
-                    dados_kri = info_kri.get("dados_compartilhados", "Sem dados gravados")
+                    dados_kri = info_kri.get("dados_compartilhados", "")
                     dt_sinc_kri = formatar_data_hora_br(info_kri.get("ultima_sincronizacao"))
-                    st.info(f"🔌 **Indicador Chave de Risco (KRI) Conectado — {nome_sys}:** {dados_kri} *(Última Sincronização: {dt_sinc_kri})*")
+                    
+                    st.markdown(f"##### 🔌 Indicador Chave de Risco (KRI) Conectado — {nome_sys}")
+                    st.caption(f"🕒 *Última Sincronização: {dt_sinc_kri}*")
+                    
+                    if "|" in str(dados_kri):
+                        partes = dados_kri.split("|")
+                        qtd_kri = partes[0].strip() if len(partes) > 0 else "-"
+                        val_kri = partes[1].strip() if len(partes) > 1 else "-"
+                        tkt_kri = partes[2].strip() if len(partes) > 2 else "-"
+                        
+                        col_k1, col_k2, col_k3 = st.columns(3)
+                        col_k1.metric("Contratos Vigentes", qtd_kri)
+                        col_k2.metric("Valor Total Vigente", val_kri)
+                        col_k3.metric("Ticket Médio", tkt_kri)
+                    else:
+                        st.info(f"📊 **{nome_sys}:** {dados_kri}")
 
                 st.markdown("#### 📊 Grid de Indicadores Gerenciais")
                 
@@ -3907,6 +3927,35 @@ elif st.session_state.pagina_atual == "Dashboards":
                             "Nível de Risco": [nivel_val]
                         }).set_index("Data")
                         st.line_chart(df_ponto_unico)
+
+                    # ---------------------------------------------------------
+                    # GRÁFICO DA EVOLUÇÃO HISTÓRICA DO KRI CONECTADO
+                    # ---------------------------------------------------------
+                    id_kri_conectado = risco_obj.get("indicador_id")
+                    if id_kri_conectado:
+                        st.markdown("### 📈 Evolução Histórica do KRI (Medições)")
+                        try:
+                            res_hist_kri = supabase.table("historico_kri")\
+                                .select("data_medicao, valor_principal, valor_secundario")\
+                                .eq("integracao_id", id_kri_conectado)\
+                                .order("data_medicao", desc=False)\
+                                .execute()
+                            
+                            df_hk = pd.DataFrame(res_hist_kri.data or [])
+                            if not df_hk.empty:
+                                df_hk['dt_parsed'] = pd.to_datetime(df_hk['data_medicao'], errors='coerce')
+                                df_hk = df_hk.sort_values(by='dt_parsed', ascending=True)
+                                df_hk['Data'] = df_hk['dt_parsed'].dt.strftime('%d/%m/%Y %H:%M')
+                                
+                                df_chart_kri = df_hk[['Data', 'valor_secundario']].rename(
+                                    columns={'valor_secundario': 'Valor Total Vigente (R$)'}
+                                ).set_index('Data')
+                                
+                                st.line_chart(df_chart_kri)
+                            else:
+                                st.caption("Nenhum histórico de medições KRI gravado até o momento.")
+                        except Exception as e_kri_chart:
+                            st.caption(f"Não foi possível carregar o gráfico do KRI: {e_kri_chart}")
 
                     st.markdown("### ⚠️ Pontos de Atenção e Alertas Automáticos")
                     
