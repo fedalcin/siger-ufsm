@@ -1459,47 +1459,65 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
 
         st.divider()
 
-        # Botão de sincronização com visualizador de relatório e conferência
+        # Botão de sincronização com análise de continuidade
         if st.button("🔄 Sincronizar e Inspecionar Contratos da UFSM", type="primary"):
+
             with st.spinner("Consultando contratos da UFSM no PNCP..."):
-                sucesso, valor_kri_formatado, msg, lista_contratos = buscar_dados_contratos_ufsm_comprasgov()
+
+                sucesso, valor_kri_formatado, msg, lista_continuidade = (
+                    buscar_dados_contratos_ufsm_comprasgov()
+                )
 
                 if sucesso:
-                    st.session_state["dados_conferencia_pncp"] = lista_contratos
+                    st.session_state["dados_continuidade_pncp"] = lista_continuidade
                     st.session_state["msg_pncp"] = msg
                     st.success(msg)
+
                 else:
                     st.error(f"⚠️ {msg}")
 
-        # Se houver dados carregados para conferência, exibe o relatório na tela
-        if "dados_conferencia_pncp" in st.session_state and st.session_state["dados_conferencia_pncp"]:
-            df_pncp = pd.DataFrame(st.session_state["dados_conferencia_pncp"])
-            
-            st.divider()
-            st.subheader(f"📋 Relatório de Conferência ({len(df_pncp)} Contratos Retornados)")
-            
-            # Filtro por número de contrato para conferência rápida
-            busca_num = st.text_input("🔍 Filtrar por Número de Contrato/Empenho ou Objeto:", placeholder="Digite para pesquisar...")
-            if busca_num:
-                df_pncp = df_pncp[
-                    df_pncp["Número Contrato / Empenho"].astype(str).str.contains(busca_num, case=False, na=False) |
-                    df_pncp["Objeto / Categoria"].astype(str).str.contains(busca_num, case=False, na=False)
-                ]
 
-            # Formata moeda na tabela para facilitar a leitura
-            df_exibicao = df_pncp.copy()
-            df_exibicao["Valor Global"] = df_exibicao["Valor Global"].apply(lambda v: f"R$ {v:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-            
-            st.dataframe(df_exibicao, use_container_width=True, hide_index=True)
-            
-            # Botão para exportar o relatório em CSV para cruzamento de dados no Excel
-            csv_pncp = df_pncp.to_csv(index=False).encode('utf-8-sig')
-            st.download_button(
-                label="📥 Baixar Relatório de Contratos em CSV",
-                data=csv_pncp,
-                file_name=f"contratos_vigentes_ufsm_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-                mime="text/csv"
+        # Exibição da análise de continuidade
+        if "dados_continuidade_pncp" in st.session_state:
+
+            df_continuidade = pd.DataFrame(
+                st.session_state["dados_continuidade_pncp"]
             )
+
+            st.divider()
+            st.subheader("🔎 Análise de continuidade contratual por fornecedor")
+
+            if df_continuidade.empty:
+
+                st.info(
+                    "Nenhum par de contratos do mesmo fornecedor foi encontrado "
+                    "com intervalo entre 0 e 5 dias entre as vigências."
+                )
+
+            else:
+
+                st.write(
+                    f"**Total de pares identificados:** {len(df_continuidade)}"
+                )
+
+                st.dataframe(
+                    df_continuidade,
+                    use_container_width=True,
+                    hide_index=True
+                )
+
+                csv_continuidade = df_continuidade.to_csv(
+                    index=False,
+                    sep=";",
+                    encoding="utf-8-sig"
+                )
+
+                st.download_button(
+                    label="📥 Baixar análise de continuidade em CSV",
+                    data=csv_continuidade,
+                    file_name="analise_continuidade_pncp_ufsm.csv",
+                    mime="text/csv"
+                )
 
 # ---------------------------------------------------------
 # PÁGINA: ADMINISTRAÇÃO DO SISTEMA
