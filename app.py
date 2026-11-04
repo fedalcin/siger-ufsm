@@ -1882,8 +1882,8 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                     p_prf_exc = st.checkbox("Excluir Perfis", key=f"chk_prf_exc_{sfx}", disabled=eh_perfil_admin)
 
                 with c3:
-                    st.markdown("**📜 Auditoria**")
-                    p_aud_acc = st.checkbox("Acessar Auditoria", key=f"chk_aud_acc_{sfx}")
+                    st.markdown("**📜 Controle de Acessos**")
+                    p_aud_acc = st.checkbox("Acessar Controle de Acessos", key=f"chk_aud_acc_{sfx}")
                     p_aud_alt = st.checkbox("Exportar/Gerenciar", key=f"chk_aud_alt_{sfx}")
 
                 with c4:
