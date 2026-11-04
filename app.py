@@ -143,6 +143,44 @@ def init_supabase():
 supabase = init_supabase()
 
 # ---------------------------------------------------------
+# HELPER REGISTRADOR DE TRILHA DE AUDITORIA
+# ---------------------------------------------------------
+def registrar_log_auditoria(acao, detalhes, unidade_sigla=None):
+    """
+    Registra um evento de auditoria na tabela logs_auditoria no Supabase.
+    Capta automaticamente os dados do usuário logado e IP de origem.
+    """
+    try:
+        usr_logado = st.session_state.get("usuario_logado") or {}
+        
+        usr_id = usr_logado.get("id")
+        usr_nome = usr_logado.get("nome", "Sistema / Anônimo")
+        usr_email = usr_logado.get("email", "sistema@siger.local")
+        unidade_usr = unidade_sigla or usr_logado.get("unidade")
+
+        ip_origem = "127.0.0.1"
+        if hasattr(st, "context") and hasattr(st.context, "headers"):
+            ip_origem = st.context.headers.get("X-Forwarded-For", st.context.headers.get("Host", "127.0.0.1")).split(",")[0]
+
+        fuso_br = timezone(timedelta(hours=-3))
+        data_hora_br = datetime.now(fuso_br).isoformat()
+
+        payload = {
+            "usuario_id": usr_id,
+            "usuario_nome": usr_nome,
+            "usuario_email": usr_email,
+            "unidade_sigla": unidade_usr,
+            "acao": acao,
+            "detalhes": detalhes,
+            "ip_origem": ip_origem,
+            "data_hora": data_hora_br
+        }
+
+        supabase.table("logs_auditoria").insert(payload).execute()
+    except Exception as e_log:
+        print(f"⚠️ Falha ao gravar log de auditoria ({acao}): {e_log}")
+
+# ---------------------------------------------------------
 # ARQUITETURA GENÉRICA DE INTEGRAÇÕES & KRI
 # ---------------------------------------------------------
 DB_LOCAL_BUFFER = "buffer_integracoes.db"
@@ -555,28 +593,8 @@ def realizar_login(email, senha):
                     "permissoes": dados_perf.get("permissoes_json") or {}
                 }
                 
-                # Registra o acesso na Trilha de Auditoria
-                try:
-                    ip_origem = "127.0.0.1"
-                    if hasattr(st, "context") and hasattr(st.context, "headers"):
-                        ip_origem = st.context.headers.get("X-Forwarded-For", st.context.headers.get("Host", "127.0.0.1")).split(",")[0]
-
-                    fuso_br = timezone(timedelta(hours=-3))
-                    data_hora_br = datetime.now(fuso_br).isoformat()
-
-                    supabase.table("logs_auditoria").insert({
-                        "usuario_id": usr["id"],
-                        "usuario_nome": usr["nome"],
-                        "usuario_email": usr["email"],
-                        "unidade_sigla": usr.get("unidade_sigla"),
-                        "acao": "LOGIN",
-                        "detalhes": f"Login realizado com sucesso no SIGER pelo IP {ip_origem}.",
-                        "ip_origem": ip_origem,
-                        "data_hora": data_hora_br
-                    }).execute()
-
-                except Exception as e_log:
-                    print(f"Aviso log auditoria: {e_log}")
+                # Registra o acesso na Trilha de Auditoria via Helper
+                registrar_log_auditoria("LOGIN", f"Login realizado com sucesso no SIGER.")
 
                 return True, "Login realizado com sucesso!"
 
@@ -1574,6 +1592,15 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
                             "ultima_sincronizacao": data_medicao
                         }).eq("id", integracao_id).execute()
 
+                        # AUDITORIA: Registro de log de sincronização do KRI
+                        registrar_log_auditoria(
+                            acao="SINCRONIZACAO_KRI_PNCP",
+                            detalhes=(
+                                f"Sincronização de contratos vigentes realizada via PNCP/Compras.gov (UFSM). "
+                                f"Contratos: {quantidade_contratos}, Valor Total: {valor_global_formatado}, Ticket Médio: {ticket_medio_formatado}"
+                            )
+                        )
+
                     except Exception as e:
 
                         st.warning(
@@ -1676,6 +1703,13 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                                                 dados_upd["senha_hash"] = gerar_hash_senha(nueva_pass.strip())
                                                 
                                             supabase.table("usuarios").update(dados_upd).eq("id", u_item["id"]).execute()
+                                            
+                                            # AUDITORIA: Registro de edição de usuário
+                                            registrar_log_auditoria(
+                                                acao="ALTERACAO_USUARIO",
+                                                detalhes=f"Usuário ID {u_item['id']} ({u_item['email']}) atualizado. Nome: {e_nome}, Perfil: {e_perfil}, Unidade: {e_unid}, Ativo: {e_ativo}"
+                                            )
+                                            
                                             st.success("Usuário atualizado com sucesso!")
                                             st.rerun()
                 else:
@@ -1708,7 +1742,7 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                         else:
                             try:
                                 hash_pw = gerar_hash_senha(new_senha)
-                                supabase.table("usuarios").insert({
+                                res_ins = supabase.table("usuarios").insert({
                                     "nome": new_nome,
                                     "email": new_email.strip().lower(),
                                     "senha_hash": hash_pw,
@@ -1716,6 +1750,13 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                                     "unidade_sigla": None if new_unid == "Nenhuma / Todas" else new_unid,
                                     "ativo": True
                                 }).execute()
+                                
+                                # AUDITORIA: Registro de inclusão de novo usuário
+                                registrar_log_auditoria(
+                                    acao="INCLUSAO_USUARIO",
+                                    detalhes=f"Novo usuário cadastrado: {new_nome} ({new_email.strip().lower()}), Perfil: {new_perfil}, Unidade: {new_unid}"
+                                )
+                                
                                 st.success("✅ Usuário criado com sucesso!")
                                 st.rerun()
                             except Exception as e:
@@ -1982,7 +2023,13 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
 
                                 if usr_atual.get("perfil_id") == p_id:
                                     st.session_state.usuario_logado["permissoes"] = nova_matriz
-                    
+                                
+                                # AUDITORIA: Registro de alteração de matriz de permissões
+                                registrar_log_auditoria(
+                                    acao="ALTERACAO_PERMISSOES",
+                                    detalhes=f"Matriz de permissões atualizada para o perfil '{perfil_sel_nome}' (ID: {p_id})"
+                                )
+
                                 st.toast(f"✅ Permissões do perfil '{perfil_sel_nome}' atualizadas com sucesso!", icon="🎉")
                                 st.rerun()
                         except Exception as e:
@@ -2014,6 +2061,12 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                     "chave": key_config,
                     "valor": public_url
                 }, on_conflict="chave").execute()
+                
+                # AUDITORIA: Registro de atualização de logo
+                registrar_log_auditoria(
+                    acao="ALTERACAO_IDENTIDADE_VISUAL",
+                    detalhes=f"Logotipo atualizado para o parâmetro '{key_config}' (Arquivo: {file_name})"
+                )
                 
                 return True, public_url
             except Exception as e:
@@ -2098,6 +2151,12 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                             "valor": novo_texto_home
                         }, on_conflict="chave").execute()
                         
+                        # AUDITORIA: Registro de alteração do texto da home
+                        registrar_log_auditoria(
+                            acao="ALTERACAO_TEXTO_HOME",
+                            detalhes="Texto de boas-vindas da tela inicial atualizado"
+                        )
+                        
                         st.success("✅ Texto da tela inicial atualizado com sucesso!")
                         st.rerun()
                     except Exception as e:
@@ -2151,6 +2210,12 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                             for item in configs_para_salvar:
                                 supabase.table("configuracoes").upsert(item, on_conflict="chave").execute()
                                 
+                            # AUDITORIA: Registro de alteração de configurações SMTP
+                            registrar_log_auditoria(
+                                acao="ALTERACAO_CONFIG_SMTP",
+                                detalhes=f"Configurações do servidor de e-mail (SMTP) atualizadas. Servidor: {smtp_servidor.strip()}, Porta: {smtp_porta}, E-mail Remetente: {smtp_email.strip()}"
+                            )
+                            
                             st.success("✅ Servidor de e-mail registrado e pronto para envio de notificações!")
                             st.rerun()
                         except Exception as e:
@@ -2430,6 +2495,13 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
 
                                                 recalcular_e_atualizar_status_risco(r_id)
 
+                                                # LOG DE AUDITORIA: ATUALIZAÇÃO INTERNA DE PROGRESSO
+                                                registrar_log_auditoria(
+                                                    acao="ATUALIZACAO_PROGRESSO",
+                                                    detalhes=f"Progresso registrado na Ação nº {seq} do Risco #{r_id} ({pct_prog}% - {st_prog}). Relato: {relato_prog.strip()[:100]}",
+                                                    unidade_sigla=unidade_ativa
+                                                )
+
                                                 st.success("✅ Progresso registrado com sucesso!")
                                                 st.rerun()
                                             except Exception as e_a:
@@ -2517,6 +2589,13 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
 
                                                 recalcular_e_atualizar_status_risco(r_id)
 
+                                                # LOG DE AUDITORIA: TRAMITAÇÃO DE DEMANDA
+                                                registrar_log_auditoria(
+                                                    acao="TRAMITACAO_DEMANDA",
+                                                    detalhes=f"Demanda da Ação nº {seq} do Risco #{r_id} tramitada de {unidade_ativa} para {unid_dest_b} ({resp_final_b}). Status: {st_tram_b}.",
+                                                    unidade_sigla=unidade_ativa
+                                                )
+
                                                 emails_dest = obter_emails_unidade_ou_usuario(unidade_sigla=unid_dest_b, nome_usuario=email_user_b)
                                                 if emails_dest:
                                                     assunto_e = f"💬 [SIGER] Tramitação de Demanda - Risco #{r_id} (Ação {seq})"
@@ -2602,6 +2681,13 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                                 "parecer_observacao": f"🔒 ENCERRAMENTO FORMAL DO RISCO: {justificativa_enc.strip()}"
                                             }
                                             supabase.table("tramitacoes").insert(dados_tram_enc).execute()
+
+                                            # LOG DE AUDITORIA: ENCERRAMENTO FORMAL DO RISCO VIA CAIXA DE ENTRADA
+                                            registrar_log_auditoria(
+                                                acao="ENCERRAMENTO_RISCO",
+                                                detalhes=f"Risco #{r_id} encerrado formalmente via Caixa de Entrada. Motivo: {justificativa_enc.strip()[:100]}",
+                                                unidade_sigla=unidade_ativa
+                                            )
 
                                             st.success("✅ Risco encerrado formalmente com justificativa e responsável registrados!")
                                             st.rerun()
@@ -2819,6 +2905,13 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
 
                                                 supabase.table("avaliacoes_risco").insert(dados_avaliac).execute()
 
+                                                # LOG DE AUDITORIA: ALTERAÇÃO DE RISCO
+                                                registrar_log_auditoria(
+                                                    acao="ALTERACAO_RISCO",
+                                                    detalhes=f"Risco ID #{r_item['id']} alterado. Probabilidade: {e_prob}, Impacto: {e_imp}, Status: {e_sit}.",
+                                                    unidade_sigla=r_item.get("unidade")
+                                                )
+
                                                 st.success("✅ Risco reavaliado e alteração salva!")
                                                 st.rerun()
 
@@ -2830,6 +2923,14 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                         if st.button("Confirmar Exclusão", key=f"btn_del_r_{r_item['id']}"):
                                             try:
                                                 supabase.table("riscos").delete().eq("id", r_item['id']).execute()
+
+                                                # LOG DE AUDITORIA: EXCLUSÃO DE RISCO
+                                                registrar_log_auditoria(
+                                                    acao="EXCLUSAO_RISCO",
+                                                    detalhes=f"Risco ID #{r_item['id']} ({r_item.get('evento', '')[:60]}...) foi excluído permanentemente.",
+                                                    unidade_sigla=r_item.get("unidade")
+                                                )
+
                                                 st.success("Risco excluído!")
                                                 st.rerun()
                                             except Exception as e:
@@ -2865,6 +2966,13 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                                             "parecer_observacao": f"🔒 ENCERRAMENTO FORMAL DO RISCO: {justificativa_enc_cad.strip()}"
                                                         }
                                                         supabase.table("tramitacoes").insert(dados_tram_enc).execute()
+
+                                                        # LOG DE AUDITORIA: ENCERRAMENTO DE RISCO
+                                                        registrar_log_auditoria(
+                                                            acao="ENCERRAMENTO_RISCO",
+                                                            detalhes=f"Risco ID #{r_item['id']} encerrado formalmente. Motivo: {justificativa_enc_cad.strip()[:100]}",
+                                                            unidade_sigla=r_item.get("unidade")
+                                                        )
 
                                                         st.success("✅ Risco encerrado formalmente!")
                                                         st.rerun()
@@ -2980,6 +3088,14 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                             
                             if res_novo_risco.data and len(res_novo_risco.data) > 0:
                                 novo_risco_id = res_novo_risco.data[0]["id"]
+
+                                # LOG DE AUDITORIA: INCLUSÃO DE RISCO
+                                registrar_log_auditoria(
+                                    acao="INCLUSAO_RISCO",
+                                    detalhes=f"Novo risco registrado (ID #{novo_risco_id}): {evento_input[:80]}...",
+                                    unidade_sigla=unidade_sigla_final
+                                )
+
                                 dados_tramitacao_inicial = {
                                     "risco_id": novo_risco_id,
                                     "unidade_origem": unidade_sigla_final,
@@ -3095,6 +3211,13 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                 "justificativa": just_reav.strip()
                             }).execute()
 
+                            # LOG DE AUDITORIA: REAVALIAÇÃO DE RISCO
+                            registrar_log_auditoria(
+                                acao="REAVALIACAO_RISCO",
+                                detalhes=f"Risco #{r_id} reavaliado para Nível {novo_nivel_calc} (P: {p_nova}, I: {i_novo}). Justificativa: {just_reav.strip()[:100]}",
+                                unidade_sigla=risco_obj.get("unidade")
+                            )
+
                             st.toast(f"✅ Risco #{r_id} reavaliado com sucesso para Nível {novo_nivel_calc}!", icon="🎉")
                             st.success(f"✅ Risco #{r_id} reavaliado com sucesso para Nível {novo_nivel_calc}!")
                             st.rerun()
@@ -3186,6 +3309,13 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                                         "previsao_data_conclusao": edit_dt_f.strftime("%Y-%m-%d")
                                                     }).eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
                                                     
+                                                    # LOG DE AUDITORIA: ALTERAÇÃO DE AÇÃO
+                                                    registrar_log_auditoria(
+                                                        acao="ALTERACAO_ACAO",
+                                                        detalhes=f"Ação nº {seq} do Risco #{r_id} alterada. Responsável: {edit_resp}.",
+                                                        unidade_sigla=acao_item.get("unidade_responsavel")
+                                                    )
+
                                                     st.success("Ação atualizada!")
                                                     st.rerun()
 
@@ -3198,6 +3328,14 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                             try:
                                                 supabase.table("acoes_tratamento").delete().eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
                                                 recalcular_e_atualizar_status_risco(r_id)
+
+                                                # LOG DE AUDITORIA: EXCLUSÃO DE AÇÃO
+                                                registrar_log_auditoria(
+                                                    acao="EXCLUSAO_ACAO",
+                                                    detalhes=f"Ação nº {seq} do Risco #{r_id} excluída.",
+                                                    unidade_sigla=acao_item.get("unidade_responsavel")
+                                                )
+
                                                 st.success("Ação removida e status do risco atualizado!")
                                                 st.rerun()
                                             except Exception as e:
@@ -3295,6 +3433,13 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                 }
                                 try:
                                     supabase.table("acoes_tratamento").insert(dados_nova_acao).execute()
+
+                                    # LOG DE AUDITORIA: INCLUSÃO DE AÇÃO
+                                    registrar_log_auditoria(
+                                        acao="INCLUSAO_ACAO",
+                                        detalhes=f"Nova Ação nº {prox_seq} vinculada ao Risco #{id_risco_sel} e atribuída à unidade {unidade_resp_sel}.",
+                                        unidade_sigla=unidade_resp_sel
+                                    )
                                     
                                     dados_mov_inicial = {
                                         "risco_id": id_risco_sel,
@@ -3391,6 +3536,14 @@ elif st.session_state.pagina_atual == "Cadastros":
                                                         "tipo_unidade": edit_tipo,
                                                         "email_unidade": edit_email.strip().lower() if edit_email else None
                                                     }).eq("sigla", sigla_item).execute()
+
+                                                    # LOG DE AUDITORIA: ALTERAÇÃO DE UNIDADE
+                                                    registrar_log_auditoria(
+                                                        acao="ALTERACAO_UNIDADE",
+                                                        detalhes=f"Unidade '{sigla_item}' alterada. Nome: {edit_nome}, Tipo: {edit_tipo}.",
+                                                        unidade_sigla=sigla_item
+                                                    )
+
                                                     st.toast("Unidade atualizada com sucesso!", icon="✅")
                                                     st.rerun()
                                                 except Exception as e:
@@ -3407,6 +3560,14 @@ elif st.session_state.pagina_atual == "Cadastros":
                                                     st.error(f"❌ Impossível excluir '{sigla_item}'. Existem {len(res_riscos.data)} risco(s) vinculados.")
                                                 else:
                                                     supabase.table("unidades").delete().eq("sigla", sigla_item).execute()
+
+                                                    # LOG DE AUDITORIA: EXCLUSÃO DE UNIDADE
+                                                    registrar_log_auditoria(
+                                                        acao="EXCLUSAO_UNIDADE",
+                                                        detalhes=f"Unidade '{sigla_item}' ({nome_item}) foi excluída permanentemente.",
+                                                        unidade_sigla=sigla_item
+                                                    )
+
                                                     st.toast(f"Unidade '{sigla_item}' excluída!", icon="🗑")
                                                     st.rerun()
                                             except Exception as e:
@@ -3442,6 +3603,14 @@ elif st.session_state.pagina_atual == "Cadastros":
                                     "tipo_unidade": tipo_unidade_sel,
                                     "email_unidade": email_unid_input.strip().lower() if email_unid_input else None
                                 }).execute()
+
+                                # LOG DE AUDITORIA: INCLUSÃO DE UNIDADE
+                                registrar_log_auditoria(
+                                    acao="INCLUSAO_UNIDADE",
+                                    detalhes=f"Nova unidade cadastrada: '{sigla}' - {nome_extenso} ({tipo_unidade_sel}).",
+                                    unidade_sigla=sigla
+                                )
+
                                 st.toast(f"✅ Unidade '{sigla}' registrada!", icon="🎉")
                                 st.rerun()
                             except Exception as e:
@@ -3499,6 +3668,13 @@ elif st.session_state.pagina_atual == "Cadastros":
                                                         "gestao": e_gestao.strip() if e_gestao else None,
                                                         "ativo": e_ativo
                                                     }).eq("codigo", cod_item).execute()
+
+                                                    # LOG DE AUDITORIA: ALTERAÇÃO DE OBJETIVO ESTRATÉGICO
+                                                    registrar_log_auditoria(
+                                                        acao="ALTERACAO_OBJETIVO",
+                                                        detalhes=f"Objetivo Estratégico '{cod_item}' alterado. Dimensão: {e_dimensao}, Ativo: {e_ativo}."
+                                                    )
+
                                                     st.success("Objetivo Estratégico atualizado!")
                                                     st.rerun()
                                                 except Exception as e:
@@ -3513,6 +3689,13 @@ elif st.session_state.pagina_atual == "Cadastros":
                                             if st.button("🔴 Inativar Objetivo", key=f"btn_inativar_oe_{cod_item}"):
                                                 try:
                                                     supabase.table("objetivos_estrategicos").update({"ativo": False}).eq("codigo", cod_item).execute()
+
+                                                    # LOG DE AUDITORIA: INATIVAÇÃO DE OBJETIVO ESTRATÉGICO
+                                                    registrar_log_auditoria(
+                                                        acao="INATIVACAO_OBJETIVO",
+                                                        detalhes=f"Objetivo Estratégico '{cod_item}' foi inativado."
+                                                    )
+
                                                     st.toast("Objetivo marcado como inativo!", icon="🔴")
                                                     st.rerun()
                                                 except Exception as e:
@@ -3521,6 +3704,13 @@ elif st.session_state.pagina_atual == "Cadastros":
                                             if st.button("🟢 Reativar Objetivo", key=f"btn_ativar_oe_{cod_item}"):
                                                 try:
                                                     supabase.table("objetivos_estrategicos").update({"ativo": True}).eq("codigo", cod_item).execute()
+
+                                                    # LOG DE AUDITORIA: REATIVAÇÃO DE OBJETIVO ESTRATÉGICO
+                                                    registrar_log_auditoria(
+                                                        acao="REATIVACAO_OBJETIVO",
+                                                        detalhes=f"Objetivo Estratégico '{cod_item}' foi reativado."
+                                                    )
+
                                                     st.toast("Objetivo reativado!", icon="🟢")
                                                     st.rerun()
                                                 except Exception as e:
@@ -3535,6 +3725,13 @@ elif st.session_state.pagina_atual == "Cadastros":
                                                     st.error(f"❌ Impossível excluir. Existem {len(res_vinc.data)} risco(s) vinculados a este objetivo.")
                                                 else:
                                                     supabase.table("objetivos_estrategicos").delete().eq("codigo", cod_item).execute()
+
+                                                    # LOG DE AUDITORIA: EXCLUSÃO DE OBJETIVO ESTRATÉGICO
+                                                    registrar_log_auditoria(
+                                                        acao="EXCLUSAO_OBJETIVO",
+                                                        detalhes=f"Objetivo Estratégico '{cod_item}' ({desc_item[:60]}...) foi excluído permanentemente."
+                                                    )
+
                                                     st.success(f"Objetivo '{cod_item}' excluído com sucesso!")
                                                     st.rerun()
                                             except Exception as e:
@@ -3575,6 +3772,13 @@ elif st.session_state.pagina_atual == "Cadastros":
                                     "gestao": new_gestao.strip() if new_gestao else None,
                                     "ativo": new_ativo
                                 }).execute()
+
+                                # LOG DE AUDITORIA: INCLUSÃO DE OBJETIVO ESTRATÉGICO
+                                registrar_log_auditoria(
+                                    acao="INCLUSAO_OBJETIVO",
+                                    detalhes=f"Novo Objetivo Estratégico registrado: '{new_codigo}' - {new_dimensao}."
+                                )
+
                                 st.success(f"✅ Objetivo Estratégico '{new_codigo}' cadastrado com sucesso!")
                                 st.rerun()
                             except Exception as e:
@@ -3624,6 +3828,13 @@ elif st.session_state.pagina_atual == "Cadastros":
                                                         "sub_tipo": e_sub,
                                                         "detalhamento": e_det
                                                     }).eq("id", cid).execute()
+
+                                                    # LOG DE AUDITORIA: ALTERAÇÃO DE CATEGORIA DE RISCO
+                                                    registrar_log_auditoria(
+                                                        acao="ALTERACAO_CATEGORIA",
+                                                        detalhes=f"Categoria ID #{cid} alterada para '{e_tipo} / {e_sub}'."
+                                                    )
+
                                                     st.success("Categoria atualizada!")
                                                     st.rerun()
                                                 except Exception as e:
@@ -3641,6 +3852,13 @@ elif st.session_state.pagina_atual == "Cadastros":
                                                     st.error(f"❌ Impossível excluir. Existem {len(res_vinc_c.data)} risco(s) vinculados a esta categoria.")
                                                 else:
                                                     supabase.table("categorias_riscos").delete().eq("id", cid).execute()
+
+                                                    # LOG DE AUDITORIA: EXCLUSÃO DE CATEGORIA DE RISCO
+                                                    registrar_log_auditoria(
+                                                        acao="EXCLUSAO_CATEGORIA",
+                                                        detalhes=f"Categoria ID #{cid} ({ctipo} / {csub}) foi excluída permanentemente."
+                                                    )
+
                                                     st.success("Categoria excluída com sucesso!")
                                                     st.rerun()
                                             except Exception as e:
@@ -3673,6 +3891,13 @@ elif st.session_state.pagina_atual == "Cadastros":
                                     "sub_tipo": new_sub_tipo,
                                     "detalhamento": new_detalhamento
                                 }).execute()
+
+                                # LOG DE AUDITORIA: INCLUSÃO DE CATEGORIA DE RISCO
+                                registrar_log_auditoria(
+                                    acao="INCLUSAO_CATEGORIA",
+                                    detalhes=f"Nova Categoria registrada: '{new_tipo} / {new_sub_tipo}'."
+                                )
+
                                 st.success("✅ Categoria de risco registrada com sucesso!")
                                 st.rerun()
                             except Exception as e:
@@ -3700,7 +3925,7 @@ elif st.session_state.pagina_atual == "Cadastros":
                         with st.expander(f"📄 **{d_titulo}**"):
                             st.write(f"**Descrição:** {d_desc or 'Sem descrição'}")
                             st.write(f"**Nome do Arquivo:** {d_arq}")
-                            st.caption(f"Data do Upload: {formatar_data_hora_br(doc.get('data_upload'))}")
+                            st.caption(f"Data do Upload: {formatar_data_hora_br(d.get('data_upload'))}")
                             
                             col_b_act1, col_b_act2 = st.columns([1, 1])
                             with col_b_act1:
@@ -3718,6 +3943,13 @@ elif st.session_state.pagina_atual == "Cadastros":
                                                     except Exception:
                                                         pass
                                                 supabase.table("biblioteca").delete().eq("id", doc_id).execute()
+
+                                                # LOG DE AUDITORIA: EXCLUSÃO DE DOCUMENTO DA BIBLIOTECA
+                                                registrar_log_auditoria(
+                                                    acao="EXCLUSAO_BIBLIOTECA",
+                                                    detalhes=f"Documento ID #{doc_id} ('{d_titulo}') excluído da biblioteca."
+                                                )
+
                                                 st.success("Documento excluído com sucesso!")
                                                 st.rerun()
                                             except Exception as e:
@@ -3755,7 +3987,13 @@ elif st.session_state.pagina_atual == "Cadastros":
                                     "url_publica": public_url_pdf,
                                     "data_upload": datetime.now().isoformat()
                                 }).execute()
-                                
+
+                                # LOG DE AUDITORIA: INCLUSÃO DE DOCUMENTO DA BIBLIOTECA
+                                registrar_log_auditoria(
+                                    acao="INCLUSAO_BIBLIOTECA",
+                                    detalhes=f"Novo documento publicado na biblioteca: '{doc_titulo}' ({nome_arquivo_saneado})."
+                                )
+
                                 st.success("✅ Documento publicado com sucesso na biblioteca!")
                                 st.rerun()
                             except Exception as e:
