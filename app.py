@@ -143,7 +143,7 @@ def init_supabase():
 supabase = init_supabase()
 
 # ---------------------------------------------------------
-# HELPER REGISTRADOR DE TRILHA DE AUDITORIA
+# HELPER REGISTRADOR DE CONTROLE DE ACESSOS
 # ---------------------------------------------------------
 def registrar_log_auditoria(acao, detalhes, unidade_sigla=None):
     """
@@ -593,7 +593,7 @@ def realizar_login(email, senha):
                     "permissoes": dados_perf.get("permissoes_json") or {}
                 }
                 
-                # Registra o acesso na Trilha de Auditoria via Helper
+                # Registra o acesso no Controle de Acessos via Helper
                 registrar_log_auditoria("LOGIN", f"Login realizado com sucesso no SIGER.")
 
                 return True, "Login realizado com sucesso!"
@@ -1295,7 +1295,7 @@ st.sidebar.divider()
 items_adm = [
     ("👥 Usuários", "Usuários", "adm_usuarios"),
     ("🔐 Perfis e Permissões", "Perfis e Permissões", "adm_perfis"),
-    ("📜 Trilha de Auditoria", "Trilha de Auditoria", "adm_auditoria"),
+    ("📜 Controle de Acessos", "Controle de Acessos", "adm_auditoria"),
     ("🖼️ Identidade Visual", "Identidade Visual", "adm_id_visual"),
     ("✍ Texto da Tela Inicial", "Texto da Tela Inicial", "adm_texto_home"),
     ("🔧 Configurações Gerais", "Configurações Gerais", "adm_config_gerais")
@@ -2232,9 +2232,9 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                 st.write("")
                 st.info("🔒 Seu perfil possui permissão apenas de leitura para visualizar as configurações do servidor SMTP.")
 
-    # 6. SUBPÁGINA: TRILHA DE AUDITORIA E LOGS
-    elif sub == "Trilha de Auditoria" and (is_admin or pode("adm_auditoria", "acesso") or pode("adm_usuarios", "acesso")):
-        st.title("📜 Trilha de Auditoria e Controle de Acessos")
+    # 6. SUBPÁGINA: CONTROLE DE ACESSOS E LOGS
+    elif sub == "Controle de Acessos" and (is_admin or pode("adm_auditoria", "acesso") or pode("adm_usuarios", "acesso")):
+        st.title("📜 Controle de Acessos")
         st.caption("Rastreamento de segurança: saiba quem acessou o SIGER, quando acessou, de qual IP e quais ações realizou.")
         
         col_f1, col_f2, col_f3 = st.columns([1.5, 1.5, 2])
