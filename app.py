@@ -1650,7 +1650,7 @@ elif st.session_state.pagina_atual == "Integrações Institucionais":
 # ---------------------------------------------------------
 # PÁGINA: ADMINISTRAÇÃO DO SISTEMA
 # ---------------------------------------------------------
-elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin or any(pode(k, "acesso") for k in ["adm_usuarios", "adm_perfis", "adm_auditoria", "adm_id_visual", "adm_texto_home", "adm_config_gerais"])):
+elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin or any(pode(k, "acesso") for k in ["adm_usuarios", "adm_perfis", "adm_auditoria", "adm_id_visual", "adm_texto_home", "adm_config_gerais", "integ_kri"])):
     sub = st.session_state.sub_pagina_atual or "Usuários"
     
     # 1. SUBPÁGINA: USUÁRIOS
@@ -1765,7 +1765,7 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
     # 2. SUBPÁGINA: PERFIS E PERMISSÕES DE ACESSO
     elif sub == "Perfis e Permissões" and pode("adm_perfis", "acesso"):
         st.title("🔐 Gerenciamento de Perfis e Permissões")
-        st.caption("Configure individualmente o nível de acesso e operação para cada um dos 15 itens de menu do SIGER.")
+        st.caption("Configure individualmente o nível de acesso e operação para cada um dos módulos do SIGER.")
 
         try:
             res_perfis = supabase.table("perfis").select("*").order("id").execute()
@@ -1854,6 +1854,8 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                 f"chk_d1_out_{sfx}": def_perm("dash_acomp", "ver_outras_unidades"),
                 f"chk_d2_acc_{sfx}": def_perm("dash_geral", "acesso"),
                 f"chk_d2_out_{sfx}": def_perm("dash_geral", "ver_outras_unidades"),
+                f"chk_kri_acc_{sfx}": def_perm("integ_kri", "acesso"),
+                f"chk_kri_sync_{sfx}": def_perm("integ_kri", "sincronizar"),
                 f"chk_bib_rd_{sfx}": def_perm("bib_normativas", "leitura"),
             }
 
@@ -1891,8 +1893,8 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
 
                 with c5:
                     st.markdown("**✍ Texto Inicial**")
-                    p_txt_acc = st.checkbox("Acessar Texto Initial", key=f"chk_txt_acc_{sfx}")
-                    p_txt_alt = st.checkbox("Alterar Texto Initial", key=f"chk_txt_alt_{sfx}")
+                    p_txt_acc = st.checkbox("Acessar Texto Inicial", key=f"chk_txt_acc_{sfx}")
+                    p_txt_alt = st.checkbox("Alterar Texto Inicial", key=f"chk_txt_alt_{sfx}")
 
                 with c6:
                     st.markdown("**🔧 Config. Gerais**")
@@ -1957,8 +1959,8 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
 
                 st.divider()
 
-                st.markdown("### 📊 4. Módulo Dashboards & 📚 5. Biblioteca")
-                c_d1, c_d2, c_d3 = st.columns(3)
+                st.markdown("### 📊 4. Módulo Dashboards, 🔌 5. Integrações & 📚 6. Biblioteca")
+                c_d1, c_d2, c_d3, c_d4 = st.columns(4)
 
                 with c_d1:
                     st.markdown("**📌 Acompanhamento**")
@@ -1971,6 +1973,11 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                     p_d2_outras = st.toggle("Ver Outras Unidades (Geral)", key=f"chk_d2_out_{sfx}")
 
                 with c_d3:
+                    st.markdown("**🔌 Integrações & Indicadores**")
+                    p_kri_acc = st.checkbox("Acessar Central KRI", key=f"chk_kri_acc_{sfx}")
+                    p_kri_sync = st.checkbox("Executar Sincronização", key=f"chk_kri_sync_{sfx}")
+
+                with c_d4:
                     st.markdown("**📄 Doc. e Normativas**")
                     p_bib_read = st.toggle("Permitir Leitura/Download Normativas", key=f"chk_bib_rd_{sfx}")
 
@@ -2008,6 +2015,7 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
             
                             "dash_acomp": {"acesso": p_d1_acc, "ver_outras_unidades": p_d1_outras},
                             "dash_geral": {"acesso": p_d2_acc, "ver_outras_unidades": p_d2_outras},
+                            "integ_kri": {"acesso": p_kri_acc, "sincronizar": p_kri_sync},
                             "bib_normativas": {"leitura": p_bib_read}
                         }
 
