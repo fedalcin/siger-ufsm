@@ -1351,9 +1351,9 @@ if items_dash_visiveis:
             if st.button(label, key=f"btn_{key_perm}", use_container_width=True):
                 navegar_para("Dashboards", sub_p)
 
-# 6. Expander Integrações & Indicadores (KRI)
+# 6. Expander Integrações e Indicadores (KRI)
 if is_admin or pode("adm_config_gerais", "acesso") or is_gestor:
-    with st.sidebar.expander("🔌 Integrações & Indicadores", expanded=False):
+    with st.sidebar.expander("🔌 Integrações e Indicadores (KRI)", expanded=False):
         if st.button("🔗 Central de Conexões (KRI)", key="btn_integ_menu", use_container_width=True):
             navegar_para("Integrações Institucionais")
 
@@ -1973,7 +1973,7 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                     p_d2_outras = st.toggle("Ver Outras Unidades (Geral)", key=f"chk_d2_out_{sfx}")
 
                 with c_d3:
-                    st.markdown("**🔌 Integrações & Indicadores**")
+                    st.markdown("**🔌 Integrações e Indicadores (KRI)**")
                     p_kri_acc = st.checkbox("Acessar Central KRI", key=f"chk_kri_acc_{sfx}")
                     p_kri_sync = st.checkbox("Executar Sincronização", key=f"chk_kri_sync_{sfx}")
 
