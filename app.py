@@ -4171,7 +4171,7 @@ elif st.session_state.pagina_atual == "Dashboards":
                 nivel_val = risco_obj.get('nivel_risco', 1)
                 cor_nivel_str = "🔴 Crítico" if nivel_val >= 15 else "🟡 Médio" if nivel_val >= 8 else "🟢 Baixo"
 
-                kpi_c1, kpi_c2, kpi_c3, kpi_c4, kpi_c5, kpi_c6, kpi_c7 = st.columns(7)
+                kpi_c1, kpi_c2, kpi_c3, kpi_c4, kpi_c5, kpi_c6, kpi_c7, kpi_c8 = st.columns(8)
                 kpi_c1.metric("Nível do Risco", f"{nivel_val}", cor_nivel_str)
                 kpi_c2.metric("Total Ações", tot_acoes_r)
                 kpi_c3.metric("Concluídas", acoes_concluidas_r)
@@ -4190,6 +4190,12 @@ elif st.session_state.pagina_atual == "Dashboards":
                     "Tratamento do Risco", 
                     f"{itr_r}%", 
                     help="Índice de Tratamento do Risco: Métrica consolidada que combina a taxa de execução, conclusão total e aderência aos prazos.\n\nFórmula: Ponderação entre Execução, Conclusão Total e Cumprimento de Prazos"
+                )
+                kpi_c8.metric(
+                    "Pontuação IAR", 
+                    f"{iar_info['iar_score']} pts", 
+                    f"{iar_info['classificacao']}",
+                    help="Índice de Atenção ao Risco (0 a 100): Algoritmo de priorização gerencial que pondera o Nível do Risco (até 40pts), Ações Atrasadas (até 40pts) e Revisão Temporal Atrasada (até 20pts)."
                 )
 
                 st.divider()
