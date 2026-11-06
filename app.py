@@ -1410,7 +1410,7 @@ elif st.session_state.pagina_atual == "Início":
 # PÁGINA: INTEGRAÇÕES INSTITUCIONAIS & INDICADORES (KRI)
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Integrações Institucionais":
-    st.title("🔌 Integrações Institucionais & Indicadores (KRI)")
+    st.title("🔌 Integrações e Indicadores (KRI)")
     st.caption("Interoperabilidade entre o SIGER e sistemas governamentais e institucionais para alimentação de indicadores dinâmicos de risco.")
 
     tab_vis, tab_test = st.tabs(["🏛️ Sistemas e Conectores Institucionais", "🧪 Testar Integração em Tempo Real (UFSM)"])
@@ -3239,6 +3239,18 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
     # =========================================================
     elif pode("gr_acoes", "acesso"):
         st.title("📋 Ações de Tratamento")
+
+        #QUADRO DE LEGENDA DE STATUS NO CANTO SUPERIOR DIREITO
+        col1, col2 = st.columns([3, 1])
+        with col2:
+            st.markdown("""
+                <div style="background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; padding: 10px; font-size: 0.85rem; margin-top: 5px; margin-bottom: -15px;">
+                    <p style="margin: 0; font-weight: bold; color: #002147; padding-bottom: 5px;">📍 Dicionário de Status da Ação</p>
+                    <p style="margin: 2px 0;">🟢 <b>No Prazo:</b> Prazo para conclusão > 7 dias.</p>
+                    <p style="margin: 2px 0;">🟡 <b>Próxima do Vencimento:</b> Faltam 7 dias ou menos.</p>
+                    <p style="margin: 2px 0;">🔴 <b>Atrasada:</b> Data de conclusão vencida.</p>
+                </div>
+            """, unsafe_allow_html=True)
         
         tab_list_acoes, tab_nova_acao = st.tabs(["🔍 Ações Cadastradas", "➕ Cadastrar Nova Ação de Tratamento"])
         
