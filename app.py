@@ -3245,13 +3245,13 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
         with col2:
             st.markdown("""
                 <div style="background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; padding: 10px; font-size: 0.85rem; margin-top: 5px; margin-bottom: -15px;">
-                    <p style="margin: 0; font-weight: bold; color: #002147; padding-bottom: 5px;">📍 Dicionário de Status da Ação</p>
-                    <p style="margin: 2px 0;">🟢 <b>No Prazo:</b> Prazo para conclusão > 7 dias.</p>
-                    <p style="margin: 2px 0;">🟡 <b>Próxima do Vencimento:</b> Faltam 7 dias ou menos.</p>
-                    <p style="margin: 2px 0;">🔴 <b>Atrasada:</b> Data de conclusão vencida.</p>
+                    <p style="margin: 0; font-weight: bold; color: #002147; padding-bottom: 5px;">📍 Dicionário do Caráter da Ação</p>
+                    <p style="margin: 2px 0;">🟢 <b>Preventivo:</b> Ação para evitar a ocorrência do risco.</p>
+                    <p style="margin: 2px 0;">🟡 <b>Corretivo:</b> Ação para corrigir a vulnerabilidade.</p>
+                    <p style="margin: 2px 0;">🔵 <b>Compensatório:</b> Ação para mitigar o impacto gerado.</p>
                 </div>
             """, unsafe_allow_html=True)
-        
+
         tab_list_acoes, tab_nova_acao = st.tabs(["🔍 Ações Cadastradas", "➕ Cadastrar Nova Ação de Tratamento"])
         
         with tab_list_acoes:
