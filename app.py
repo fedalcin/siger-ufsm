@@ -3043,7 +3043,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
 
                 col_tit, col_ajuda = st.columns([3, 1])
                 with col_tit:
-                    st.markdown("##### 3. Avaliação Qualitativa")
+                    st.markdown("##### 3. Avaliação")
                 with col_ajuda:
                     renderizar_popover_guia_atribuicao()
 
