@@ -4178,30 +4178,67 @@ elif st.session_state.pagina_atual == "Dashboards":
                         🕒 *Sincronizado em: {dt_sinc_kri}*
                         """)
 
-                st.markdown("#### 📊 Grid de Indicadores Gerenciais")
+                st.markdown("#### 📊 Painel Integrado de Indicadores")
                 
                 nivel_val = risco_obj.get('nivel_risco', 1)
                 cor_nivel_str = "🔴 Crítico" if nivel_val >= 15 else "🟡 Médio" if nivel_val >= 8 else "🟢 Baixo"
 
                 # ---------------------------------------------------------
-                # PARTE 1: MÉTRICAS BÁSICAS E QUANTITATIVAS (4 COLUNAS)
+                # DIVISÃO DA TELA AO MEIO EM DOIS QUADROS IDÊNTICOS (1:1)
                 # ---------------------------------------------------------
-                col_basicas, col_card_indices = st.columns([1.2, 1.8])
-
-                with col_basicas:
-                    kpi_c1, kpi_c2 = st.columns(2)
-                    kpi_c1.metric("Nível do Risco", f"{nivel_val}", cor_nivel_str)
-                    kpi_c2.metric("Total Ações", tot_acoes_r)
-                    
-                    st.write("") # Espaçamento vertical
-                    kpi_c3, kpi_c4 = st.columns(2)
-                    kpi_c3.metric("Concluídas", acoes_concluidas_r)
-                    kpi_c4.metric("Atrasadas", acoes_atrasadas_r)
+                col_quadro_esq, col_quadro_dir = st.columns([1, 1])
 
                 # ---------------------------------------------------------
-                # PARTE 2: QUADRO CONSOLIDADO AZUL PARA OS 4 ÍNDICES (2x2)
+                # QUADRO 1 (ESQUERDA): ÍNDICES VOLUMÉTRICOS E DE CRITICIDADE
                 # ---------------------------------------------------------
-                with col_card_indices:
+                with col_quadro_esq:
+                    with st.container(border=True):
+                        st.markdown(
+                            """
+                            <div style="background-color: #f0f4f9; padding: 12px; border-radius: 8px; border-left: 5px solid #002147; margin-bottom: 5px;">
+                                <span style="font-weight: bold; color: #002147; font-size: 1rem;">📊 Índices Volumétricos e de Criticidade</span>
+                            </div>
+                            """, 
+                            unsafe_allow_html=True
+                        )
+                        
+                        # Linha 1: Nível do Risco e Total de Ações
+                        col_v1, col_v2 = st.columns(2)
+                        with col_v1:
+                            st.metric(
+                                label="Nível do Risco", 
+                                value=f"{nivel_val}", 
+                                delta=cor_nivel_str,
+                                help="Criticidade do Risco calculada pelo produto da Probabilidade x Impacto."
+                            )
+                        with col_v2:
+                            st.metric(
+                                label="Total de Ações", 
+                                value=tot_acoes_r,
+                                help="Quantidade total de ações de mitigação cadastradas para este risco."
+                            )
+
+                        st.write("") # Separação interna proporcional
+
+                        # Linha 2: Concluídas e Atrasadas
+                        col_v3, col_v4 = st.columns(2)
+                        with col_v3:
+                            st.metric(
+                                label="Ações Concluídas", 
+                                value=acoes_concluidas_r,
+                                help="Quantidade de ações de mitigação finalizadas com 100% de execução."
+                            )
+                        with col_v4:
+                            st.metric(
+                                label="Ações Atrasadas", 
+                                value=acoes_atrasadas_r,
+                                help="Quantidade de ações cujo prazo previsto de conclusão expirou."
+                            )
+
+                # ---------------------------------------------------------
+                # QUADRO 2 (DIREITA): ÍNDICES GERENCIAIS DE DESEMPENHO E ATENÇÃO
+                # ---------------------------------------------------------
+                with col_quadro_dir:
                     with st.container(border=True):
                         st.markdown(
                             """
@@ -4212,7 +4249,7 @@ elif st.session_state.pagina_atual == "Dashboards":
                             unsafe_allow_html=True
                         )
                         
-                        # Linha 1 do Quadro: IET e ICP
+                        # Linha 1: IET e ICP
                         col_ind1, col_ind2 = st.columns(2)
                         with col_ind1:
                             st.metric(
@@ -4227,9 +4264,9 @@ elif st.session_state.pagina_atual == "Dashboards":
                                 help="Índice de Cumprimento de Prazos: Avalia a proporção de ações que estão dentro do prazo previsto.\n\nFórmula: ((Ações no Prazo / Total de Ações) * 100)"
                             )
 
-                        st.write("") # Separação leve de linha interna
+                        st.write("") # Separação interna proporcional
 
-                        # Linha 2 do Quadro: ITR e IAR
+                        # Linha 2: ITR e IAR
                         col_ind3, col_ind4 = st.columns(2)
                         with col_ind3:
                             st.metric(
