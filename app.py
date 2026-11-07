@@ -4381,23 +4381,74 @@ elif st.session_state.pagina_atual == "Dashboards":
 
                 st.divider()
 
-                # PONTOS DE ATENÇÃO E ALERTAS AUTOMÁTICOS
+                # ---------------------------------------------------------
+                # PONTOS DE ATENÇÃO E ALERTAS AUTOMÁTICOS INTERATIVOS
+                # ---------------------------------------------------------
                 st.markdown("### ⚠️ Pontos de Atenção e Alertas Automáticos")
                 
-                alertas = []
-                if nivel_val >= 15 and tot_acoes_r == 0:
-                    alertas.append("🔴 **Risco Crítico sem Ações:** O risco possui nível crítico (≥ 15) mas nenhuma ação de mitigação cadastrada.")
-                if sit_revisao == "Atrasada":
-                    alertas.append("⏰ **Revisão Temporal Atrasada:** A data da próxima revisão do risco expirou.")
-                if acoes_atrasadas_r > 0:
-                    alertas.append(f"⚠️ **Ações de Mitigação Atrasadas:** Existem {acoes_atrasadas_r} ação(ões) com prazo de conclusão vencido.")
-                if iet_r < 50.0 and tot_acoes_r > 0:
-                    alertas.append(f"📉 **Baixa Execução do Tratamento:** O Índice de Execução do Tratamento está em apenas {iet_r}%.")
+                tem_alertas = False
 
-                if alertas:
-                    for alt in alertas:
-                        st.warning(alt)
-                else:
+                # 1. ALERTA: RISCO CRÍTICO SEM AÇÕES
+                if nivel_val >= 15 and tot_acoes_r == 0:
+                    tem_alertas = True
+                    with st.expander("🔴 **Risco Crítico sem Ações:** O risco possui nível crítico (≥ 15) mas nenhuma ação de mitigação cadastrada."):
+                        st.write("Nenhuma ação de mitigação foi vinculada a este risco até o momento.")
+                        if pode("gr_acoes", "incluir"):
+                            st.info("💡 **Recomendação:** Acesse a tela de *Gestão de Riscos > Ações de Tratamento* para cadastrar um plano de ação.")
+
+                # 2. ALERTA: REVISÃO TEMPORAL ATRASADA
+                if sit_revisao == "Atrasada":
+                    tem_alertas = True
+                    with st.expander("⏰ **Revisão Temporal Atrasada:** A data da próxima revisão do risco expirou."):
+                        data_revisao_str = formatar_data_br(data_prox_rev)
+                        st.write(f"A data estipulada para a próxima revisão deste risco era **{data_revisao_str}**.")
+                        if pode("gr_reavaliacao", "alterar"):
+                            st.info("💡 **Recomendação:** Acesse o menu *Gestão de Riscos > Reavaliação do Nível de Risco* para reavaliar as notas e registrar um novo parecer.")
+
+                # 3. ALERTA: AÇÕES DE MITIGAÇÃO ATRASADAS (EXPANDE E MOSTRA AS AÇÕES)
+                if acoes_atrasadas_r > 0:
+                    tem_alertas = True
+                    with st.expander(f"⚠️ **Ações de Mitigação Atrasadas:** Existem {acoes_atrasadas_r} ação(ões) com prazo de conclusão vencido."):
+                        if not df_ac_mon.empty:
+                            # Filtra apenas as ações atrasadas
+                            df_atrasadas = df_ac_mon[
+                                df_ac_mon.apply(
+                                    lambda r: calcular_situacao_prazo_acao(r.get("status_acao"), r.get("previsao_data_conclusao")) == "⚠️ Atrasada", 
+                                    axis=1
+                                )
+                            ].copy()
+
+                            if not df_atrasadas.empty:
+                                df_atrasadas_disp = pd.DataFrame({
+                                    "Ação nº": df_atrasadas["numero_sequencial"],
+                                    "Descrição da Ação": df_atrasadas["acao"],
+                                    "Responsável": df_atrasadas["nome_responsavel_implementacao"],
+                                    "Unidade": df_atrasadas["unidade_responsavel"],
+                                    "Status": df_atrasadas["status_acao"],
+                                    "% Concluído": df_atrasadas["percentual_execucao"].apply(lambda v: f"{int(v or 0)}%"),
+                                    "Vencimento Previsto": df_atrasadas["previsao_data_conclusao"].apply(formatar_data_br)
+                                })
+                                st.dataframe(df_atrasadas_disp, use_container_width=True, hide_index=True)
+                            else:
+                                st.caption("Nenhuma ação atrasada localizada no detalhamento.")
+
+                # 4. ALERTA: BAIXA EXECUÇÃO DO TRATAMENTO (EXPANDE E MOSTRA TODAS AS AÇÕES E SEUS PROGRESSOS)
+                if iet_r < 50.0 and tot_acoes_r > 0:
+                    tem_alertas = True
+                    with st.expander(f"📉 **Baixa Execução do Tratamento:** O Índice de Execução do Tratamento está em apenas {iet_r}%."):
+                        st.caption("Visão detalhada do progresso de todas as ações de tratamento associadas:")
+                        if not df_ac_mon.empty:
+                            df_progresso_disp = pd.DataFrame({
+                                "Ação nº": df_ac_mon["numero_sequencial"],
+                                "Descrição da Ação": df_ac_mon["acao"],
+                                "Responsável": df_ac_mon["nome_responsavel_implementacao"],
+                                "Status": df_ac_mon["status_acao"],
+                                "% Executado": df_ac_mon["percentual_execucao"].apply(lambda v: f"{int(v or 0)}%"),
+                                "Previsão Conclusão": df_ac_mon["previsao_data_conclusao"].apply(formatar_data_br)
+                            })
+                            st.dataframe(df_progresso_disp, use_container_width=True, hide_index=True)
+
+                if not tem_alertas:
                     st.success("✅ **Nenhum ponto de atenção crítico detectado.** O acompanhamento do risco está em conformidade com as metas.")
 
     # 2. TELA: PAINEL GERAL
