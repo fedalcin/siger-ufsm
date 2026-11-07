@@ -4183,32 +4183,67 @@ elif st.session_state.pagina_atual == "Dashboards":
                 nivel_val = risco_obj.get('nivel_risco', 1)
                 cor_nivel_str = "🔴 Crítico" if nivel_val >= 15 else "🟡 Médio" if nivel_val >= 8 else "🟢 Baixo"
 
-                kpi_c1, kpi_c2, kpi_c3, kpi_c4, kpi_c5, kpi_c6, kpi_c7, kpi_c8 = st.columns(8)
-                kpi_c1.metric("Nível do Risco", f"{nivel_val}", cor_nivel_str)
-                kpi_c2.metric("Total Ações", tot_acoes_r)
-                kpi_c3.metric("Concluídas", acoes_concluidas_r)
-                kpi_c4.metric("Atrasadas", acoes_atrasadas_r)
-                kpi_c5.metric(
-                    "Execução do Tratamento (IET)", 
-                    f"{iet_r}%", 
-                    help="Índice de Execução do Tratamento: Mede o percentual médio de execução das ações de mitigação cadastradas.\n\nFórmula: (Soma do % de Conclusão das Ações / Total de Ações)"
-                )
-                kpi_c6.metric(
-                    "Cumprimento de Prazos (ICP)", 
-                    f"{icp_r}%", 
-                    help="Índice de Cumprimento de Prazos: Avalia a proporção de ações que estão dentro do prazo previsto.\n\nFórmula: ((Ações no Prazo / Total de Ações) * 100)"
-                )
-                kpi_c7.metric(
-                    "Tratamento do Risco (ITR)", 
-                    f"{itr_r}%", 
-                    help="Índice de Tratamento do Risco: Métrica consolidada que combina a taxa de execução, conclusão total e aderência aos prazos.\n\nFórmula: Ponderação entre Execução, Conclusão Total e Cumprimento de Prazos"
-                )
-                kpi_c8.metric(
-                    "Atenção ao Risco (IAR)", 
-                    f"{iar_info['iar_score']} pts", 
-                    f"{iar_info['classificacao']}",
-                    help="Índice de Atenção ao Risco (0 a 100 pts): Algoritmo de priorização gerencial composto pela soma de 3 fatores: Criticidade do Risco (máx. 40 pts) + Ações Atrasadas (máx. 40 pts) + Revisão Temporal Atrasada (máx. 20 pts)."
-                )
+                # ---------------------------------------------------------
+                # PARTE 1: MÉTRICAS BÁSICAS E QUANTITATIVAS (4 COLUNAS)
+                # ---------------------------------------------------------
+                col_basicas, col_card_indices = st.columns([1.2, 1.8])
+
+                with col_basicas:
+                    kpi_c1, kpi_c2 = st.columns(2)
+                    kpi_c1.metric("Nível do Risco", f"{nivel_val}", cor_nivel_str)
+                    kpi_c2.metric("Total Ações", tot_acoes_r)
+                    
+                    st.write("") # Espaçamento vertical
+                    kpi_c3, kpi_c4 = st.columns(2)
+                    kpi_c3.metric("Concluídas", acoes_concluidas_r)
+                    kpi_c4.metric("Atrasadas", acoes_atrasadas_r)
+
+                # ---------------------------------------------------------
+                # PARTE 2: QUADRO CONSOLIDADO AZUL PARA OS 4 ÍNDICES (2x2)
+                # ---------------------------------------------------------
+                with col_card_indices:
+                    with st.container(border=True):
+                        st.markdown(
+                            """
+                            <div style="background-color: #f0f4f9; padding: 12px; border-radius: 8px; border-left: 5px solid #002147; margin-bottom: 5px;">
+                                <span style="font-weight: bold; color: #002147; font-size: 1rem;">🎯 Índices Gerenciais de Desempenho e Atenção</span>
+                            </div>
+                            """, 
+                            unsafe_allow_html=True
+                        )
+                        
+                        # Linha 1 do Quadro: IET e ICP
+                        col_ind1, col_ind2 = st.columns(2)
+                        with col_ind1:
+                            st.metric(
+                                label="Execução do Tratamento (IET)", 
+                                value=f"{iet_r}%", 
+                                help="Índice de Execução do Tratamento: Mede o percentual médio de execução das ações de mitigação cadastradas.\n\nFórmula: (Soma do % de Conclusão das Ações / Total de Ações)"
+                            )
+                        with col_ind2:
+                            st.metric(
+                                label="Cumprimento de Prazos (ICP)", 
+                                value=f"{icp_r}%", 
+                                help="Índice de Cumprimento de Prazos: Avalia a proporção de ações que estão dentro do prazo previsto.\n\nFórmula: ((Ações no Prazo / Total de Ações) * 100)"
+                            )
+
+                        st.write("") # Separação leve de linha interna
+
+                        # Linha 2 do Quadro: ITR e IAR
+                        col_ind3, col_ind4 = st.columns(2)
+                        with col_ind3:
+                            st.metric(
+                                label="Tratamento do Risco (ITR)", 
+                                value=f"{itr_r}%", 
+                                help="Índice de Tratamento do Risco: Métrica consolidada que combina a taxa de execução, conclusão total e aderência aos prazos.\n\nFórmula: Ponderação entre Execução, Conclusão Total e Cumprimento de Prazos"
+                            )
+                        with col_ind4:
+                            st.metric(
+                                label="Atenção ao Risco (IAR)", 
+                                value=f"{iar_info['iar_score']} pts", 
+                                delta=f"{iar_info['classificacao']}",
+                                help="Índice de Atenção ao Risco (0 a 100 pts): Algoritmo de priorização gerencial composto pela soma de 3 fatores: Criticidade do Risco (máx. 40 pts) + Ações Atrasadas (máx. 40 pts) + Revisão Temporal Atrasada (máx. 20 pts)."
+                            )
 
                 st.divider()
 
