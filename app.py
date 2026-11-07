@@ -4189,22 +4189,22 @@ elif st.session_state.pagina_atual == "Dashboards":
                 kpi_c3.metric("Concluídas", acoes_concluidas_r)
                 kpi_c4.metric("Atrasadas", acoes_atrasadas_r)
                 kpi_c5.metric(
-                    "Execução do Tratamento", 
+                    "Execução do Tratamento (IET)", 
                     f"{iet_r}%", 
                     help="Índice de Execução do Tratamento: Mede o percentual médio de execução das ações de mitigação cadastradas.\n\nFórmula: (Soma do % de Conclusão das Ações / Total de Ações)"
                 )
                 kpi_c6.metric(
-                    "Cumprimento de Prazos", 
+                    "Cumprimento de Prazos (ICP)", 
                     f"{icp_r}%", 
                     help="Índice de Cumprimento de Prazos: Avalia a proporção de ações que estão dentro do prazo previsto.\n\nFórmula: ((Ações no Prazo / Total de Ações) * 100)"
                 )
                 kpi_c7.metric(
-                    "Tratamento do Risco", 
+                    "Tratamento do Risco (ITR)", 
                     f"{itr_r}%", 
                     help="Índice de Tratamento do Risco: Métrica consolidada que combina a taxa de execução, conclusão total e aderência aos prazos.\n\nFórmula: Ponderação entre Execução, Conclusão Total e Cumprimento de Prazos"
                 )
                 kpi_c8.metric(
-                    "Pontuação IAR", 
+                    "Atenção ao Risco (IAR)", 
                     f"{iar_info['iar_score']} pts", 
                     f"{iar_info['classificacao']}",
                     help="Índice de Atenção ao Risco (0 a 100 pts): Algoritmo de priorização gerencial composto pela soma de 3 fatores: Criticidade do Risco (máx. 40 pts) + Ações Atrasadas (máx. 40 pts) + Revisão Temporal Atrasada (máx. 20 pts)."
