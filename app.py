@@ -4189,14 +4189,14 @@ elif st.session_state.pagina_atual == "Dashboards":
                 col_quadro_esq, col_quadro_dir = st.columns([1, 1])
 
                 # ---------------------------------------------------------
-                # QUADRO 1 (ESQUERDA): ÍNDICES VOLUMÉTRICOS E DE CRITICIDADE
+                # QUADRO 1 (ESQUERDA): ÍNDICES OPERACIONAIS E DE CRITICIDADE
                 # ---------------------------------------------------------
                 with col_quadro_esq:
                     with st.container(border=True):
                         st.markdown(
                             """
                             <div style="background-color: #f0f4f9; padding: 12px; border-radius: 8px; border-left: 5px solid #002147; margin-bottom: 5px;">
-                                <span style="font-weight: bold; color: #002147; font-size: 1rem;">📊 Índices Volumétricos e de Criticidade</span>
+                                <span style="font-weight: bold; color: #002147; font-size: 1rem;">📊 Índices Operacionais e de Criticidade</span>
                             </div>
                             """, 
                             unsafe_allow_html=True
@@ -4284,25 +4284,35 @@ elif st.session_state.pagina_atual == "Dashboards":
 
                 st.divider()
 
-                col_sec1, col_sec2 = st.columns([1.2, 1.3])
+                # ---------------------------------------------------------
+                # SEÇÃO DE ANÁLISE GRÁFICA: MATRIZ 5X5 E EVOLUÇÃO HISTÓRICA
+                # ---------------------------------------------------------
+                id_kri_conectado = risco_obj.get("indicador_id")
 
+                # Define a divisão da tela: 33/33/33 se houver KRI, ou 50/50 se não houver KRI
+                if id_kri_conectado:
+                    col_sec1, col_sec2, col_sec3 = st.columns([1, 1, 1])
+                else:
+                    col_sec1, col_sec2 = st.columns([1, 1])
+                    col_sec3 = None
+
+                # COLUNA 1: MATRIZ DE RISCO 5X5 INDIVIDUAL
                 with col_sec1:
-                    st.markdown("### 🎲 Matriz de Risco 5x5 Individual")
-                    st.caption("Destaque dinâmico na célula ocupada pelo risco (Probabilidade x Impacto).")
+                    st.markdown("### 🎲 Matriz de Risco 5x5")
+                    st.caption("Destaque dinâmico na célula ocupada pelo risco.")
                     prob_atual = int(risco_obj.get("probabilidade") or 1)
                     imp_atual = int(risco_obj.get("impacto") or 1)
                     
                     renderizar_matriz_risco_5x5(prob_atual, imp_atual, r_id)
 
+                # COLUNA 2: EVOLUÇÃO HISTÓRICA DAS AVALIAÇÕES
                 with col_sec2:
-                    st.markdown("### 📈 Evolução Histórica das Avaliações")
+                    st.markdown("### 📈 Evolução das Avaliações")
                     
-                    # 3. ALTERAÇÃO AQUI: TRATAMENTO E ORDENAÇÃO DO GRÁFICO DE EVOLUÇÃO HISTÓRICA
                     if not df_hist_eval.empty:
                         df_chart = df_hist_eval.copy()
                         col_dt = 'created_at' if 'created_at' in df_chart.columns else 'data_avaliacao'
                         
-                        # Converte a data para datetime e ordena cronologicamente
                         df_chart['datetime_parsed'] = pd.to_datetime(df_chart[col_dt], errors='coerce')
                         df_chart = df_chart.sort_values(by='datetime_parsed', ascending=True)
                         
@@ -4313,7 +4323,7 @@ elif st.session_state.pagina_atual == "Dashboards":
                         
                         st.line_chart(df_chart_display['Nível de Risco'])
                     else:
-                        st.caption("Nenhum histórico de reavaliações gravado na tabela `avaliacoes_risco`. Exibindo ponto inicial de identificação:")
+                        st.caption("Sem histórico de reavaliações. Ponto inicial:")
                         data_ident_str = formatar_data_br(risco_obj.get('data_identificacao'))
                         df_ponto_unico = pd.DataFrame({
                             "Data": [data_ident_str],
@@ -4321,16 +4331,14 @@ elif st.session_state.pagina_atual == "Dashboards":
                         }).set_index("Data")
                         st.line_chart(df_ponto_unico)
 
-                    # ---------------------------------------------------------
-                    # GRÁFICO DE EVOLUÇÃO HISTÓRICA DO KRI (COM ZOOM AUTOMÁTICO NO EIXO Y)
-                    # ---------------------------------------------------------
-                    id_kri_conectado = risco_obj.get("indicador_id")
-                    if id_kri_conectado:
+                # COLUNA 3 (OPCIONAL): EVOLUÇÃO HISTÓRICA DO INDICADOR (KRI)
+                if col_sec3 and id_kri_conectado:
+                    with col_sec3:
                         try:
-                            import plotly.express as px  # Garanta que o plotly está importado
+                            import plotly.express as px
 
                             nome_kri_conectado = info_kri.get("nome_sistema", "KRI") if info_kri else "KRI"
-                            st.markdown(f"### 📈 Evolução Histórica do Indicador ({nome_kri_conectado})")
+                            st.markdown(f"### 📈 Evolução do Indicador")
                             
                             res_hist_kri = supabase.table("historico_kri")\
                                 .select("data_medicao, valor_principal, valor_secundario")\
@@ -4349,47 +4357,48 @@ elif st.session_state.pagina_atual == "Dashboards":
                                     axis=1
                                 )
                                 
-                                # Criando o gráfico com Plotly para ajuste automático do eixo Y
                                 fig_kri = px.line(
                                     df_hk, 
                                     x='Data', 
                                     y='indicador_calculado',
-                                    labels={'indicador_calculado': f'Índice KRI ({nome_kri_conectado})', 'Data': 'Data/Hora'},
+                                    labels={'indicador_calculado': f'{nome_kri_conectado}', 'Data': 'Data/Hora'},
                                     markers=True
                                 )
                                 
-                                # Ajusta o estilo para combinar com o layout do SIGER
                                 fig_kri.update_traces(line_color='#002147', line_width=2.5)
                                 fig_kri.update_layout(
                                     margin=dict(l=10, r=10, t=10, b=10),
                                     xaxis_tickangle=-90,
-                                    yaxis=dict(autorange=True), # Ajusta a altura min/máx dinamicamente
+                                    yaxis=dict(autorange=True),
                                     hovermode="x unified"
                                 )
                                 
                                 st.plotly_chart(fig_kri, use_container_width=True)
                             else:
-                                st.caption("Nenhum histórico de medições KRI gravado até o momento.")
+                                st.caption("Nenhum histórico KRI gravado até o momento.")
                         except Exception as e_kri_chart:
                             st.caption(f"Não foi possível carregar o gráfico do KRI: {e_kri_chart}")
 
-                    st.markdown("### ⚠️ Pontos de Atenção e Alertas Automáticos")
-                    
-                    alertas = []
-                    if nivel_val >= 15 and tot_acoes_r == 0:
-                        alertas.append("🔴 **Risco Crítico sem Ações:** O risco possui nível crítico (≥ 15) mas nenhuma ação de mitigação cadastrada.")
-                    if sit_revisao == "Atrasada":
-                        alertas.append("⏰ **Revisão Temporal Atrasada:** A data da próxima revisão do risco expirou.")
-                    if acoes_atrasadas_r > 0:
-                        alertas.append(f"⚠️ **Ações de Mitigação Atrasadas:** Existem {acoes_atrasadas_r} ação(ões) com prazo de conclusão vencido.")
-                    if iet_r < 50.0 and tot_acoes_r > 0:
-                        alertas.append(f"📉 **Baixa Execução do Tratamento:** O Índice de Execução do Tratamento está em apenas {iet_r}%.")
+                st.divider()
 
-                    if alertas:
-                        for alt in alertas:
-                            st.warning(alt)
-                    else:
-                        st.success("✅ **Nenhum ponto de atenção crítico detectado.** O acompanhamento do risco está em conformidade com as metas.")
+                # PONTOS DE ATENÇÃO E ALERTAS AUTOMÁTICOS
+                st.markdown("### ⚠️ Pontos de Atenção e Alertas Automáticos")
+                
+                alertas = []
+                if nivel_val >= 15 and tot_acoes_r == 0:
+                    alertas.append("🔴 **Risco Crítico sem Ações:** O risco possui nível crítico (≥ 15) mas nenhuma ação de mitigação cadastrada.")
+                if sit_revisao == "Atrasada":
+                    alertas.append("⏰ **Revisão Temporal Atrasada:** A data da próxima revisão do risco expirou.")
+                if acoes_atrasadas_r > 0:
+                    alertas.append(f"⚠️ **Ações de Mitigação Atrasadas:** Existem {acoes_atrasadas_r} ação(ões) com prazo de conclusão vencido.")
+                if iet_r < 50.0 and tot_acoes_r > 0:
+                    alertas.append(f"📉 **Baixa Execução do Tratamento:** O Índice de Execução do Tratamento está em apenas {iet_r}%.")
+
+                if alertas:
+                    for alt in alertas:
+                        st.warning(alt)
+                else:
+                    st.success("✅ **Nenhum ponto de atenção crítico detectado.** O acompanhamento do risco está em conformidade com as metas.")
 
     # 2. TELA: PAINEL GERAL
     elif sub_dash == "Painel Geral":
