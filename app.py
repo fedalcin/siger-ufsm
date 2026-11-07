@@ -4451,6 +4451,50 @@ elif st.session_state.pagina_atual == "Dashboards":
                 if not tem_alertas:
                     st.success("✅ **Nenhum ponto de atenção crítico detectado.** O acompanhamento do risco está em conformidade com as metas.")
 
+                # ---------------------------------------------------------
+                # PLANOS DE AÇÃO E LINHA DO TEMPO HISTÓRICA
+                # ---------------------------------------------------------
+                st.divider()
+                st.markdown("### 🛡️ Planos de Ação e Progresso das Mitigações")
+
+                # 1. Bloco de Planos de Ação (Modelo Card + Expander)
+                if not df_ac_mon.empty:
+                    for _, ac in df_ac_mon.iterrows():
+                        seq = ac.get("numero_sequencial", "-")
+                        nome_ac = ac.get("acao", "Sem descrição")
+                        carater_ac = ac.get("carater_acao", "Preventivo")
+                        resp_ac = ac.get("nome_responsavel_implementacao", "Não definido")
+                        st_ac = ac.get("status_acao", "Pendente")
+                        pct_exec = int(ac.get("percentual_execucao") or ac.get("percentual_conclusao") or 0)
+                        dt_fim = formatar_data_br(ac.get("previsao_data_conclusao"))
+                        txt_badge, _ = obter_badge_prazo(ac.get("previsao_data_conclusao"), st_ac)
+
+                        with st.container(border=True):
+                            col_info, col_status = st.columns([3, 1])
+                            
+                            with col_info:
+                                st.markdown(f"**Ação #{seq}** | {nome_ac}")
+                                st.caption(f"👤 **Responsável:** {resp_ac} | 📌 **Caráter:** {carater_ac}")
+                            
+                            with col_status:
+                                st.markdown(f"**Status:** {st_ac}")
+                                st.markdown(f"**Prazo:** {txt_badge}")
+
+                            with st.expander(f"📊 Ver progresso detalhado ({pct_exec}%)"):
+                                st.progress(pct_exec / 100.0, text=f"Concluído: {pct_exec}%")
+                                
+                                col_d1, col_d2 = st.columns(2)
+                                with col_d1:
+                                    st.write(f"**Previsão de Conclusão:** {dt_fim}")
+                                with col_d2:
+                                    st.write(f"**Situação:** {st_ac}")
+                else:
+                    st.info("Nenhuma ação de mitigação cadastrada para este risco até o momento.")
+
+                # 2. Linha do Tempo Histórica (Sempre exibida para o risco selecionado)
+                with st.expander("🕒 Linha do Tempo Visual e Tramitações Históricas"):
+                    renderizar_timeline_risco(r_id)
+
     # 2. TELA: PAINEL GERAL
     elif sub_dash == "Painel Geral":
         if not pode("dash_geral", "acesso"):
