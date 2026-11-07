@@ -4207,7 +4207,7 @@ elif st.session_state.pagina_atual == "Dashboards":
                     "Pontuação IAR", 
                     f"{iar_info['iar_score']} pts", 
                     f"{iar_info['classificacao']}",
-                    help="Índice de Atenção ao Risco (0 a 100): Algoritmo de priorização gerencial que pondera o Nível do Risco (até 40pts), Ações Atrasadas (até 40pts) e Revisão Temporal Atrasada (até 20pts)."
+                    help="Índice de Atenção ao Risco (0 a 100 pts): Algoritmo de priorização gerencial composto pela soma de 3 fatores: Criticidade do Risco (máx. 40 pts) + Ações Atrasadas (máx. 40 pts) + Revisão Temporal Atrasada (máx. 20 pts)."
                 )
 
                 st.divider()
@@ -4250,12 +4250,13 @@ elif st.session_state.pagina_atual == "Dashboards":
                         st.line_chart(df_ponto_unico)
 
                     # ---------------------------------------------------------
-                    # GRÁFICO DE EVOLUÇÃO HISTÓRICA DO KRI (GENÉRICO)
+                    # GRÁFICO DE EVOLUÇÃO HISTÓRICA DO KRI (COM ZOOM AUTOMÁTICO NO EIXO Y)
                     # ---------------------------------------------------------
                     id_kri_conectado = risco_obj.get("indicador_id")
                     if id_kri_conectado:
                         try:
-                            # Busca o nome do sistema para usar no título do gráfico
+                            import plotly.express as px  # Garanta que o plotly está importado
+
                             nome_kri_conectado = info_kri.get("nome_sistema", "KRI") if info_kri else "KRI"
                             st.markdown(f"### 📈 Evolução Histórica do Indicador ({nome_kri_conectado})")
                             
@@ -4271,19 +4272,30 @@ elif st.session_state.pagina_atual == "Dashboards":
                                 df_hk = df_hk.sort_values(by='dt_parsed', ascending=True)
                                 df_hk['Data'] = df_hk['dt_parsed'].dt.strftime('%d/%m/%Y %H:%M')
                                 
-                                # Razão genérica: Métrica Secundária / Métrica Principal
-                                # Ex 1 (PNCP): Valor Total / Qtd Contratos
-                                # Ex 2 (Alunos): Alunos Evadidos / Total de Matrículas
                                 df_hk['indicador_calculado'] = df_hk.apply(
                                     lambda r: (r['valor_secundario'] / r['valor_principal']) if (r['valor_principal'] and r['valor_principal'] > 0) else r['valor_secundario'],
                                     axis=1
                                 )
                                 
-                                df_chart_kri = df_hk[['Data', 'indicador_calculado']].rename(
-                                    columns={'indicador_calculado': f'Índice KRI ({nome_kri_conectado})'}
-                                ).set_index('Data')
+                                # Criando o gráfico com Plotly para ajuste automático do eixo Y
+                                fig_kri = px.line(
+                                    df_hk, 
+                                    x='Data', 
+                                    y='indicador_calculado',
+                                    labels={'indicador_calculado': f'Índice KRI ({nome_kri_conectado})', 'Data': 'Data/Hora'},
+                                    markers=True
+                                )
                                 
-                                st.line_chart(df_chart_kri)
+                                # Ajusta o estilo para combinar com o layout do SIGER
+                                fig_kri.update_traces(line_color='#002147', line_width=2.5)
+                                fig_kri.update_layout(
+                                    margin=dict(l=10, r=10, t=10, b=10),
+                                    xaxis_tickangle=-90,
+                                    yaxis=dict(autorange=True), # Ajusta a altura min/máx dinamicamente
+                                    hovermode="x unified"
+                                )
+                                
+                                st.plotly_chart(fig_kri, use_container_width=True)
                             else:
                                 st.caption("Nenhum histórico de medições KRI gravado até o momento.")
                         except Exception as e_kri_chart:
