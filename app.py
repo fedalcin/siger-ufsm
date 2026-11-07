@@ -1340,8 +1340,8 @@ if items_gr_visiveis:
 
 # 5. Expander Dashboards
 items_dash = [
-    ("📌 Acompanhamento de Riscos", "Acompanhamento de Riscos", "dash_acomp"),
-    ("📈 Painel Geral", "Painel Geral", "dash_geral")
+    ("📌 Acompanhamento Individual de Riscos", "Acompanhamento Individual de Riscos", "dash_acomp"),
+    ("📈 Painel Geral de Riscos", "Painel Geral de Riscos", "dash_geral")
 ]
 items_dash_visiveis = [item for item in items_dash if pode(item[2], "acesso")]
 
@@ -1968,8 +1968,8 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                     p_d1_outras = st.toggle("Ver Outras Unidades (Acomp)", key=f"chk_d1_out_{sfx}")
 
                 with c_d2:
-                    st.markdown("**📈 Painel Geral**")
-                    p_d2_acc = st.checkbox("Acessar Painel Geral", key=f"chk_d2_acc_{sfx}")
+                    st.markdown("**📈 Painel Geral de Riscos**")
+                    p_d2_acc = st.checkbox("Acessar Painel Geral de Riscos", key=f"chk_d2_acc_{sfx}")
                     p_d2_outras = st.toggle("Ver Outras Unidades (Geral)", key=f"chk_d2_out_{sfx}")
 
                 with c_d3:
@@ -4023,14 +4023,14 @@ elif st.session_state.pagina_atual == "Cadastros":
 # PÁGINA: DASHBOARDS
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Dashboards":
-    sub_dash = st.session_state.sub_pagina_atual or "Acompanhamento de Riscos"
+    sub_dash = st.session_state.sub_pagina_atual or "Acompanhamento Individual de Riscos"
 
-    # 1. TELA: ACOMPANHAMENTO DE RISCOS
-    if sub_dash == "Acompanhamento de Riscos":
+    # 1. TELA: ACOMPANHAMENTO INDIVIDUAL DE RISCOS
+    if sub_dash == "Acompanhamento Individual de Riscos":
         if not pode("dash_acomp", "acesso"):
-            st.warning("Seu perfil de usuário não possui permissão para acessar o Acompanhamento de Riscos.")
+            st.warning("Seu perfil de usuário não possui permissão para acessar o Acompanhamento Individual de Riscos.")
         else:
-            st.title("📌 Acompanhamento de Riscos")
+            st.title("📌 Acompanhamento Individual de Riscos")
             st.caption("Painel gerencial do risco selecionado com métricas, matriz 5x5, evolução histórica e ações de mitigação.")
             
             try:
@@ -4500,12 +4500,12 @@ elif st.session_state.pagina_atual == "Dashboards":
                 with st.expander("🕒 Linha do Tempo Visual e Tramitações Históricas"):
                     renderizar_timeline_risco(r_id)
 
-    # 2. TELA: PAINEL GERAL
-    elif sub_dash == "Painel Geral":
+    # 2. TELA: PAINEL GERAL DE RISCOS
+    elif sub_dash == "Painel Geral de Riscos":
         if not pode("dash_geral", "acesso"):
-            st.warning("Seu perfil de usuário não possui permissão para acessar o Painel Geral.")
+            st.warning("Seu perfil de usuário não possui permissão para acessar o Painel Geral de Riscos.")
         else:
-            st.title("📈 Painel Geral")
+            st.title("📈 Painel Geral de Riscos")
             st.caption("Visão estratégica de governança e monitoramento integrado de exposição a riscos.")
 
             try:
