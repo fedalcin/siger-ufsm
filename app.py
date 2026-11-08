@@ -83,39 +83,41 @@ def obter_emails_unidade_ou_usuario(unidade_sigla=None, nome_usuario=None):
         
     return list(set(emails))
 
-def enviar_email_notificacao_siger(destinatarios_list, assunto, mensagem_html):
-    if not destinatarios_list:
-        return False
+def enviar_email_notificacao_siger(destinatarios_list, assunto, corpo_html):
+    """
+    Envia e-mail de notificação e retorna (sucesso, mensagem_detalhada).
+    """
     try:
-        smtp_conf = obter_configuracoes_smtp()
-        smtp_server = smtp_conf.get("server")
-        smtp_port = smtp_conf.get("port", 587)
-        smtp_user = smtp_conf.get("email")
-        smtp_password = smtp_conf.get("password")
-
+        smtp_server, smtp_port, smtp_user, smtp_password = obter_configuracoes_smtp()
+        
         if not smtp_server or not smtp_user or not smtp_password:
-            return False
+            return False, "Configurações de SMTP incompletas ou não cadastradas no sistema."
 
         emails_validos = list(set([e.strip().lower() for e in destinatarios_list if e and "@" in e]))
         if not emails_validos:
-            return False
+            return False, f"Nenhum e-mail válido encontrado na lista de destinatários: {destinatarios_list}"
 
         msg = MIMEMultipart("alternative")
         msg["Subject"] = assunto
-        msg["From"] = f"SIGER - Notificações <{smtp_user}>"
+        msg["From"] = f"SIGER - Sistema de Gestão de Riscos <{smtp_user}>"
         msg["To"] = ", ".join(emails_validos)
 
-        msg.attach(MIMEText(mensagem_html, "html"))
+        parte_html = MIMEText(corpo_html, "html", "utf-8")
+        msg.attach(parte_html)
 
-        with smtplib.SMTP(smtp_server, int(smtp_port)) as server:
+        with smtplib.SMTP(smtp_server, int(smtp_port), timeout=10) as server:
             server.starttls()
             server.login(smtp_user, smtp_password)
             server.sendmail(smtp_user, emails_validos, msg.as_string())
-            
-        return True
+
+        return True, f"E-mail enviado com sucesso para: {', '.join(emails_validos)}"
+
+    except smtplib.SMTPAuthenticationError:
+        return False, "Falha de autenticação SMTP: Usuário ou Senha de Aplicativo incorretos."
+    except smtplib.SMTPConnectError:
+        return False, f"Não foi possível conectar ao servidor SMTP ({smtp_server}:{smtp_port})."
     except Exception as e:
-        print(f"⚠️ Falha ao enviar e-mail de notificação: {e}")
-        return False
+        return False, f"Erro ao enviar e-mail: {str(e)}"
 
 # Importação dos cálculos gerenciais e operacionais do SIGER
 from calculos_siger import (
@@ -2618,10 +2620,21 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                                     </ul>
                                                     <p>Acesse a Caixa de Entrada do SIGER para acompanhar a demanda.</p>
                                                     """
-                                                    enviar_email_notificacao_siger(emails_dest, assunto_e, corpo_html)
+    
+                                                    # --- Processamento da Tramitação ---
+                                                    sucesso_email, msg_email = enviar_email_notificacao_siger(emails_dest, assunto_e, corpo_html)
 
+                                                # Exibe o status da tramitação no banco de dados
                                                 st.success(f"✅ Demanda tramitada com sucesso para a unidade {unid_dest_b}!")
+
+                                                # Exibe o status real da notificação por e-mail diretamente na tela
+                                                if 'sucesso_email' in locals() and sucesso_email:
+                                                    st.info(f"📧 Notification: {msg_email}")
+                                                elif 'sucesso_email' in locals():
+                                                    st.warning(f"⚠️ Atenção: A demanda foi tramitada, mas o e-mail não pôde ser enviado.\n\n**Motivo:** {msg_email}")
+
                                                 st.rerun()
+
                                             except Exception as e_b:
                                                 st.error(f"Erro ao tramitar demanda: {e_b}")
 
