@@ -91,6 +91,7 @@ def obter_emails_unidade_ou_usuario(unidade_sigla=None, nome_usuario=None):
 def enviar_email_notificacao_siger(destinatarios_list, assunto, corpo_html):
     """
     Envia e-mail de notificação e retorna (sucesso, mensagem_detalhada).
+    Suporta automaticamente conexões TLS (587) e SSL (465).
     """
     try:
         smtp_server, smtp_port, smtp_user, smtp_password = obter_configuracoes_smtp()
@@ -102,6 +103,8 @@ def enviar_email_notificacao_siger(destinatarios_list, assunto, corpo_html):
         if not emails_validos:
             return False, f"Nenhum e-mail válido encontrado na lista de destinatários: {destinatarios_list}"
 
+        porta = int(smtp_port)
+
         msg = MIMEMultipart("alternative")
         msg["Subject"] = assunto
         msg["From"] = f"SIGER - Sistema de Gestão de Riscos <{smtp_user}>"
@@ -110,13 +113,24 @@ def enviar_email_notificacao_siger(destinatarios_list, assunto, corpo_html):
         parte_html = MIMEText(corpo_html, "html", "utf-8")
         msg.attach(parte_html)
 
-        with smtplib.SMTP(smtp_server, int(smtp_port), timeout=10) as server:
-            server.starttls()
-            server.login(smtp_user, smtp_password)
-            server.sendmail(smtp_user, emails_validos, msg.as_string())
+        # Trata conexões SSL puras (normalmente porta 465)
+        if porta == 465:
+            with smtplib.SMTP_SSL(smtp_server, porta, timeout=15) as server:
+                server.login(smtp_user, smtp_password)
+                server.sendmail(smtp_user, emails_validos, msg.as_string())
+        # Trata conexões com upgrade TLS (portas 587, 25, etc.)
+        else:
+            with smtplib.SMTP(smtp_server, porta, timeout=15) as server:
+                server.ehlo()
+                server.starttls()
+                server.ehlo()
+                server.login(smtp_user, smtp_password)
+                server.sendmail(smtp_user, emails_validos, msg.as_string())
 
         return True, f"E-mail enviado com sucesso para: {', '.join(emails_validos)}"
 
+    except smtplib.SMTPServerDisconnected:
+        return False, f"O servidor SMTP ({smtp_server}:{smtp_port}) encerrou a conexão inesperadamente. Verifique a porta (465 para SSL / 587 para TLS) ou bloqueios de firewall."
     except smtplib.SMTPAuthenticationError:
         return False, "Falha de autenticação SMTP: Usuário ou Senha de Aplicativo incorretos."
     except smtplib.SMTPConnectError:
