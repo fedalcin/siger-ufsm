@@ -4708,79 +4708,100 @@ elif st.session_state.pagina_atual == "Dashboards":
 
             st.divider()
 
-            col_top, col_alertas_gl = st.columns([1.8, 1.2])
+            # ---------------------------------------------------------
+            # 1. RANKING DE RISCOS PRIORITÁRIOS (TELA INTEIRA COM EXPANDER)
+            # ---------------------------------------------------------
+            st.markdown("### 🔝 Ranking de Riscos Prioritários")
+            st.caption("Ordenado pela Pontuação de Priorização do Risco (nível de exposição, pendências e revisão temporal).")
 
-            with col_top:
-                st.markdown("### 🔝 Ranking de Riscos Prioritários")
-                st.caption("Ordenado pela Pontuação de Priorização do Risco (nível de exposição, pendências e revisão temporal).")
-
-                if not df_r_filtrado.empty:
-                    top_riscos_lista = []
+            if not df_r_filtrado.empty:
+                top_riscos_lista = []
+        
+                for _, r_item in df_r_filtrado.iterrows():
+                    r_id_f = r_item["id"]
+                    n_val = r_item.get("nivel_risco", 1)
             
-                    for _, r_item in df_r_filtrado.iterrows():
-                        r_id_f = r_item["id"]
-                        n_val = r_item.get("nivel_risco", 1)
-                
-                        df_ac_r = df_a_filtrado[df_a_filtrado["risco_id"] == r_id_f] if not df_a_filtrado.empty else pd.DataFrame()
-                        tot_ac_r = len(df_ac_r)
-                        atrasadas_ac_r = sum(
-                            1 for _, row in df_ac_r.iterrows()
-                            if calcular_situacao_prazo_acao(row.get("status_acao"), row.get("previsao_data_conclusao")) == "⚠️ Atrasada"
-                        ) if not df_a_filtrado.empty else 0
+                    df_ac_r = df_a_filtrado[df_a_filtrado["risco_id"] == r_id_f] if not df_a_filtrado.empty else pd.DataFrame()
+                    tot_ac_r = len(df_ac_r)
+                    atrasadas_ac_r = sum(
+                        1 for _, row in df_ac_r.iterrows()
+                        if calcular_situacao_prazo_acao(row.get("status_acao"), row.get("previsao_data_conclusao")) == "⚠️ Atrasada"
+                    ) if not df_a_filtrado.empty else 0
 
-                        sit_rev_r = calcular_situacao_revisao_risco(r_item.get("proxima_revisao"))
+                    sit_rev_r = calcular_situacao_revisao_risco(r_item.get("proxima_revisao"))
 
-                        iar_dados = calcular_iar_risco(
-                            nivel_risco=n_val,
-                            acoes_atrasadas=atrasadas_ac_r,
-                            total_acoes=tot_ac_r,
-                            situacao_revisao=sit_rev_r
-                        )
+                    iar_dados = calcular_iar_risco(
+                        nivel_risco=n_val,
+                        acoes_atrasadas=atrasadas_ac_r,
+                        total_acoes=tot_ac_r,
+                        situacao_revisao=sit_rev_r
+                    )
 
-                        iar_valor = iar_dados.get("iar") or iar_dados.get("iar_score") or iar_dados.get("score") or 0.0
-                        prioridade_txt = iar_dados.get("prioridade") or iar_dados.get("nivel_prioridade") or "Normal"
+                    iar_valor = iar_dados.get("iar") or iar_dados.get("iar_score") or iar_dados.get("score") or 0.0
+                    prioridade_txt = iar_dados.get("prioridade") or iar_dados.get("nivel_prioridade") or "Normal"
 
-                        top_riscos_lista.append({
-                            "ID": r_id_f,
-                            "Risco": r_item.get("evento", "Sem evento"),
-                            "Unidade": r_item.get("unidade"),
-                            "Nível": n_val,
-                            "Ações (Tot/Atr)": f"{tot_ac_r} / {atrasadas_ac_r}",
-                            "Pontuação de Prioridade": iar_valor,
-                            "Prioridade": prioridade_txt,
-                            "Status": r_item.get("situacao_status")
-                        })
+                    top_riscos_lista.append({
+                        "ID": r_id_f,
+                        "Risco": r_item.get("evento", "Sem evento"),
+                        "Unidade": r_item.get("unidade"),
+                        "Nível": n_val,
+                        "Ações (Tot/Atr)": f"{tot_ac_r} / {atrasadas_ac_r}",
+                        "Pontuação de Prioridade": iar_valor,
+                        "Prioridade": prioridade_txt,
+                        "Status": r_item.get("situacao_status")
+                    })
 
-                    df_top_final = pd.DataFrame(top_riscos_lista).sort_values(by="Pontuação de Prioridade", ascending=False)
+                df_top_final = pd.DataFrame(top_riscos_lista).sort_values(by="Pontuação de Prioridade", ascending=False)
+                qtd_top = len(df_top_final)
+
+                with st.expander(f"📊 **Tabela do Ranking de Riscos Prioritários:** Exibindo {qtd_top} risco(s) ordenado(s) por priorização", expanded=True):
                     st.dataframe(df_top_final, use_container_width=True, hide_index=True)
-                else:
-                    st.info("Nenhum risco encontrado para exibição no ranking.")
+            else:
+                st.info("Nenhum risco encontrado para exibição no ranking.")
 
-            with col_alertas_gl:
-                st.markdown("### 🚨 Alertas Institucionais")
+            st.divider()
+
+            # ---------------------------------------------------------
+            # 2. ALERTAS INSTITUCIONAIS (TELA INTEIRA COM EXPANDERS)
+            # ---------------------------------------------------------
+            st.markdown("### 🚨 Alertas Institucionais")
+            st.caption("Monitoramento automatizado de concentrações críticas, alta exposição e descumprimento de prazos.")
+            
+            if not df_r_filtrado.empty:
+                df_exp_unidades = calcular_exposicao_agregada(df_r_filtrado, agrupar_por="unidade")
+                df_exp_unidades.columns = ["Unidade", "Total Riscos", "Soma Nível Risco", "Média Nível Risco", "Riscos Críticos"]
                 
-                if not df_r_filtrado.empty:
-                    df_exp_unidades = calcular_exposicao_agregada(df_r_filtrado, agrupar_por="unidade")
-                    df_exp_unidades.columns = ["Unidade", "Total Riscos", "Soma Nível Risco", "Média Nível Risco", "Riscos Críticos"]
-                    
-                    unidades_criticas = df_exp_unidades[df_exp_unidades["Riscos Críticos"] > 0]
-                    unidades_alta_exp = df_exp_unidades[df_exp_unidades["Soma Nível Risco"] >= 30]
+                unidades_criticas = df_exp_unidades[df_exp_unidades["Riscos Críticos"] > 0]
+                unidades_alta_exp = df_exp_unidades[df_exp_unidades["Soma Nível Risco"] >= 30]
 
-                    if not unidades_criticas.empty:
+                tem_alertas_inst = False
+
+                # EXPANDER 1: Unidades com Riscos Críticos (≥ 15)
+                if not unidades_criticas.empty:
+                    tem_alertas_inst = True
+                    tot_unid_crit = len(unidades_criticas)
+                    with st.expander(f"🔴 **Concentração de Riscos Críticos:** {tot_unid_crit} unidade(s) apresentam riscos com nível ≥ 15.", expanded=False):
                         for _, u_row in unidades_criticas.iterrows():
-                            st.error(f"🔴 **{u_row['Unidade']}**: Concentra {u_row['Riscos Críticos']} risco(s) crítico(s) (Nível ≥ 15).")
-                    
-                    if not unidades_alta_exp.empty:
+                            st.markdown(f"* 🔴 **{u_row['Unidade']}**: Concentra **{u_row['Riscos Críticos']}** risco(s) crítico(s) (Nível ≥ 15).")
+
+                # EXPANDER 2: Alta Exposição Agregada (≥ 30 pts)
+                if not unidades_alta_exp.empty:
+                    tem_alertas_inst = True
+                    tot_unid_exp = len(unidades_alta_exp)
+                    with st.expander(f"⚠️ **Alta Exposição Agregada:** {tot_unid_exp} unidade(s) somam acúmulo igual ou superior a 30 pontos de risco.", expanded=False):
                         for _, u_row in unidades_alta_exp.iterrows():
-                            st.warning(f"⚠️ **{u_row['Unidade']}**: Alta Exposição Agregada totalizando ∑ {u_row['Soma Nível Risco']} pontos.")
+                            st.markdown(f"* ⚠️ **{u_row['Unidade']}**: Exposição Agregada totalizando **∑ {u_row['Soma Nível Risco']}** pontos.")
 
-                    if pct_acoes_atrasadas > 25.0:
-                        st.error(f"⏰ **Alerta Global de Prazos**: {pct_acoes_atrasadas}% do plano de tratamento global está atrasado.")
+                # EXPANDER 3: Alerta Global de Prazos de Tratamento
+                if pct_acoes_atrasadas > 25.0:
+                    tem_alertas_inst = True
+                    with st.expander(f"⏰ **Alerta Global de Prazos:** {pct_acoes_atrasadas}% do plano de tratamento institucional está com prazo vencido.", expanded=False):
+                        st.markdown(f"Atualmente, **{pct_acoes_atrasadas}%** de todas as ações de mitigação do filtro selecionado encontram-se atrasadas. Recomenda-se cobrar andamento junto aos gestores de unidade.")
 
-                    if unidades_criticas.empty and unidades_alta_exp.empty and pct_acoes_atrasadas <= 25.0:
-                        st.success("✅ **Governança Estável**: Nenhuma alta concentração crítica de risco detectada no momento.")
-                else:
-                    st.info("Sem dados suficientes para gerar alertas institucionais.")
+                if not tem_alertas_inst:
+                    st.success("✅ **Governança Estável**: Nenhuma alta concentração crítica de risco detectada no momento.")
+            else:
+                st.info("Sem dados suficientes para gerar alertas institucionais.")
 
 # ---------------------------------------------------------
 # PÁGINA: BIBLIOTECA
