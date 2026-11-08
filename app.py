@@ -2316,6 +2316,20 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
 # ---------------------------------------------------------
 # PÁGINA: CAIXA DE ENTRADA
 # ---------------------------------------------------------
+
+# --- EXIBIÇÃO DE MENSAGENS PÓS-RERUN ---
+if 'msg_sucesso_tramitacao' in st.session_state:
+    st.success(st.session_state['msg_sucesso_tramitacao'])
+    del st.session_state['msg_sucesso_tramitacao'] # Limpa para não exibir novamente no futuro
+
+if 'msg_email_tramitacao' in st.session_state:
+    sucesso_email, msg_email = st.session_state['msg_email_tramitacao']
+    if sucesso_email:
+        st.info(f"📧 Notificação por e-mail: {msg_email}")
+    else:
+        st.warning(f"⚠️ Atenção: A demanda foi tramitada, mas o e-mail não pôde ser enviado.\n\n**Motivo:** {msg_email}")
+    del st.session_state['msg_email_tramitacao'] # Limpa após exibir
+
 elif st.session_state.pagina_atual == "Caixa de Entrada":
     st.title("📥 Caixa de Entrada de Demandas")
     st.caption("Acompanhe, gerencie, responda e tramite ações sob responsabilidade de sua unidade.")
@@ -2607,6 +2621,9 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                                 )
 
                                                 emails_dest = obter_emails_unidade_ou_usuario(unidade_sigla=unid_dest_b, nome_usuario=email_user_b)
+
+                                                # Tenta enviar o e-mail apenas se houver destinatários
+                                                sucesso_email, msg_email = False, "Nenhum e-mail de destinatário encontrado."
                                                 if emails_dest:
                                                     assunto_e = f"💬 [SIGER] Tramitação de Demanda - Risco #{r_id} (Ação {seq})"
                                                     corpo_html = f"""
@@ -2620,18 +2637,11 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
                                                     </ul>
                                                     <p>Acesse a Caixa de Entrada do SIGER para acompanhar a demanda.</p>
                                                     """
-    
-                                                    # --- Processamento da Tramitação ---
                                                     sucesso_email, msg_email = enviar_email_notificacao_siger(emails_dest, assunto_e, corpo_html)
 
-                                                # Exibe o status da tramitação no banco de dados
-                                                st.success(f"✅ Demanda tramitada com sucesso para a unidade {unid_dest_b}!")
-
-                                                # Exibe o status real da notificação por e-mail diretamente na tela
-                                                if 'sucesso_email' in locals() and sucesso_email:
-                                                    st.info(f"📧 Notification: {msg_email}")
-                                                elif 'sucesso_email' in locals():
-                                                    st.warning(f"⚠️ Atenção: A demanda foi tramitada, mas o e-mail não pôde ser enviado.\n\n**Motivo:** {msg_email}")
+                                                # Salva a mensagem no session_state para não sumir com o st.rerun()
+                                                st.session_state['msg_sucesso_tramitacao'] = f"✅ Demanda tramitada com sucesso para a unidade {unid_dest_b}!"
+                                                st.session_state['msg_email_tramitacao'] = (sucesso_email, msg_email)
 
                                                 st.rerun()
 
