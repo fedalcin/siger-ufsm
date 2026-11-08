@@ -2335,23 +2335,22 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
 # ---------------------------------------------------------
 # PÁGINA: CAIXA DE ENTRADA
 # ---------------------------------------------------------
-
-# --- EXIBIÇÃO DE MENSAGENS PÓS-RERUN ---
-if 'msg_sucesso_tramitacao' in st.session_state:
-    st.success(st.session_state['msg_sucesso_tramitacao'])
-    del st.session_state['msg_sucesso_tramitacao'] # Limpa para não exibir novamente no futuro
-
-if 'msg_email_tramitacao' in st.session_state:
-    sucesso_email, msg_email = st.session_state['msg_email_tramitacao']
-    if sucesso_email:
-        st.info(f"📧 Notificação por e-mail: {msg_email}")
-    else:
-        st.warning(f"⚠️ Atenção: A demanda foi tramitada, mas o e-mail não pôde ser enviado.\n\n**Motivo:** {msg_email}")
-    del st.session_state['msg_email_tramitacao'] # Limpa após exibir
-
 elif st.session_state.pagina_atual == "Caixa de Entrada":
     st.title("📥 Caixa de Entrada de Demandas")
     st.caption("Acompanhe, gerencie, responda e tramite ações sob responsabilidade de sua unidade.")
+
+    # --- EXIBIÇÃO DE MENSAGENS PÓS-RERUN ---
+    if 'msg_sucesso_tramitacao' in st.session_state:
+        st.success(st.session_state['msg_sucesso_tramitacao'])
+        del st.session_state['msg_sucesso_tramitacao']
+
+    if 'msg_email_tramitacao' in st.session_state:
+        sucesso_email, msg_email = st.session_state['msg_email_tramitacao']
+        if sucesso_email:
+            st.info(f"📧 Notificação por e-mail: {msg_email}")
+        else:
+            st.warning(f"⚠️ Atenção: A demanda foi tramitada, mas o e-mail não pôde ser enviado.\n\n**Motivo:** {msg_email}")
+        del st.session_state['msg_email_tramitacao']
     
     try:
         res_unid_list = supabase.table("unidades").select("sigla, nome_extenso").order("sigla").execute().data or []
