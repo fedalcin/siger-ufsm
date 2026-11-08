@@ -2332,11 +2332,11 @@ elif st.session_state.pagina_atual == "Caixa de Entrada":
 
     col_filtro1, col_filtro2 = st.columns([2, 2])
     with col_filtro1:
-        if is_admin or pode("dash_acomp", "ver_outras_unidades") or not unidade_usuario:
+        if not unidade_usuario:
             unidade_ativa = st.selectbox("🏢 Unidade Consultada:", options=opcoes_unid, index=idx_unid_def)
         else:
             unidade_ativa = unidade_usuario
-            st.selectbox("🏢 Unidade Consultada:", options=[unidade_usuario], disabled=True)
+            st.selectbox("🏢 Unidade Responsável:", options=[unidade_usuario], disabled=True)
             
     with col_filtro2:
         st.write("")
@@ -2786,7 +2786,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
             try:
                 query_r = supabase.table("riscos").select("*, integracoes_sistemas(nome_sistema, dados_compartilhados, ultima_sincronizacao)").order("id", desc=True)
                 
-                if not is_admin and unidade_usuario:
+                if unidade_usuario:
                     query_r = query_r.eq("unidade", unidade_usuario)
                     
                 resposta = query_r.execute()
@@ -3018,7 +3018,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                 st.markdown("##### 1. Contexto do Risco")
                 col_c1, col_c2 = st.columns(2)
                 with col_c1:
-                    if is_admin or not unidade_usuario:
+                    if not unidade_usuario:
                         unid_label = st.selectbox("Unidade Responsável*", options=list(mapa_unidades.keys()), key="sb_unid_novo_r")
                         unidade_sigla_final = mapa_unidades[unid_label]
                     else:
@@ -3127,7 +3127,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
 
         try:
             query_reav = supabase.table("riscos").select("*").order("id", desc=True)
-            if not is_admin and unidade_usuario:
+            if unidade_usuario:
                 query_reav = query_reav.eq("unidade", unidade_usuario)
                 
             res_riscos = query_reav.execute()
@@ -3259,7 +3259,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                 res_acoes = supabase.table("acoes_tratamento").select("*, riscos(id, evento, unidade)").order("risco_id").order("numero_sequencial").execute()
                 dados_acoes = res_acoes.data or []
 
-                if not is_admin and unidade_usuario:
+                if unidade_usuario:
                     dados_acoes = [
                         ac for ac in dados_acoes
                         if ac.get("unidade_responsavel") == unidade_usuario 
@@ -3371,7 +3371,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
             else:
                 try:
                     query_r_db = supabase.table("riscos").select("id, evento, unidade").order("id")
-                    if not is_admin and unidade_usuario:
+                    if unidade_usuario:
                         query_r_db = query_r_db.eq("unidade", unidade_usuario)
                         
                     res_riscos_db = query_r_db.execute().data or []
