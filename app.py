@@ -57,7 +57,12 @@ def obter_configuracoes_smtp():
         smtp_conf["email"] = secrets_smtp.get("email")
         smtp_conf["password"] = secrets_smtp.get("password")
 
-    return smtp_conf
+    server = smtp_conf.get("server")
+    port = smtp_conf.get("port", 587)
+    email = smtp_conf.get("email")
+    password = smtp_conf.get("password")
+
+    return server, port, email, password
 
 def obter_emails_unidade_ou_usuario(unidade_sigla=None, nome_usuario=None):
     emails = []
