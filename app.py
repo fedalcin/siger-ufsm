@@ -4033,11 +4033,13 @@ elif st.session_state.pagina_atual == "Dashboards":
             st.title("📌 Acompanhamento Individual de Riscos")
             st.caption("Painel gerencial do risco selecionado com métricas, matriz 5x5, evolução histórica e ações de mitigação.")
             
+            unidade_usuario = usr_atual.get("unidade")
+            pode_ver_outras = pode("dash_acomp", "ver_outras_unidades")
+
             try:
-                # 1. ALTERAÇÃO AQUI: Traz os dados do KRI conectado via Join com a tabela integracoes_sistemas
                 query_r = supabase.table("riscos").select("*, integracoes_sistemas(nome_sistema, dados_compartilhados, ultima_sincronizacao)").order("id", desc=True)
                 
-                if not is_admin and unidade_usuario:
+                if not is_admin and not pode_ver_outras and unidade_usuario:
                     query_r = query_r.eq("unidade", unidade_usuario)
                     
                 res_riscos = query_r.execute()
