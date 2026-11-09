@@ -3282,10 +3282,10 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
         st.title("📋 Ações de Tratamento")
 
         #QUADRO DE LEGENDA DE STATUS NO CANTO SUPERIOR DIREITO
-        col1, col2 = st.columns([3, 1])
+        col1, col2 = st.columns([2, 1])
         with col2:
             st.markdown("""
-                <div style="background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; padding: 10px; font-size: 0.85rem; margin-top: 5px; margin-bottom: -15px;">
+                <div style="background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; padding: 10px; font-size: 0.82rem; margin-top: 5px; margin-bottom: -15px; white-space: nowrap;">
                     <p style="margin: 0; font-weight: bold; color: #002147; padding-bottom: 5px;">📍 Dicionário do Caráter da Ação</p>
                     <p style="margin: 2px 0;">🟢 <b>Preventivo:</b> Atua antes do incidente acontecer, reduzindo a probabilidade de um risco se concretizar.</p>
                     <p style="margin: 2px 0;">🟡 <b>Corretivo:</b> Atua após a identificação de uma falha ou ocorrência, eliminando a causa raiz para evitar repetições.</p>
