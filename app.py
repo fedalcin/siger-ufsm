@@ -3287,9 +3287,9 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
             st.markdown("""
                 <div style="background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; padding: 10px; font-size: 0.85rem; margin-top: 5px; margin-bottom: -15px;">
                     <p style="margin: 0; font-weight: bold; color: #002147; padding-bottom: 5px;">📍 Dicionário do Caráter da Ação</p>
-                    <p style="margin: 2px 0;">🟢 <b>Preventivo:</b> Ação para evitar a ocorrência do risco.</p>
-                    <p style="margin: 2px 0;">🟡 <b>Corretivo:</b> Ação para corrigir a vulnerabilidade.</p>
-                    <p style="margin: 2px 0;">🔵 <b>Compensatório:</b> Ação para mitigar o impacto gerado.</p>
+                    <p style="margin: 2px 0;">🟢 <b>Preventivo:</b> Atua antes do incidente acontecer, reduzindo a probabilidade de um risco se concretizar.</p>
+                    <p style="margin: 2px 0;">🟡 <b>Corretivo:</b> Atua após a identificação de uma falha ou ocorrência, eliminando a causa raiz para evitar repetições.</p>
+                    <p style="margin: 2px 0;">🔵 <b>Compensatório:</b> Atua como alternativa ou contenção quando não é possível mitigar o risco imediatamente, reduzindo os danos.</p>
                 </div>
             """, unsafe_allow_html=True)
 
