@@ -3282,7 +3282,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
         st.title("📋 Ações de Tratamento")
 
         #QUADRO DE LEGENDA DE STATUS NO CANTO SUPERIOR DIREITO
-        col1, col2 = st.columns([1.8, 1.2])
+        col1, col2 = st.columns([1.5, 1])
         with col2:
             st.markdown("""
                 <div style="background-color: #f8f9fa; border: 1px solid #ddd; border-radius: 6px; padding: 10px; font-size: 0.82rem; margin-top: 5px; margin-bottom: -15px; white-space: normal; word-wrap: break-word;">
