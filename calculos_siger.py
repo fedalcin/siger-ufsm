@@ -271,15 +271,15 @@ def buscar_dados_contratos_ufsm_comprasgov():
                 )
 
                 if resposta.status_code == 204:
-                    return None
+                    return True, None
 
                 if resposta.status_code == 200:
                     time.sleep(2)
-                    return resposta.json()
+                    return True, resposta.json()
 
                 if resposta.status_code in [429, 500, 502, 503, 504]:
 
-                    espera = tentativa * 10
+                    espera = tentativa * 5
 
                     st.warning(
                         f"Instabilidade no PNCP: HTTP "
@@ -292,23 +292,18 @@ def buscar_dados_contratos_ufsm_comprasgov():
                         time.sleep(espera)
                         continue
 
-                resposta.raise_for_status()
-
             except requests.exceptions.RequestException as erro:
 
                 if tentativa < max_tentativas:
-                    time.sleep(tentativa * 10)
+                    time.sleep(tentativa * 5)
                     continue
 
-                raise Exception(
-                    f"Falha na consulta do período {periodo}, "
-                    f"página {pagina}: {erro}"
-                )
-
-        raise Exception(
-            f"Não foi possível consultar o período {periodo}, "
-            f"página {pagina}, após {max_tentativas} tentativas."
+        # Retorna falha graciosa caso atinja 5 tentativas infrutíferas
+        msg_erro = (
+            f"A sincronização foi interrompida devido a instabilidades no servidor do PNCP "
+            f"no período de {periodo} (página {pagina}) após 5 tentativas sem sucesso."
         )
+        return False, msg_erro
 
     # --------------------------------------------------------
     # 1. Consulta ao PNCP em períodos de até 365 dias
@@ -328,8 +323,6 @@ def buscar_dados_contratos_ufsm_comprasgov():
             f"{data_fim.strftime('%d/%m/%Y')}"
         )
 
-        st.write(f"Consultando PNCP: {periodo}")
-
         pagina = 1
 
         while True:
@@ -342,11 +335,15 @@ def buscar_dados_contratos_ufsm_comprasgov():
                 "tamanhoPagina": TAMANHO_PAGINA
             }
 
-            resultado = consultar_pagina(
+            sucesso_req, resultado = consultar_pagina(
                 parametros,
                 periodo,
                 pagina
             )
+
+            if not sucesso_req:
+                # Interrompe graciosamente o processo e retorna o alerta de erro
+                return False, 0, 0.0, resultado
 
             if resultado is None:
                 break
@@ -410,6 +407,9 @@ def buscar_dados_contratos_ufsm_comprasgov():
                 break
 
             pagina += 1
+
+        # Exibe o indicador de sucesso com ✅ para cada período finalizado
+        st.write(f"✅ Sincronizado PNCP: {periodo}")
 
         data_inicio = data_fim + timedelta(days=1)
 
