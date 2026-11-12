@@ -1374,7 +1374,7 @@ if items_dash_visiveis:
 
 # 6. Expander Integrações e Indicadores (KRI)
 if is_admin or pode("adm_config_gerais", "acesso") or is_gestor:
-    with st.sidebar.expander("🔌 Integrações e Indicadores (KRI)", expanded=False):
+    with st.sidebar.expander("🔌 Integrações", expanded=False):
         if st.button("🔗 Central de Conexões (KRI)", key="btn_integ_menu", use_container_width=True):
             navegar_para("Integrações Institucionais")
 
@@ -1431,7 +1431,7 @@ elif st.session_state.pagina_atual == "Início":
 # PÁGINA: INTEGRAÇÕES INSTITUCIONAIS & INDICADORES (KRI)
 # ---------------------------------------------------------
 elif st.session_state.pagina_atual == "Integrações Institucionais":
-    st.title("🔌 Integrações e Indicadores (KRI)")
+    st.title("🔗 Central de Conexões (KRI)")
     st.caption("Interoperabilidade entre o SIGER e sistemas governamentais e institucionais para alimentação de indicadores dinâmicos de risco.")
 
     tab_vis, tab_test = st.tabs(["🏛️ Sistemas e Conectores Institucionais", "🧪 Testar Integração em Tempo Real (UFSM)"])
