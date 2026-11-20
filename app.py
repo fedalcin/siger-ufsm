@@ -1001,16 +1001,51 @@ def gerar_barra_progresso_ascii(pct):
     vazios = 10 - blocos
     return f"{'█' * blocos}{'░' * vazios} {pct_val}%"
 
+def calcular_nova_data_revisao(periodicidade, data_base=None):
+    """Calcula a data da próxima revisão somando o ciclo à data_base (padrão: hoje)."""
+    if not periodicidade:
+        return None
+    if data_base is None:
+        data_base = date.today()
+    elif isinstance(data_base, str):
+        data_base = datetime.strptime(data_base[:10], "%Y-%m-%d").date()
+
+    meses_map = {
+        "Mensal": 1,
+        "Trimestral": 3,
+        "Semestral": 6,
+        "Anual": 12
+    }
+    meses_add = meses_map.get(periodicidade)
+    if not meses_add:
+        return None
+
+    ano = data_base.year + (data_base.month + meses_add - 1) // 12
+    mes = (data_base.month + meses_add - 1) % 12 + 1
+    
+    # Ajusta o dia caso o mês destino tenha menos dias (ex: 31 de jan -> 28/29 de fev)
+    import calendar
+    ultimo_dia_mes = calendar.monthrange(ano, mes)[1]
+    dia = min(data_base.day, ultimo_dia_mes)
+    
+    return date(ano, mes, dia).strftime("%Y-%m-%d")
+    
 # ---------------------------------------------------------
 # RECALCULADOR DE STATUS AUTOMÁTICO (REGRA DE TRANSIÇÃO)
 # ---------------------------------------------------------
 def recalcular_e_atualizar_status_risco(risco_id):
     try:
-        res_r_atual = supabase.table("riscos").select("situacao_status").eq("id", risco_id).execute()
-        if res_r_atual.data:
-            st_atual_banco = res_r_atual.data[0].get("situacao_status")
-            if st_atual_banco in ["Encerrado", "Cancelado"]:
-                return
+        res_r_atual = supabase.table("riscos").select("situacao_status, periodicidade_revisao, proxima_revisao").eq("id", risco_id).execute()
+        if not res_r_atual.data:
+            return
+            
+        dados_r = res_r_atual.data[0]
+        st_atual_banco = dados_r.get("situacao_status")
+        periodicidade_r = dados_r.get("periodicidade_revisao")
+        prox_rev_atual = dados_r.get("proxima_revisao")
+
+        if st_atual_banco in ["Encerrado", "Cancelado"]:
+            return
 
         res_acoes = supabase.table("acoes_tratamento").select("status_acao").eq("risco_id", risco_id).execute()
         acoes = res_acoes.data or []
@@ -1030,7 +1065,16 @@ def recalcular_e_atualizar_status_risco(risco_id):
             novo_status_risco = "Em tratamento"
 
         if novo_status_risco:
-            supabase.table("riscos").update({"situacao_status": novo_status_risco}).eq("id", risco_id).execute()
+            payload_upd = {"situacao_status": novo_status_risco}
+            
+            # Gatilho: Se acabou de entrar em "Monitorado" e ainda não tem data agendada, calcula a próxima revisão
+            if novo_status_risco == "Monitorado" and (st_atual_banco != "Monitorado" or not prox_rev_atual):
+                payload_upd["proxima_revisao"] = calcular_nova_data_revisao(periodicidade_r)
+            # Se voltou para "Em tratamento" (ex: nova ação adicionada), suspende o ciclo de revisão até concluir
+            elif novo_status_risco == "Em tratamento":
+                payload_upd["proxima_revisao"] = None
+
+            supabase.table("riscos").update(payload_upd).eq("id", risco_id).execute()
     except Exception as e:
         st.error(f"Erro ao recalcular status do risco: {e}")
 
@@ -3141,7 +3185,6 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                         st.warning("Preencha os campos obrigatórios.")
                     else:
                         nivel_calc = prob_val * imp_val
-                        
                         novo_risco_dados = {
                             "unidade": unidade_sigla_final,
                             "objetivo_estrategico": mapa_oe[oe_label],
@@ -3155,6 +3198,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                             "gestor_risco": resp_input,
                             "data_identificacao": dt_identificacao.strftime("%Y-%m-%d"),
                             "periodicidade_revisao": periodicidade_sel,
+                            "proxima_revisao": None,
                             "situacao_status": "Identificado",
                             "indicador_id": mapa_kri[kri_sel_novo]
                         }
@@ -3270,10 +3314,17 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                         st.warning("Preencha a justificativa da reavaliação.")
                     else:
                         try:
-                            supabase.table("riscos").update({
+                            upd_reav_risco = {
                                 "probabilidade": p_nova,
                                 "impacto": i_novo
-                            }).eq("id", r_id).execute()
+                            }
+                            # Se o risco já está Monitorado, renova o prazo da próxima revisão para o próximo ciclo
+                            if risco_obj.get("situacao_status") == "Monitorado":
+                                nova_dt_rev = calcular_nova_data_revisao(risco_obj.get("periodicidade_revisao"))
+                                if nova_dt_rev:
+                                    upd_reav_risco["proxima_revisao"] = nova_dt_rev
+
+                            supabase.table("riscos").update(upd_reav_risco).eq("id", r_id).execute()
 
                             fuso_br = timezone(timedelta(hours=-3))
                             supabase.table("avaliacoes_risco").insert({
