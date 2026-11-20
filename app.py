@@ -138,6 +138,208 @@ def enviar_email_notificacao_siger(destinatarios_list, assunto, corpo_html):
     except Exception as e:
         return False, f"Erro ao enviar e-mail: {str(e)}"
 
+def verificar_prazo_curto_ao_salvar(tipo_entidade, identificador_chave, data_alvo_str, descricao_item):
+    """
+    Verifica no momento do cadastro/edição/reativação se o vencimento ocorre
+    antes do fim da janela das duas próximas semanas (ou já está vencido).
+    Se sim: exibe alerta imediato na tela e grava na tabela 'configuracoes'
+    que este ciclo já foi notificado (evitando envio de e-mail redundante).
+    """
+    if not data_alvo_str:
+        return None
+
+    try:
+        dt_alvo = datetime.strptime(str(data_alvo_str)[:10], "%Y-%m-%d").date()
+    except ValueError:
+        return None
+
+    hoje = date.today()
+    # Fim da janela das duas próximas semanas (Domingo da 2ª semana seguinte)
+    data_inicio_janela = hoje + timedelta(days=(7 - hoje.weekday()))
+    data_fim_janela = data_inicio_janela + timedelta(days=13)
+
+    if dt_alvo <= data_fim_janela:
+        # Grava na tabela configuracoes que este ciclo já foi alertado no cadastro/edição
+        supabase.table("configuracoes").upsert({
+            "chave": identificador_chave,
+            "valor": str(data_alvo_str)[:10]
+        }, on_conflict="chave").execute()
+
+        dt_fmt = formatar_data_br(str(data_alvo_str)[:10])
+        if dt_alvo < hoje:
+            return f"⚠️ **Atenção:** {tipo_entidade} ({descricao_item}) foi salvo(a) com data já vencida (**{dt_fmt}**). Como o prazo é imediato, nenhum e-mail automático de lembrete será disparado."
+        else:
+            return f"⏰ **Aviso de Prazo Curto:** {tipo_entidade} ({descricao_item}) vence em **{dt_fmt}** (dentro das próximas duas semanas). Considere este aviso como notificação inicial — nenhum e-mail redundante será enviado."
+
+    return None
+
+def verificar_e_enviar_alertas_semanais(forcar_envio=False):
+    """
+    Executa 1x por semana (no primeiro login da semana).
+    Varre Riscos ('Monitorado') e Ações de Tratamento (ativas) cujos prazos
+    caem estritamente nas duas próximas semanas (próxima segunda até domingo da 2ª semana).
+    Ignora itens já alertados no cadastro ou em semanas anteriores.
+    """
+    hoje = date.today()
+    ano_iso, semana_iso, _ = hoje.isocalendar()
+    semana_atual_chave = f"{ano_iso}-W{semana_iso:02d}"
+
+    # Janela estrita: próxima segunda-feira até o domingo da 2ª semana seguinte (14 dias exatos)
+    data_inicio_janela = hoje + timedelta(days=(7 - hoje.weekday()))
+    data_fim_janela = data_inicio_janela + timedelta(days=13)
+
+    enviados = 0
+    erros = []
+
+    try:
+        # 1. Trava semanal
+        if not forcar_envio:
+            res_sem = supabase.table("configuracoes")\
+                .select("valor")\
+                .eq("chave", "ultima_semana_varredura_alertas")\
+                .execute()
+            if res_sem.data and res_sem.data[0].get("valor") == semana_atual_chave:
+                return 0, []
+
+        # 2. Carrega histórico de alertas já registrados
+        res_cfg = supabase.table("configuracoes")\
+            .select("chave, valor")\
+            .like("chave", "alerta_%")\
+            .execute()
+        alertas_registrados = {item["chave"]: item["valor"] for item in (res_cfg.data or [])}
+
+        # PARTE A: REVISÃO PERIÓDICA DE RISCOS
+        res_riscos = supabase.table("riscos")\
+            .select("id, evento, unidade, gestor_risco, periodicidade_revisao, proxima_revisao")\
+            .eq("situacao_status", "Monitorado")\
+            .not_.is_("proxima_revisao", "null")\
+            .execute()
+
+        for r in (res_riscos.data or []):
+            r_id = r["id"]
+            prox_rev_str = str(r.get("proxima_revisao"))[:10]
+            try:
+                dt_rev = datetime.strptime(prox_rev_str, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+
+            if not (data_inicio_janela <= dt_rev <= data_fim_janela):
+                continue
+
+            chave_ctrl = f"alerta_revisao_risco_{r_id}"
+            if not forcar_envio and alertas_registrados.get(chave_ctrl) == prox_rev_str:
+                continue
+
+            destinatarios = obter_emails_unidade_ou_usuario(
+                unidade_sigla=r.get("unidade"),
+                nome_usuario=r.get("gestor_risco")
+            )
+            if not destinatarios:
+                erros.append(f"Risco #{r_id}: nenhum e-mail encontrado.")
+                continue
+
+            dt_fmt = formatar_data_br(prox_rev_str)
+            assunto = f"⏰ [SIGER] Alerta de Revisão Periódica - Risco #{r_id} (Venc. {dt_fmt})"
+            corpo_html = f"""
+            <div style="font-family: Arial, sans-serif; color: #333;">
+                <h3 style="color: #002147;">⏰ Lembrete de Revisão Periódica de Risco</h3>
+                <p>Olá,</p>
+                <p>O risco abaixo está em monitoramento e possui revisão prevista para as próximas duas semanas:</p>
+                <ul>
+                    <li><b>Risco:</b> #{r_id} - {r.get('evento')}</li>
+                    <li><b>Unidade / Gestor:</b> {r.get('unidade')} | {r.get('gestor_risco')}</li>
+                    <li><b>Periodicidade:</b> {r.get('periodicidade_revisao') or 'Não informada'}</li>
+                    <li><b>Data Prevista:</b> <b>{dt_fmt}</b></li>
+                </ul>
+                <p>Acesse o <b>SIGER</b> em <i>Gestão de Riscos &gt; Reavaliação do Nível de Risco</i> para registrar a nova avaliação.</p>
+            </div>
+            """
+            sucesso, msg = enviar_email_notificacao_siger(destinatarios, assunto, corpo_html)
+            if sucesso:
+                enviados += 1
+                supabase.table("configuracoes").upsert({"chave": chave_ctrl, "valor": prox_rev_str}, on_conflict="chave").execute()
+                registrar_log_auditoria(
+                    acao="ALERTA_REVISAO_EMAIL",
+                    detalhes=f"Alerta de revisão (venc. {dt_fmt}) do Risco #{r_id} enviado para: {', '.join(destinatarios)}",
+                    unidade_sigla=r.get("unidade")
+                )
+            else:
+                erros.append(f"Risco #{r_id}: {msg}")
+
+        # PARTE B: PRAZO DE AÇÕES DE TRATAMENTO
+        res_acoes = supabase.table("acoes_tratamento")\
+            .select("risco_id, numero_sequencial, acao, unidade_responsavel, nome_responsavel_implementacao, previsao_data_conclusao, status_acao, riscos(evento)")\
+            .not_.in_("status_acao", ["Concluída", "Cancelada", "Devolvida"])\
+            .not_.is_("previsao_data_conclusao", "null")\
+            .execute()
+
+        for ac in (res_acoes.data or []):
+            r_id = ac["risco_id"]
+            seq = ac["numero_sequencial"]
+            dt_conc_str = str(ac.get("previsao_data_conclusao"))[:10]
+            try:
+                dt_conc = datetime.strptime(dt_conc_str, "%Y-%m-%d").date()
+            except ValueError:
+                continue
+
+            if not (data_inicio_janela <= dt_conc <= data_fim_janela):
+                continue
+
+            chave_ctrl = f"alerta_prazo_acao_{r_id}_{seq}"
+            if not forcar_envio and alertas_registrados.get(chave_ctrl) == dt_conc_str:
+                continue
+
+            resp_ac = ac.get("nome_responsavel_implementacao")
+            unid_ac = ac.get("unidade_responsavel")
+            destinatarios = obter_emails_unidade_ou_usuario(
+                unidade_sigla=unid_ac,
+                nome_usuario=None if resp_ac == "Toda a Unidade" else resp_ac
+            )
+            if not destinatarios:
+                erros.append(f"Risco #{r_id} / Ação {seq}: nenhum e-mail encontrado.")
+                continue
+
+            dt_fmt = formatar_data_br(dt_conc_str)
+            evento_txt = (ac.get("riscos") or {}).get("evento", "-")
+            assunto = f"⏰ [SIGER] Alerta de Prazo de Ação - Risco #{r_id} / Ação {seq} (Venc. {dt_fmt})"
+            corpo_html = f"""
+            <div style="font-family: Arial, sans-serif; color: #333;">
+                <h3 style="color: #002147;">⏰ Lembrete de Prazo de Ação de Tratamento</h3>
+                <p>Olá,</p>
+                <p>A ação de tratamento abaixo possui previsão de conclusão nas próximas duas semanas:</p>
+                <ul>
+                    <li><b>Risco Vinculado:</b> #{r_id} - {evento_txt}</li>
+                    <li><b>Ação nº {seq}:</b> {ac.get('acao')}</li>
+                    <li><b>Unidade / Responsável:</b> {unid_ac} | {resp_ac}</li>
+                    <li><b>Previsão de Conclusão:</b> <b>{dt_fmt}</b></li>
+                </ul>
+                <p>Acesse a <b>Caixa de Entrada</b> do SIGER para registrar o andamento ou conclusão da ação.</p>
+            </div>
+            """
+            sucesso, msg = enviar_email_notificacao_siger(destinatarios, assunto, corpo_html)
+            if sucesso:
+                enviados += 1
+                supabase.table("configuracoes").upsert({"chave": chave_ctrl, "valor": dt_conc_str}, on_conflict="chave").execute()
+                registrar_log_auditoria(
+                    acao="ALERTA_PRAZO_ACAO_EMAIL",
+                    detalhes=f"Alerta de prazo (venc. {dt_fmt}) da Ação #{seq} (Risco #{r_id}) enviado para: {', '.join(destinatarios)}",
+                    unidade_sigla=unid_ac
+                )
+            else:
+                erros.append(f"Risco #{r_id} / Ação {seq}: {msg}")
+
+        # 3. Marca a semana atual como processada
+        if not forcar_envio:
+            supabase.table("configuracoes").upsert({
+                "chave": "ultima_semana_varredura_alertas",
+                "valor": semana_atual_chave
+            }, on_conflict="chave").execute()
+
+    except Exception as e:
+        erros.append(f"Falha na varredura semanal de alertas: {str(e)}")
+
+    return enviados, erros
+
 # Importação dos cálculos gerenciais e operacionais do SIGER
 from calculos_siger import (
     calcular_situacao_revisao_risco,
@@ -774,6 +976,18 @@ if not st.session_state.usuario_logado:
 # Atualiza dinamicamente as permissões do usuário em cada recarga
 recarregar_permissoes_usuario_logado()
 
+# Dispara varredura semanal automática (1x por semana no primeiro acesso da instituição)
+if "alertas_semanais_verificados" not in st.session_state:
+    st.session_state.alertas_semanais_verificados = True
+    try:
+        verificar_e_enviar_alertas_semanais(forcar_envio=False)
+    except Exception:
+        pass
+
+# Exibe aviso imediato na tela se algum item foi salvo/reativado com prazo <= 14 dias
+if "alerta_prazo_curto" in st.session_state:
+    st.warning(st.session_state.pop("alerta_prazo_curto"))
+
 # ---------------------------------------------------------
 # HELPER DE PERMISSÕES (RBAC DINÂMICO)
 # ---------------------------------------------------------
@@ -1069,7 +1283,12 @@ def recalcular_e_atualizar_status_risco(risco_id):
             
             # Gatilho: Se acabou de entrar em "Monitorado" e ainda não tem data agendada, calcula a próxima revisão
             if novo_status_risco == "Monitorado" and (st_atual_banco != "Monitorado" or not prox_rev_atual):
-                payload_upd["proxima_revisao"] = calcular_nova_data_revisao(periodicidade_r)
+                nova_rev_auto = calcular_nova_data_revisao(periodicidade_r)
+                payload_upd["proxima_revisao"] = nova_rev_auto
+                if nova_rev_auto:
+                    aviso_auto = verificar_prazo_curto_ao_salvar("Risco", f"alerta_revisao_risco_{risco_id}", nova_rev_auto, f"Risco #{risco_id}")
+                    if aviso_auto:
+                        st.session_state["alerta_prazo_curto"] = aviso_auto
             # Se voltou para "Em tratamento" (ex: nova ação adicionada), suspende o ciclo de revisão até concluir
             elif novo_status_risco == "Em tratamento":
                 payload_upd["proxima_revisao"] = None
@@ -3049,6 +3268,11 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
 
                                                 supabase.table("avaliacoes_risco").insert(dados_avaliac).execute()
 
+                                                if nova_prox_rev:
+                                                    aviso_r = verificar_prazo_curto_ao_salvar("Risco", f"alerta_revisao_risco_{r_item['id']}", nova_prox_rev, f"Risco #{r_item['id']}")
+                                                    if aviso_r:
+                                                        st.session_state["alerta_prazo_curto"] = aviso_r
+
                                                 # LOG DE AUDITORIA: ALTERAÇÃO DE RISCO
                                                 registrar_log_auditoria(
                                                     acao="ALTERACAO_RISCO",
@@ -3351,6 +3575,11 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
 
                             supabase.table("riscos").update(upd_reav_risco).eq("id", r_id).execute()
 
+                            if upd_reav_risco.get("proxima_revisao"):
+                                aviso_rev = verificar_prazo_curto_ao_salvar("Risco", f"alerta_revisao_risco_{r_id}", upd_reav_risco["proxima_revisao"], f"Risco #{r_id}")
+                                if aviso_rev:
+                                    st.session_state["alerta_prazo_curto"] = aviso_rev
+
                             fuso_br = timezone(timedelta(hours=-3))
                             supabase.table("avaliacoes_risco").insert({
                                 "risco_id": r_id,
@@ -3471,6 +3700,10 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                                         "previsao_data_inicio": edit_dt_i.strftime("%Y-%m-%d"),
                                                         "previsao_data_conclusao": edit_dt_f.strftime("%Y-%m-%d")
                                                     }).eq("risco_id", r_id).eq("numero_sequencial", seq).execute()
+
+                                                    aviso_ed_ac = verificar_prazo_curto_ao_salvar("Ação de Tratamento", f"alerta_prazo_acao_{r_id}_{seq}", edit_dt_f.strftime("%Y-%m-%d"), f"Risco #{r_id} / Ação {seq}")
+                                                    if aviso_ed_ac:
+                                                        st.session_state["alerta_prazo_curto"] = aviso_ed_ac
                                                     
                                                     # LOG DE AUDITORIA: ALTERAÇÃO DE AÇÃO
                                                     registrar_log_auditoria(
@@ -3596,6 +3829,10 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                 }
                                 try:
                                     supabase.table("acoes_tratamento").insert(dados_nova_acao).execute()
+
+                                    aviso_nv_ac = verificar_prazo_curto_ao_salvar("Ação de Tratamento", f"alerta_prazo_acao_{id_risco_sel}_{prox_seq}", dt_conclusao.strftime("%Y-%m-%d"), f"Risco #{id_risco_sel} / Ação {prox_seq}")
+                                    if aviso_nv_ac:
+                                        st.session_state["alerta_prazo_curto"] = aviso_nv_ac
 
                                     # LOG DE AUDITORIA: INCLUSÃO DE AÇÃO
                                     registrar_log_auditoria(
