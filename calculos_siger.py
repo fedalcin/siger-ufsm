@@ -12,7 +12,7 @@ import time
 # =============================================================================
 def calcular_situacao_revisao_risco(
     data_proxima_revisao, 
-    dias_alerta: int = 30, 
+    dias_alerta: int = 14, 
     status_risco: str = None
 ) -> str:
     """
