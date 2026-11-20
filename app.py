@@ -2911,12 +2911,16 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                         cor_nivel = "🔴 (Crítico)" if nivel >= 15 else "🟡 (Médio)" if nivel >= 8 else "🟢 (Baixo)"
                         dt_ident_fmt = formatar_data_br(r_item.get('data_identificacao'))
                         st_risco = r_item.get('situacao_status', 'Identificado')
-                        
+
+                        per_atual_r = r_item.get('periodicidade_revisao') or 'Não definida'
+                        prox_rev_r = r_item.get('proxima_revisao')
+                        prox_rev_txt = formatar_data_br(prox_rev_r) if prox_rev_r else ("Aguardando Monitoramento" if st_risco not in ["Encerrado", "Cancelado"] else "-")
+
                         with st.expander(f"🛡️ Risco #{r_item['id']} ({st_risco}) | {r_item['unidade']} | Nível {nivel} {cor_nivel}"):
                             st.markdown(f"**Risco:** {r_item.get('evento', '')}")
                             st.markdown(f"**Causa:** {r_item.get('causa', '')} | **Consequência:** {r_item.get('consequencia', '')}")
                             st.markdown(f"**Gestor:** {r_item.get('gestor_risco', '')} | **Situação Atual:** `{st_risco}`")
-                            st.markdown(f"**Data de Identificação:** {dt_ident_fmt}")
+                            st.markdown(f"**Data de Identificação:** {dt_ident_fmt} | **Periodicidade:** `{per_atual_r}` | **Próxima Revisão:** `{prox_rev_txt}`")
 
                             # ---------------------------------------------------------
                             # EXIBIÇÃO FORMATADA E RESUMIDA DO KRI CONECTADO AO RISCO
@@ -2992,14 +2996,33 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                                 st.caption(f"💥 **Nota {e_imp} ({rot_ei}):** *{desc_ei}*")
 
                                             st.markdown("---")
-                                            e_resp = st.text_input("Gestor do Risco", value=r_item.get('gestor_risco', ''))
+                                            col_eg1, col_eg2, col_eg3 = st.columns(3)
+                                            with col_eg1:
+                                                e_resp = st.text_input("Gestor do Risco", value=r_item.get('gestor_risco', ''))
                                             
-                                            options_status = ['Identificado', 'Em análise', 'Em tratamento', 'Monitorado', 'Encerrado', 'Cancelado']
-                                            curr_status = r_item.get('situacao_status', 'Identificado')
-                                            idx_st = options_status.index(curr_status) if curr_status in options_status else 0
-                                            e_sit = st.selectbox("Situação", options_status, index=idx_st)
+                                            with col_eg2:
+                                                options_status = ['Identificado', 'Em análise', 'Em tratamento', 'Monitorado', 'Encerrado', 'Cancelado']
+                                                curr_status = r_item.get('situacao_status', 'Identificado')
+                                                idx_st = options_status.index(curr_status) if curr_status in options_status else 0
+                                                e_sit = st.selectbox("Situação", options_status, index=idx_st)
+
+                                            with col_eg3:
+                                                opts_periodicidade = ["Mensal", "Trimestral", "Semestral", "Anual"]
+                                                curr_per = r_item.get('periodicidade_revisao')
+                                                idx_per = opts_periodicidade.index(curr_per) if curr_per in opts_periodicidade else 0
+                                                e_periodicidade = st.selectbox("Periodicidade de Revisão", opts_periodicidade, index=idx_per)
 
                                             if st.form_submit_button("💾 Salvar Alterações"):
+                                                # Regra de negócio para data da próxima revisão
+                                                nova_prox_rev = r_item.get("proxima_revisao")
+                                                if e_sit == "Monitorado":
+                                                    # Recalcula se mudou de periodicidade, se acabou de entrar em Monitorado ou se não tinha data
+                                                    if curr_status != "Monitorado" or e_periodicidade != curr_per or not nova_prox_rev:
+                                                        nova_prox_rev = calcular_nova_data_revisao(e_periodicidade)
+                                                else:
+                                                    # Se não está Monitorado (ex: voltou para Em tratamento ou Encerrado), não mantém revisão agendada
+                                                    nova_prox_rev = None
+
                                                 supabase.table("riscos").update({
                                                     "evento": e_evento,
                                                     "causa": e_causa,
@@ -3008,6 +3031,8 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                                     "impacto": e_imp,
                                                     "gestor_risco": e_resp,
                                                     "situacao_status": e_sit,
+                                                    "periodicidade_revisao": e_periodicidade,
+                                                    "proxima_revisao": nova_prox_rev,
                                                     "indicador_id": mapa_kri[e_kri_sel]
                                                 }).eq("id", r_item['id']).execute()
 
@@ -3019,7 +3044,7 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                                     "data_avaliacao": datetime.now(fuso_br).isoformat(),
                                                     "usuario_avaliador": usr_atual["nome"],
                                                     "tipo_avaliacao": "Reavaliação Periódica",
-                                                    "justificativa": "Reavaliação de probabilidade e impacto gravada via painel de edição."
+                                                    "justificativa": f"Edição do risco (Periodicidade: {e_periodicidade} | Status: {e_sit})."
                                                 }
 
                                                 supabase.table("avaliacoes_risco").insert(dados_avaliac).execute()
@@ -3027,11 +3052,11 @@ elif st.session_state.pagina_atual == "Gestão de Riscos":
                                                 # LOG DE AUDITORIA: ALTERAÇÃO DE RISCO
                                                 registrar_log_auditoria(
                                                     acao="ALTERACAO_RISCO",
-                                                    detalhes=f"Risco ID #{r_item['id']} alterado. Probabilidade: {e_prob}, Impacto: {e_imp}, Status: {e_sit}.",
+                                                    detalhes=f"Risco ID #{r_item['id']} alterado. Prob: {e_prob}, Imp: {e_imp}, Status: {e_sit}, Periodicidade: {e_periodicidade}.",
                                                     unidade_sigla=r_item.get("unidade")
                                                 )
 
-                                                st.success("✅ Risco reavaliado e alteração salva!")
+                                                st.success("✅ Risco atualizado com sucesso!")
                                                 st.rerun()
 
                             with col_r_del:
