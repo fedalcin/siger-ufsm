@@ -4244,8 +4244,9 @@ elif st.session_state.pagina_atual == "Dashboards":
                         use_container_width=True
                     )
 
+                st_risco_atual = risco_obj.get("situacao_status", "Identificado")
                 data_prox_rev = risco_obj.get("proxima_revisao") or risco_obj.get("data_proxima_revisao")
-                sit_revisao = calcular_situacao_revisao_risco(data_prox_rev)
+                sit_revisao = calcular_situacao_revisao_risco(data_prox_rev, status_risco=st_risco_atual)
                 
                 tot_acoes_r = len(df_ac_mon)
                 if not df_ac_mon.empty:
@@ -4288,10 +4289,17 @@ elif st.session_state.pagina_atual == "Dashboards":
 
                 with col_hdr2:
                     # 1. QUADRO DE DATAS E REVISÃO
+                    if st_risco_atual in ["Encerrado", "Cancelado"]:
+                        prox_rev_display = f"- (`{sit_revisao}`)"
+                    elif data_prox_rev:
+                        prox_rev_display = f"{formatar_data_br(data_prox_rev)} (`{sit_revisao}`)"
+                    else:
+                        prox_rev_display = f"`{sit_revisao}`"
+
                     st.info(f"""
                     📅 **Data de Identificação:** {formatar_data_br(risco_obj.get('data_identificacao'))}  
-                    🔄 **Periodicidade:** {risco_obj.get('periodicidade_revisao', 'Não informada')}  
-                    📆 **Próxima Revisão:** {formatar_data_br(data_prox_rev)} (`{sit_revisao}`)
+                    🔄 **Periodicidade:** {risco_obj.get('periodicidade_revisao') or 'Não informada'}  
+                    📆 **Próxima Revisão:** {prox_rev_display}
                     """)
 
                     # 2. QUADRO SEPARADO EXCLUSIVO PARA O KRI
@@ -4837,7 +4845,11 @@ elif st.session_state.pagina_atual == "Dashboards":
                         if calcular_situacao_prazo_acao(row.get("status_acao"), row.get("previsao_data_conclusao")) == "⚠️ Atrasada"
                     ) if not df_a_filtrado.empty else 0
 
-                    sit_rev_r = calcular_situacao_revisao_risco(r_item.get("proxima_revisao"))
+                    st_risco_f = r_item.get("situacao_status")
+                    sit_rev_r = calcular_situacao_revisao_risco(
+                        r_item.get("proxima_revisao"), 
+                        status_risco=st_risco_f
+                    )
 
                     iar_dados = calcular_iar_risco(
                         nivel_risco=n_val,
@@ -4847,7 +4859,7 @@ elif st.session_state.pagina_atual == "Dashboards":
                     )
 
                     iar_valor = iar_dados.get("iar") or iar_dados.get("iar_score") or iar_dados.get("score") or 0.0
-                    prioridade_txt = iar_dados.get("prioridade") or iar_dados.get("nivel_prioridade") or "Normal"
+                    prioridade_txt = iar_dados.get("classificacao") or iar_dados.get("prioridade") or "Normal"
 
                     top_riscos_lista.append({
                         "ID": r_id_f,
@@ -4855,9 +4867,10 @@ elif st.session_state.pagina_atual == "Dashboards":
                         "Unidade": r_item.get("unidade"),
                         "Nível": n_val,
                         "Ações (Tot/Atr)": f"{tot_ac_r} / {atrasadas_ac_r}",
+                        "Situação Revisão": sit_rev_r,
                         "Pontuação de Prioridade": iar_valor,
                         "Prioridade": prioridade_txt,
-                        "Status": r_item.get("situacao_status")
+                        "Status": st_risco_f
                     })
 
                 df_top_final = pd.DataFrame(top_riscos_lista).sort_values(by="Pontuação de Prioridade", ascending=False)
