@@ -10,17 +10,26 @@ import time
 # =============================================================================
 # 1. CALCULADORAS OPERACIONAIS DE PRAZOS E ALERTAS
 # =============================================================================
+def calcular_situacao_revisao_risco(
+    data_proxima_revisao, 
+    dias_alerta: int = 30, 
+    status_risco: str = None
+) -> str:
+    """
+    Verifica a situação da revisão temporal do risco considerando seu ciclo de vida.
+    Retorna: 'Atrasada', 'Próxima do Vencimento', 'Em dia', 'Aguardando Monitoramento' ou 'Não aplicável'
+    """
+    if status_risco in ['Encerrado', 'Cancelado']:
+        return 'Não aplicável'
 
-def calcular_situacao_revisao_risco(data_proxima_revisao, dias_alerta: int = 30) -> str:
-    """
-    Verifica a situação da revisão temporal do risco.
-    Retorna: 'Atrasada', 'Próxima do Vencimento', 'Em dia' ou 'Não definida'
-    """
-    if pd.isna(data_proxima_revisao) or data_proxima_revisao is None:
-        return 'Não definida'
+    if status_risco is not None and status_risco != 'Monitorado':
+        return 'Aguardando Monitoramento'
+
+    if pd.isna(data_proxima_revisao) or data_proxima_revisao is None or str(data_proxima_revisao).strip() == '':
+        return 'Aguardando Monitoramento'
     
     if isinstance(data_proxima_revisao, str):
-        data_proxima_revisao = datetime.strptime(data_proxima_revisao, '%Y-%m-%d').date()
+        data_proxima_revisao = datetime.strptime(data_proxima_revisao[:10], '%Y-%m-%d').date()
     elif isinstance(data_proxima_revisao, datetime):
         data_proxima_revisao = data_proxima_revisao.date()
 
@@ -31,7 +40,6 @@ def calcular_situacao_revisao_risco(data_proxima_revisao, dias_alerta: int = 30)
         return 'Próxima do Vencimento'
     else:
         return 'Em dia'
-
 
 def calcular_situacao_prazo_acao(
     status_acao: str, 
