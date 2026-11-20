@@ -1295,6 +1295,17 @@ if "sub_pagina_atual" not in st.session_state:
     st.session_state.sub_pagina_atual = None
 
 def navegar_para(pagina, sub_pagina=None):
+    pagina_ant = st.session_state.get("pagina_atual")
+    sub_ant = st.session_state.get("sub_pagina_atual")
+
+    # Só grava o log se o usuário realmente mudou de funcionalidade
+    if pagina != pagina_ant or sub_pagina != sub_ant:
+        destino = f"{pagina} > {sub_pagina}" if sub_pagina else pagina
+        registrar_log_auditoria(
+            acao="ACESSO_FUNCIONALIDADE",
+            detalhes=f"Acessou a funcionalidade: {destino}"
+        )
+
     st.session_state.pagina_atual = pagina
     st.session_state.sub_pagina_atual = sub_pagina
 
@@ -1387,7 +1398,13 @@ if is_admin or pode("bib_normativas", "leitura"):
 st.sidebar.divider()
 
 if st.sidebar.button("🚪 Sair / Logout", use_container_width=True, key="btn_logout_bottom"):
+    registrar_log_auditoria(
+        acao="LOGOUT",
+        detalhes="Usuário encerrou a sessão (Logout) no SIGER."
+    )
     st.session_state.usuario_logado = None
+    st.session_state.pagina_atual = "Início"
+    st.session_state.sub_pagina_atual = None
     st.rerun()
 
 # ---------------------------------------------------------
@@ -2257,14 +2274,16 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
     elif sub == "Controle de Acessos" and (is_admin or pode("adm_auditoria", "acesso") or pode("adm_usuarios", "acesso")):
         st.title("📜 Controle de Acessos")
         st.caption("Rastreamento de segurança: saiba quem acessou o SIGER, quando acessou, de qual IP e quais ações realizou.")
-        
-        col_f1, col_f2, col_f3 = st.columns([1.5, 1.5, 2])
+
+        col_f1, col_f2, col_f3, col_f4 = st.columns([1.2, 1.2, 1.5, 2])
         with col_f1:
             dt_inicio_aud = st.date_input("Data Inicial", value=date.today().replace(day=1), format="DD/MM/YYYY", key="dt_ini_aud")
         with col_f2:
             dt_fim_aud = st.date_input("Data Final", value=date.today(), format="DD/MM/YYYY", key="dt_fim_aud")
         with col_f3:
-            busca_aud = st.text_input("🔍 Buscar por Usuário, E-mail ou Ação", placeholder="Digite o nome ou e-mail...").strip().lower()
+            tipo_evento_aud = st.selectbox("Tipo de Registro", ["Todos", "Acessos a Funcionalidades", "Logins / Logouts", "Operações (CRUD / Tramitações)"])
+        with col_f4:
+            busca_aud = st.text_input("🔍 Buscar por Usuário, E-mail ou Detalhes", placeholder="Digite o nome, e-mail ou módulo...").strip().lower()
 
         st.divider()
 
@@ -2281,6 +2300,13 @@ elif st.session_state.pagina_atual == "Administração do Sistema" and (is_admin
                     (df_logs["dt_conv"] >= dt_inicio_aud) & 
                     (df_logs["dt_conv"] <= dt_fim_aud)
                 ].copy()
+
+                if tipo_evento_aud == "Acessos a Funcionalidades":
+                    df_filtrado = df_filtrado[df_filtrado["acao"] == "ACESSO_FUNCIONALIDADE"]
+                elif tipo_evento_aud == "Logins / Logouts":
+                    df_filtrado = df_filtrado[df_filtrado["acao"].isin(["LOGIN", "LOGOUT"])]
+                elif tipo_evento_aud == "Operações (CRUD / Tramitações)":
+                    df_filtrado = df_filtrado[~df_filtrado["acao"].isin(["ACESSO_FUNCIONALIDADE", "LOGIN", "LOGOUT"])]
 
                 if busca_aud:
                     df_filtrado = df_filtrado[
